@@ -31,16 +31,10 @@ export default function RulesPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
 
   useEffect(() => {
-    Promise.all([
-      api.get('/rules'),
-      api.get('/rules/categories').catch(() => ({ data: [] })),
-    ])
-      .then(([rulesRes, catRes]) => {
-        setRules(rulesRes.data.items || rulesRes.data.data || rulesRes.data.rules || rulesRes.data || [])
-        const cats = catRes.data.items || catRes.data.categories || catRes.data || []
-        setCategories(cats)
-        // Expand all by default
-        setExpandedCategories(new Set(cats.map((c: Category) => c.key || c.name)))
+    api.get('/rules')
+      .then(res => {
+        const items = res.data.items || res.data || []
+        setRules(items)
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load rules'))
       .finally(() => setLoading(false))
