@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, ArrowLeftRight, Bell, Briefcase, Users, Shield,
-  BookOpen, Network, FileText, List, Settings, LogOut, Search, ChevronDown
+  BookOpen, Network, FileText, List, Settings, LogOut, Search, ChevronDown, Plug
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -16,6 +16,7 @@ const navItems = [
   { path: '/network', label: 'Network Analysis', icon: Network },
   { path: '/reports', label: 'Reports', icon: FileText },
   { path: '/watchlists', label: 'Watchlists', icon: List },
+  { path: '/integrations', label: 'Integrations', icon: Plug },
   { path: '/admin', label: 'Administration', icon: Settings },
 ]
 

@@ -16,6 +16,7 @@ import NetworkPage from './pages/NetworkPage'
 import ReportsPage from './pages/ReportsPage'
 import WatchlistPage from './pages/WatchlistPage'
 import AdminPage from './pages/AdminPage'
+import IntegrationsPage from './pages/IntegrationsPage'
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'))
@@ -51,6 +52,7 @@ function App() {
         <Route path="/network" element={<NetworkPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/watchlists" element={<WatchlistPage />} />
+        <Route path="/integrations" element={<IntegrationsPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>
       <Route path="/login" element={<Navigate to="/" />} />
