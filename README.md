@@ -1,6 +1,6 @@
 # FinsurgeENRIMS - Enterprise Risk Management System
 
-A comprehensive Clari5-class Enterprise Fraud & Risk Management platform for banking institutions.
+A comprehensive Enterprise Fraud & Risk Management platform for banking institutions.
 
 ## Features
 
