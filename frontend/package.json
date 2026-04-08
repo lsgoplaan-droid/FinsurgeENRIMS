@@ -1,4 +1,13 @@
 {
+  "name": "finsurge-enrims-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.2.14",
