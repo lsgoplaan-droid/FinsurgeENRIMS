@@ -10,6 +10,7 @@ from app.models.watchlist import WatchlistEntry
 from app.models.report import CTRReport, SARReport
 from app.models.network import CustomerRelationship, CustomerLink
 from app.models.audit import AuditLog, SystemConfig, Notification
+from app.services.maker_checker import PendingAction
 
 
 def _register_all_models():
@@ -30,4 +31,5 @@ __all__ = [
     "CTRReport", "SARReport",
     "CustomerRelationship", "CustomerLink",
     "AuditLog", "SystemConfig", "Notification",
+    "PendingAction",
 ]

@@ -105,6 +105,71 @@ def list_transactions(
     }
 
 
+@router.post("")
+def create_transaction(body: TransactionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Create a new transaction and run it through the rules engine."""
+    account = db.query(Account).filter(Account.id == body.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    now = datetime.utcnow()
+    txn = Transaction(
+        id=str(uuid.uuid4()),
+        transaction_ref=f"TXN{now.strftime('%Y%m%d')}{str(uuid.uuid4())[:8].upper()}",
+        account_id=body.account_id,
+        customer_id=body.customer_id,
+        transaction_type=body.transaction_type,
+        transaction_method=body.transaction_method,
+        channel=body.channel,
+        amount=body.amount,
+        balance_after=account.balance + (body.amount if body.transaction_type == "credit" else -body.amount),
+        counterparty_account=body.counterparty_account,
+        counterparty_name=body.counterparty_name,
+        counterparty_bank=body.counterparty_bank,
+        counterparty_ifsc=body.counterparty_ifsc,
+        description=body.description,
+        location_city=body.location_city,
+        location_country=body.location_country,
+        ip_address=body.ip_address,
+        device_id=body.device_id,
+        transaction_date=now,
+        value_date=now.date(),
+        processing_status="completed",
+    )
+    db.add(txn)
+    db.flush()
+
+    # Update account balance
+    if body.transaction_type == "credit":
+        account.balance += body.amount
+    else:
+        account.balance -= body.amount
+
+    # Run rules engine
+    from app.engine.evaluator import evaluate_transaction
+    eval_result = evaluate_transaction(db, txn)
+
+    # Auto-assign any new alerts created
+    from app.services.alert_assignment import auto_assign_alerts
+    auto_assign_alerts(db, eval_result.get("alert_ids", []))
+
+    db.commit()
+
+    customer = db.query(Customer).filter(Customer.id == body.customer_id).first()
+    return {
+        "transaction": TransactionResponse(
+            id=txn.id, transaction_ref=txn.transaction_ref, account_id=txn.account_id,
+            customer_id=txn.customer_id, customer_name=customer.full_name if customer else "",
+            account_number=account.account_number, transaction_type=txn.transaction_type,
+            transaction_method=txn.transaction_method, channel=txn.channel, amount=txn.amount,
+            risk_score=txn.risk_score or 0, is_flagged=txn.is_flagged or False,
+            flag_reason=txn.flag_reason, transaction_date=txn.transaction_date,
+            processing_status=txn.processing_status, created_at=txn.created_at,
+        ),
+        "rules_engine": eval_result,
+    }
+
+
 @router.get("/stats")
 def get_transaction_stats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     total_count = db.query(func.count(Transaction.id)).scalar() or 0
