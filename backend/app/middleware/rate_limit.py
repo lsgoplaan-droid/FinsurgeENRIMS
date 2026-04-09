@@ -10,7 +10,7 @@ from starlette.responses import JSONResponse
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, login_limit: int = 5, api_limit: int = 100, window: int = 60):
+    def __init__(self, app, login_limit: int = 20, api_limit: int = 200, window: int = 60):
         super().__init__(app)
         self.login_limit = login_limit
         self.api_limit = api_limit

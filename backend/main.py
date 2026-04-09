@@ -104,7 +104,8 @@ def health():
     """Enhanced health check — verifies DB connectivity."""
     try:
         db = SessionLocal()
-        db.execute("SELECT 1" if settings.DATABASE_URL.startswith("postgresql") else "SELECT 1")
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
         db.close()
         db_status = "connected"
     except Exception as e:
