@@ -22,6 +22,7 @@ import FraudScenariosPage from './pages/FraudScenariosPage'
 import AIAgentPage from './pages/AIAgentPage'
 import MISReportsPage from './pages/MISReportsPage'
 import ComplianceSARPage from './pages/ComplianceSARPage'
+import FraudDetectionPage from './pages/FraudDetectionPage'
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'))
@@ -58,6 +59,7 @@ function App() {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/watchlists" element={<WatchlistPage />} />
         <Route path="/integrations" element={<IntegrationsPage />} />
+        <Route path="/fraud-detection" element={<FraudDetectionPage />} />
         <Route path="/internal-fraud" element={<InternalFraudPage />} />
         <Route path="/fraud-scenarios" element={<FraudScenariosPage />} />
         <Route path="/ai-agent" element={<AIAgentPage />} />

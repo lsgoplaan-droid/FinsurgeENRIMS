@@ -2,7 +2,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, ArrowLeftRight, Bell, Briefcase, Users, Shield,
   BookOpen, Network, FileText, List, Settings, LogOut, Search, ChevronDown, Plug,
-  Fingerprint, Brain, BarChart3, ShieldCheck, Layers, Sun, Moon
+  Fingerprint, Brain, BarChart3, ShieldCheck, Layers, Sun, Moon, Radar
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -11,6 +11,7 @@ const navItems = [
   { path: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
   { path: '/alerts', label: 'Alerts', icon: Bell },
   { path: '/cases', label: 'Cases', icon: Briefcase },
+  { path: '/fraud-detection', label: 'Fraud Detection', icon: Radar },
   { path: '/customers', label: 'Customers', icon: Users },
   { path: '/rules', label: 'Rules Engine', icon: BookOpen },
   { path: '/network', label: 'Network Analysis', icon: Network },

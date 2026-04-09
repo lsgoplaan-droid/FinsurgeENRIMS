@@ -536,6 +536,78 @@ def seed_rules(db: Session) -> list:
          [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "fraud"}}],
          None, 100000_00, None),
 
+        # ── Enterprise Fraud Detection Rules (R-001 to R-014) ──────────────
+
+        ("R-001", "Transaction Velocity - 5+ txns in 10 min", "fraud", "velocity", "critical",
+         {"logic": "AND", "conditions": [{"field": "aggregate.transaction_count", "operator": "greater_than", "value": 5, "time_window": "10m"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Velocity breach: 5+ txns in 10 min"}}],
+         "1h", None, 5),
+
+        ("R-002", "High Value Transaction Outside Business Hours", "fraud", "after_hours", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than", "value": 500000_00}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "High-value txn outside business hours"}}],
+         None, 500000_00, None),
+
+        ("R-003", "Geographic Anomaly - Location Jump", "fraud", "geographic", "critical",
+         {"logic": "AND", "conditions": [{"field": "aggregate.unique_locations", "operator": "greater_than", "value": 1, "time_window": "1h"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Geographic anomaly: 500km+ jump in 1 hour"}}],
+         "1h", None, None),
+
+        ("R-004", "Blacklisted Entity Transaction", "fraud", "blacklist", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.counterparty_account", "operator": "is_not_null"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Beneficiary on blacklist"}}],
+         None, None, None),
+
+        ("R-005", "New Payee Large Amount Transfer", "fraud", "new_payee", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}, {"field": "transaction.transaction_method", "operator": "in", "value": ["upi", "neft", "imps"]}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "First-time payee + amount > INR 50,000"}}],
+         None, 50000_00, None),
+
+        ("R-006", "Dormant Account Reactivation", "fraud", "dormant", "medium",
+         {"logic": "AND", "conditions": [{"field": "account.status", "operator": "equals", "value": "dormant"}]},
+         [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Dormant account activity after 90+ days"}}],
+         None, None, None),
+
+        ("R-007", "Multiple Failed Auth Attempts", "fraud", "brute_force", "high",
+         {"logic": "AND", "conditions": [{"field": "aggregate.transaction_count", "operator": "greater_than", "value": 3, "time_window": "1h"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "3+ consecutive failed PIN/OTP attempts"}}],
+         "1h", None, 3),
+
+        ("R-008", "Unusual Channel Switch - Card to UPI", "fraud", "channel_switch", "high",
+         {"logic": "AND", "conditions": [{"field": "aggregate.unique_channels", "operator": "greater_than", "value": 1, "time_window": "1h"}, {"field": "transaction.amount", "operator": "greater_than", "value": 100000_00}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Channel switch: Card + UPI > INR 1L in 5 min"}}],
+         "1h", 100000_00, None),
+
+        ("R-009", "Round Amount Pattern in Short Window", "fraud", "round_amount", "medium",
+         {"logic": "AND", "conditions": [{"field": "aggregate.round_amount_count", "operator": "greater_than", "value": 3, "time_window": "1h"}]},
+         [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "3+ round-figure txns in 30 min"}}],
+         "1h", None, 3),
+
+        ("R-010", "International Card at Domestic POS", "fraud", "international_card", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "card_payment"}, {"field": "transaction.location_country", "operator": "not_equals", "value": "IN"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "International card at domestic POS without intimation"}}],
+         None, None, None),
+
+        ("R-011", "CBS Large Debit Without Mandate", "fraud", "cbs_debit", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than", "value": 1000000_00}, {"field": "transaction.transaction_type", "operator": "equals", "value": "debit"}, {"field": "transaction.channel", "operator": "equals", "value": "branch"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "CBS debit > INR 10L without NEFT/RTGS mandate"}}],
+         None, 1000000_00, None),
+
+        ("R-012", "UPI Collect Request from Untrusted VPA", "fraud", "upi_collect", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "upi"}, {"field": "transaction.amount", "operator": "greater_than", "value": 10000_00}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "UPI collect from unregistered VPA > INR 10,000"}}],
+         None, 10000_00, None),
+
+        ("R-013", "Daily Transfer Limit Breach", "fraud", "limit_breach", "critical",
+         {"logic": "AND", "conditions": [{"field": "aggregate.transaction_sum", "operator": "greater_than", "value": 2000000_00, "time_window": "24h"}, {"field": "transaction.transaction_method", "operator": "in", "value": ["imps", "neft", "rtgs"]}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "IMPS/NEFT/RTGS daily limit breach"}}],
+         "24h", 2000000_00, None),
+
+        ("R-014", "Device Change Followed by Transfer", "fraud", "device_change", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}, {"field": "transaction.channel", "operator": "in", "value": ["mobile_banking", "internet_banking"]}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "New device login + fund transfer within 15 min"}}],
+         None, 50000_00, None),
+
         # KYC/CDD
         ("KYC-001", "Expired KYC Customer Transaction", "kyc", "compliance", "high",
          {"logic": "AND", "conditions": [{"field": "customer.kyc_status", "operator": "equals", "value": "expired"}]},
