@@ -17,6 +17,11 @@ import ReportsPage from './pages/ReportsPage'
 import WatchlistPage from './pages/WatchlistPage'
 import AdminPage from './pages/AdminPage'
 import IntegrationsPage from './pages/IntegrationsPage'
+import InternalFraudPage from './pages/InternalFraudPage'
+import FraudScenariosPage from './pages/FraudScenariosPage'
+import AIAgentPage from './pages/AIAgentPage'
+import MISReportsPage from './pages/MISReportsPage'
+import ComplianceSARPage from './pages/ComplianceSARPage'
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'))
@@ -53,6 +58,11 @@ function App() {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/watchlists" element={<WatchlistPage />} />
         <Route path="/integrations" element={<IntegrationsPage />} />
+        <Route path="/internal-fraud" element={<InternalFraudPage />} />
+        <Route path="/fraud-scenarios" element={<FraudScenariosPage />} />
+        <Route path="/ai-agent" element={<AIAgentPage />} />
+        <Route path="/mis-reports" element={<MISReportsPage />} />
+        <Route path="/compliance-sar" element={<ComplianceSARPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>
       <Route path="/login" element={<Navigate to="/" />} />

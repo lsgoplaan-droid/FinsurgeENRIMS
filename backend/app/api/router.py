@@ -1,5 +1,9 @@
 from fastapi import APIRouter
-from app.api import auth, customers, transactions, alerts, cases, rules, kyc, watchlists, network, dashboard, reports, admin, integrations, workflows, features
+from app.api import (
+    auth, customers, transactions, alerts, cases, rules, kyc, watchlists,
+    network, dashboard, reports, admin, integrations, workflows, features,
+    internal_fraud, fraud_scenarios, ai_agent, mis_reports, compliance_sar,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -18,3 +22,8 @@ api_router.include_router(admin.router)
 api_router.include_router(integrations.router)
 api_router.include_router(workflows.router)
 api_router.include_router(features.router)
+api_router.include_router(internal_fraud.router)
+api_router.include_router(fraud_scenarios.router)
+api_router.include_router(ai_agent.router)
+api_router.include_router(mis_reports.router)
+api_router.include_router(compliance_sar.router)
