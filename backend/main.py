@@ -76,10 +76,11 @@ app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware, login_limit=5, api_limit=100, window=60)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Global exception handler — no stack traces in production
