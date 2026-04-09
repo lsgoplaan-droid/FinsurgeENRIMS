@@ -35,7 +35,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
             <Shield className="text-white" size={28} />
           </div>
           <h1 className="text-2xl font-bold text-slate-800">FinsurgeENRIMS</h1>
-          <p className="text-slate-500 text-sm mt-1">Enterprise Risk Management System</p>
+          <p className="text-slate-500 text-sm mt-1">Enterprise Fraud Risk Management</p>
           <p className="text-slate-400 text-xs mt-1">Finsurge National Bank</p>
         </div>
 

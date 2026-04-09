@@ -41,7 +41,7 @@ export default function DashboardLayout({ onLogout }: { onLogout: () => void }) 
         <div className="p-4 border-b border-slate-700">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-sm">F</div>
-            {!collapsed && <div><div className="font-semibold text-sm">FinsurgeENRIMS</div><div className="text-xs text-slate-400">Enterprise Risk Management</div></div>}
+            {!collapsed && <div><div className="font-semibold text-sm">FinsurgeENRIMS</div><div className="text-xs text-slate-400">Enterprise Fraud Risk Management</div></div>}
           </div>
         </div>
 
