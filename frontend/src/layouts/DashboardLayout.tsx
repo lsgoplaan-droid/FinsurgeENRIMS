@@ -2,9 +2,9 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, ArrowLeftRight, Bell, Briefcase, Users, Shield,
   BookOpen, Network, FileText, List, Settings, LogOut, Search, ChevronDown, Plug,
-  Fingerprint, Brain, BarChart3, ShieldCheck, Layers
+  Fingerprint, Brain, BarChart3, ShieldCheck, Layers, Sun, Moon
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -30,6 +30,12 @@ export default function DashboardLayout({ onLogout }: { onLogout: () => void }) 
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark')
+
+  useEffect(() => {
+    document.body.classList.toggle('dark', dark)
+    localStorage.setItem('theme', dark ? 'dark' : 'light')
+  }, [dark])
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -81,6 +87,13 @@ export default function DashboardLayout({ onLogout }: { onLogout: () => void }) 
             </h1>
           </div>
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => setDark(!dark)}
+              className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors"
+              title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {dark ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-semibold">
                 {user.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2) || 'U'}

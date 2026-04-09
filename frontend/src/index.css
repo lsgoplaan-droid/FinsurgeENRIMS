@@ -14,8 +14,52 @@
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: #f1f5f9;
 }
+
+/* Light theme (default) */
+body { background-color: #f1f5f9; color: #1e293b; }
+
+/* Dark theme */
+body.dark { background-color: #0b1120; color: #e2e8f0; }
+
+.dark .bg-white { background-color: #111827 !important; }
+.dark .bg-slate-50 { background-color: #0f172a !important; }
+.dark .bg-slate-100 { background-color: #1e293b !important; }
+.dark .border-slate-200 { border-color: #1e293b !important; }
+.dark .border-slate-100 { border-color: #1e293b !important; }
+.dark .text-slate-800 { color: #f1f5f9 !important; }
+.dark .text-slate-700 { color: #e2e8f0 !important; }
+.dark .text-slate-600 { color: #cbd5e1 !important; }
+.dark .text-slate-500 { color: #94a3b8 !important; }
+.dark .text-slate-400 { color: #64748b !important; }
+.dark .hover\:bg-slate-50:hover { background-color: #1e293b !important; }
+
+/* Dark inputs */
+.dark input, .dark select, .dark textarea {
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+  color: #e2e8f0 !important;
+}
+.dark input::placeholder { color: #64748b !important; }
+
+/* Dark topbar */
+.dark header.border-b { background-color: #111827 !important; border-color: #1e293b !important; }
+
+/* Dark main content area */
+.dark main.bg-slate-50 { background-color: #0b1120 !important; }
+
+/* Dark table rows */
+.dark tr.border-t { border-color: #1e293b !important; }
+.dark tbody tr:hover { background-color: #1e293b !important; }
+
+/* Dark cards */
+.dark .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important; }
+
+/* Dark pre/code */
+.dark pre, .dark code { background-color: #1e293b !important; color: #e2e8f0 !important; }
+
+/* Scrollbar dark */
+.dark ::-webkit-scrollbar-thumb { background: #334155; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
