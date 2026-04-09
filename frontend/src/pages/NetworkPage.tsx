@@ -9,20 +9,35 @@ const Badge = ({ text, colors }: { text: string; colors: string }) => (
 
 interface NetworkNode {
   id: string
-  name: string
-  type: string
+  name?: string
+  label?: string
+  type?: string
+  customer_type?: string
   risk_score?: number
   risk_category?: string
   customer_number?: string
+  pep_status?: boolean
+  is_center?: boolean
 }
 
 interface NetworkEdge {
   source: string
   target: string
-  relationship: string
+  type?: string
+  relationship?: string
+  label?: string
   strength?: number
+  detail?: string
   transaction_count?: number
   total_amount?: number
+}
+
+function nodeName(n: NetworkNode): string {
+  return n.name || n.label || n.customer_number || '?'
+}
+
+function edgeLabel(e: NetworkEdge): string {
+  return (e.relationship || e.label || e.type || '').replace(/_/g, ' ')
 }
 
 export default function NetworkPage() {
@@ -71,8 +86,9 @@ export default function NetworkPage() {
     return '#10b981'
   }
 
-  const nodeIcon = (type: string) => {
-    switch (type?.toLowerCase()) {
+  const nodeIcon = (node: NetworkNode) => {
+    const t = (node.customer_type || node.type || '').toLowerCase()
+    switch (t) {
       case 'business':
       case 'corporate': return Building
       default: return User
@@ -126,9 +142,9 @@ export default function NetworkPage() {
                     className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-white text-lg font-bold cursor-pointer shadow-lg ring-4 ring-blue-200"
                     onClick={() => setSelectedNode(data.center!)}
                   >
-                    {(data.center.name || '?').split(' ').map(n => n[0]).join('').slice(0, 2)}
+                    {(nodeName(data.center) || '?').split(' ').map(n => n[0]).join('').slice(0, 2)}
                   </div>
-                  <p className="text-sm font-medium text-slate-700 mt-2">{data.center.name}</p>
+                  <p className="text-sm font-medium text-slate-700 mt-2">{nodeName(data.center)}</p>
                   <p className="text-xs text-slate-400">Center Node</p>
                 </div>
               )}
@@ -136,7 +152,7 @@ export default function NetworkPage() {
               {/* Connected nodes grid */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {(data.nodes || []).filter(n => n.id !== data.center?.id).map(node => {
-                  const Icon = nodeIcon(node.type)
+                  const Icon = nodeIcon(node)
                   const edge = data.edges?.find(e => e.source === node.id || e.target === node.id)
 
                   return (
@@ -157,14 +173,14 @@ export default function NetworkPage() {
                           <Icon size={14} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-slate-700 truncate">{node.name}</p>
-                          <p className="text-xs text-slate-400 capitalize">{(node.type || '').replace(/_/g, ' ')}</p>
+                          <p className="text-xs font-medium text-slate-700 truncate">{nodeName(node)}</p>
+                          <p className="text-xs text-slate-400 capitalize">{((node.customer_type || node.type || '') || '').replace(/_/g, ' ')}</p>
                         </div>
                       </div>
                       {edge && (
                         <div className="flex items-center gap-1 text-xs text-slate-400">
                           <ArrowLeftRight size={10} />
-                          <span className="capitalize truncate">{(edge.relationship || '').replace(/_/g, ' ')}</span>
+                          <span className="capitalize truncate">{edgeLabel(edge)}</span>
                         </div>
                       )}
                       {node.risk_score != null && (
@@ -195,8 +211,8 @@ export default function NetworkPage() {
               {selectedNode ? (
                 <div className="space-y-3">
                   {[
-                    ['Name', selectedNode.name],
-                    ['Type', (selectedNode.type || '-').replace(/_/g, ' ')],
+                    ['Name', nodeName(selectedNode)],
+                    ['Type', (selectedNode.customer_type || selectedNode.type || '-').replace(/_/g, ' ')],
                     ['ID', selectedNode.customer_number || selectedNode.id],
                     ['Risk Score', selectedNode.risk_score ?? '-'],
                     ['Risk Category', selectedNode.risk_category],
@@ -227,12 +243,12 @@ export default function NetworkPage() {
                   return (
                     <div key={i} className="p-2.5 bg-slate-50 rounded-lg">
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="font-medium text-slate-700 truncate">{sourceNode?.name || edge.source}</span>
+                        <span className="font-medium text-slate-700 truncate">{sourceNode ? nodeName(sourceNode) : edge.source}</span>
                         <ArrowRight size={12} className="text-slate-400 flex-shrink-0" />
-                        <span className="font-medium text-slate-700 truncate">{targetNode?.name || edge.target}</span>
+                        <span className="font-medium text-slate-700 truncate">{targetNode ? nodeName(targetNode) : edge.target}</span>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                        <span className="capitalize">{(edge.relationship || '').replace(/_/g, ' ')}</span>
+                        <span className="capitalize">{edgeLabel(edge)}</span>
                         {edge.transaction_count != null && <span>{edge.transaction_count} txns</span>}
                         {edge.total_amount != null && <span>{formatINR(edge.total_amount)}</span>}
                         {edge.strength != null && (

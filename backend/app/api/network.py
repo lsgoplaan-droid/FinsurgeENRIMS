@@ -18,9 +18,10 @@ def get_network_graph(
     visited = set()
     nodes = []
     edges = []
+    center_id = customer_id
 
     def explore(cid: str, current_depth: int):
-        if cid in visited or current_depth > depth:
+        if cid in visited or current_depth > depth + 1:
             return
         visited.add(cid)
 
@@ -30,12 +31,14 @@ def get_network_graph(
 
         nodes.append({
             "id": customer.id,
+            "name": customer.full_name,
             "label": customer.full_name,
             "customer_number": customer.customer_number,
             "risk_category": customer.risk_category,
             "risk_score": customer.risk_score or 0,
             "customer_type": customer.customer_type,
             "pep_status": customer.pep_status or False,
+            "is_center": cid == center_id,
         })
 
         relationships = db.query(CustomerRelationship).filter(
@@ -48,6 +51,7 @@ def get_network_graph(
                 "source": cid,
                 "target": other_id,
                 "type": "relationship",
+                "relationship": rel.relationship_type,
                 "label": rel.relationship_type,
                 "strength": rel.strength or 0.5,
             })
@@ -63,15 +67,17 @@ def get_network_graph(
                 "source": cid,
                 "target": other_id,
                 "type": "link",
+                "relationship": link.link_type,
                 "label": link.link_type,
                 "detail": link.link_detail,
             })
             if other_id not in visited:
                 explore(other_id, current_depth + 1)
 
-    explore(customer_id, 1)
+    explore(customer_id, 0)
 
-    return {"nodes": nodes, "edges": edges}
+    center = next((n for n in nodes if n["id"] == customer_id), None)
+    return {"nodes": nodes, "edges": edges, "center": center}
 
 
 @router.get("/{customer_id}/fund-flow")
