@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   Search, Brain, AlertTriangle, TrendingUp, Lightbulb, FileText,
-  Copy, Check, Users, Bell, Activity, ChevronDown, Loader2
+  Copy, Check, Activity, Loader2, ShieldAlert, Users
 } from 'lucide-react'
 import api from '../config/api'
-import { formatNumber } from '../utils/formatters'
+import { formatNumber, riskColors } from '../utils/formatters'
 
 const Badge = ({ text, colors }: { text: string; colors: string }) => (
-  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
+  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>
+    {text.replace(/_/g, ' ')}
+  </span>
 )
 
 const riskAssessmentColors: Record<string, string> = {
@@ -18,13 +20,49 @@ const riskAssessmentColors: Record<string, string> = {
   critical: 'bg-red-100 text-red-800 border-red-200',
 }
 
-const insightColors: Record<string, { bg: string; border: string; icon: any; iconColor: string }> = {
+const insightColors: Record<string, { bg: string; border: string; icon: React.ElementType; iconColor: string }> = {
   trend: { bg: 'bg-blue-50', border: 'border-blue-200', icon: TrendingUp, iconColor: 'text-blue-500' },
   pattern: { bg: 'bg-amber-50', border: 'border-amber-200', icon: AlertTriangle, iconColor: 'text-amber-500' },
   recommendation: { bg: 'bg-green-50', border: 'border-green-200', icon: Lightbulb, iconColor: 'text-green-500' },
 }
 
+function PriorityRiskTags({ customer }: { customer: any }) {
+  const tags: Array<{ label: string; color: string }> = []
+
+  if (customer.risk_category === 'very_high' || customer.risk_category === 'high') {
+    tags.push({ label: 'Watchlisted', color: 'bg-red-100 text-red-700' })
+  }
+  if (customer.pep_status === true || customer.pep_status === 'true') {
+    tags.push({ label: 'PEP', color: 'bg-purple-100 text-purple-700' })
+  }
+  if ((customer.risk_score ?? 0) > 80) {
+    tags.push({ label: 'Mule Suspect', color: 'bg-orange-100 text-orange-700' })
+  }
+  if (customer.kyc_status === 'expired') {
+    tags.push({ label: 'KYC Expired', color: 'bg-amber-100 text-amber-700' })
+  }
+
+  if (tags.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {tags.map((tag, i) => (
+        <span
+          key={i}
+          className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${tag.color}`}
+        >
+          {tag.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export default function AIAgentPage() {
+  // Priority investigation queue
+  const [priorityCustomers, setPriorityCustomers] = useState<any[]>([])
+  const [priorityLoading, setPriorityLoading] = useState(true)
+
   // Customer analysis state
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
@@ -49,6 +87,17 @@ export default function AIAgentPage() {
   const [narrativeError, setNarrativeError] = useState('')
   const [copied, setCopied] = useState(false)
   const sarDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Fetch priority investigation queue on mount
+  useEffect(() => {
+    api.get('/customers', { params: { risk_category: 'very_high', page_size: 5 } })
+      .then(res => {
+        const items = res.data?.items || res.data?.customers || res.data?.data || []
+        setPriorityCustomers(items.slice(0, 5))
+      })
+      .catch(() => setPriorityCustomers([]))
+      .finally(() => setPriorityLoading(false))
+  }, [])
 
   // Fetch anomaly summary on mount
   useEffect(() => {
@@ -106,6 +155,13 @@ export default function AIAgentPage() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  const selectCustomerForAnalysis = (c: any) => {
+    setSelectedCustomer(c)
+    setSearchQuery(c.full_name || c.name || c.customer_number)
+    setShowDropdown(false)
+    setAnalysis(null)
+  }
+
   const handleAnalyze = () => {
     if (!selectedCustomer) return
     setAnalyzing(true)
@@ -138,6 +194,57 @@ export default function AIAgentPage() {
 
   return (
     <div className="space-y-6">
+      {/* Priority Investigation Queue */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <ShieldAlert size={16} className="text-red-600" />
+          <h3 className="text-sm font-semibold text-slate-700">Priority Investigation Queue</h3>
+          <span className="text-xs text-slate-400 ml-1">Top 5 very high risk customers</span>
+        </div>
+
+        {priorityLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 size={20} className="animate-spin text-slate-400" />
+          </div>
+        ) : priorityCustomers.length === 0 ? (
+          <div className="text-center py-6 text-sm text-slate-400">
+            No very high risk customers found
+          </div>
+        ) : (
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {priorityCustomers.map(c => {
+              const score = c.risk_score ?? 0
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => selectCustomerForAnalysis(c)}
+                  className={`flex-shrink-0 w-52 rounded-lg border p-4 text-left transition-all hover:shadow-md ${
+                    selectedCustomer?.id === c.id
+                      ? 'border-blue-400 bg-blue-50 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-800 truncate">
+                        {c.full_name || c.name || 'Unknown'}
+                      </p>
+                      <p className="text-xs text-slate-400 font-mono mt-0.5">
+                        {c.customer_number || c.id}
+                      </p>
+                    </div>
+                    <div className="bg-red-50 rounded-lg px-2 py-1 ml-2 flex-shrink-0">
+                      <span className="text-lg font-bold text-red-600">{score}</span>
+                    </div>
+                  </div>
+                  <PriorityRiskTags customer={c} />
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Top section: side by side panels */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {/* LEFT: Customer Risk Analysis */}
@@ -167,12 +274,7 @@ export default function AIAgentPage() {
                 {searchResults.map(c => (
                   <button
                     key={c.id}
-                    onClick={() => {
-                      setSelectedCustomer(c)
-                      setSearchQuery(c.full_name || c.name || c.customer_number)
-                      setShowDropdown(false)
-                      setAnalysis(null)
-                    }}
+                    onClick={() => selectCustomerForAnalysis(c)}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center justify-between"
                   >
                     <span className="text-slate-700">{c.full_name || c.name}</span>
@@ -276,7 +378,10 @@ export default function AIAgentPage() {
           </h3>
 
           {anomalyLoading ? (
-            <div className="text-center text-slate-500 py-8">Loading...</div>
+            <div className="text-center text-slate-500 py-8">
+              <Loader2 size={20} className="animate-spin mx-auto mb-2" />
+              <p className="text-sm">Loading...</p>
+            </div>
           ) : !anomalySummary ? (
             <div className="text-center text-slate-400 py-8">No anomaly data available</div>
           ) : (

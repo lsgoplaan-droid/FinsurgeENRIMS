@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
-import { Bell, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Bell, ChevronLeft, ChevronRight, Search, Clock, AlertTriangle } from 'lucide-react'
 import api from '../config/api'
 import { formatDate, timeAgo, priorityColors, statusColors } from '../utils/formatters'
 
 const Badge = ({ text, colors }: { text: string; colors: string }) => (
-  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
+  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>
+    {text.replace(/_/g, ' ')}
+  </span>
 )
 
 const TABS = [
@@ -17,7 +19,63 @@ const TABS = [
   { key: 'closed_true_positive', label: 'Closed' },
 ]
 
+function RiskScoreBadge({ score }: { score: number | null | undefined }) {
+  if (score == null) return <span className="text-xs text-slate-400">-</span>
+  const color =
+    score > 70 ? 'text-red-600 bg-red-50' :
+    score > 40 ? 'text-amber-600 bg-amber-50' :
+    'text-green-600 bg-green-50'
+  return (
+    <span className={`inline-flex items-center justify-center w-9 h-7 rounded-md text-xs font-bold ${color}`}>
+      {score}
+    </span>
+  )
+}
+
+function SlaCountdown({ slaDueAt }: { slaDueAt: string | null | undefined }) {
+  if (!slaDueAt) return <span className="text-xs text-slate-400">-</span>
+
+  const now = Date.now()
+  const due = new Date(slaDueAt).getTime()
+  const diff = due - now
+  const isOverdue = diff < 0
+  const absDiff = Math.abs(diff)
+
+  const totalMinutes = Math.floor(absDiff / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+
+  let display: string
+  if (hours > 0) {
+    display = `${hours}h ${minutes}m`
+  } else {
+    display = `${minutes}m`
+  }
+
+  if (isOverdue) {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+        <Clock size={10} />
+        OVERDUE {display}
+      </span>
+    )
+  }
+
+  const isUrgent = diff < 3600000 // less than 1 hour
+  const colorClass = isUrgent
+    ? 'bg-amber-100 text-amber-700'
+    : 'bg-green-100 text-green-700'
+
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${colorClass}`}>
+      <Clock size={10} />
+      {display}
+    </span>
+  )
+}
+
 export default function AlertsPage() {
+  const navigate = useNavigate()
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -49,7 +107,6 @@ export default function AlertsPage() {
   useEffect(() => { fetchData() }, [fetchData])
 
   useEffect(() => {
-    // Fetch priority counts separately if not in main response
     api.get('/alerts', { params: { page: 1, page_size: 1 } })
       .then(res => {
         if (res.data.priority_counts) setPriorityCounts(res.data.priority_counts)
@@ -59,6 +116,14 @@ export default function AlertsPage() {
 
   return (
     <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-bold text-slate-800">Alerts</h1>
+          <p className="text-xs text-slate-500">{total} total alerts in system</p>
+        </div>
+      </div>
+
       {/* Tab pills */}
       <div className="flex items-center gap-2 flex-wrap">
         {TABS.map(t => (
@@ -105,7 +170,10 @@ export default function AlertsPage() {
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-slate-500">Loading...</div>
+          <div className="p-12 text-center">
+            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+            <p className="text-sm text-slate-500">Loading alerts...</p>
+          </div>
         ) : error ? (
           <div className="p-12 text-center text-red-500">{error}</div>
         ) : (
@@ -119,35 +187,58 @@ export default function AlertsPage() {
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Customer</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Title</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Risk</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">SLA</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Assignee</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Age</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600"></th>
                 </tr>
               </thead>
               <tbody>
                 {alerts.map(a => (
-                  <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
                     <td className="py-2.5 px-3">
-                      <Link to={`/alerts/${a.id}`} className="text-blue-600 hover:underline font-mono text-xs">{a.alert_number || a.id}</Link>
+                      <Link to={`/alerts/${a.id}`} className="text-blue-600 hover:underline font-mono text-xs">
+                        {a.alert_number || a.id}
+                      </Link>
                     </td>
                     <td className="py-2.5 px-3">
                       <Badge text={a.priority || '-'} colors={priorityColors[a.priority] || 'bg-gray-100 text-gray-800'} />
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600 capitalize">{(a.alert_type || a.type || '-').replace(/_/g, ' ')}</td>
-                    <td className="py-2.5 px-3 text-slate-700">{a.customer_name || a.customer_id || '-'}</td>
-                    <td className="py-2.5 px-3 text-slate-700 truncate max-w-[220px]">{a.title || '-'}</td>
+                    <td className="py-2.5 px-3 text-slate-600 capitalize text-xs">
+                      {(a.alert_type || a.type || '-').replace(/_/g, ' ')}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-700 text-xs">{a.customer_name || a.customer_id || '-'}</td>
+                    <td className="py-2.5 px-3 text-slate-700 truncate max-w-[200px] text-xs">{a.title || '-'}</td>
                     <td className="py-2.5 px-3">
-                      <span className="text-xs font-mono">{a.risk_score ?? '-'}</span>
+                      <RiskScoreBadge score={a.risk_score} />
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <SlaCountdown slaDueAt={a.sla_due_at} />
                     </td>
                     <td className="py-2.5 px-3">
                       <Badge text={a.status || '-'} colors={statusColors[a.status] || 'bg-gray-100 text-gray-800'} />
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600">{a.assigned_to_name || a.assigned_to || '-'}</td>
-                    <td className="py-2.5 px-3 text-slate-500 text-xs whitespace-nowrap">{a.created_at ? timeAgo(a.created_at) : '-'}</td>
+                    <td className="py-2.5 px-3 text-slate-600 text-xs">{a.assigned_to_name || a.assigned_to || '-'}</td>
+                    <td className="py-2.5 px-3 text-slate-500 text-xs whitespace-nowrap">
+                      {a.created_at ? timeAgo(a.created_at) : '-'}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <button
+                        onClick={() => navigate(`/alerts/${a.id}`)}
+                        className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap"
+                      >
+                        Investigate
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {alerts.length === 0 && (
-                  <tr><td colSpan={9} className="py-12 text-center text-slate-400">No alerts found</td></tr>
+                  <tr>
+                    <td colSpan={11} className="py-12 text-center text-slate-400">
+                      No alerts found
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -175,7 +266,11 @@ export default function AlertsPage() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`w-8 h-8 rounded-lg text-sm font-medium ${p === page ? 'bg-blue-600 text-white' : 'border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  className={`w-8 h-8 rounded-lg text-sm font-medium ${
+                    p === page
+                      ? 'bg-blue-600 text-white'
+                      : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
                 >
                   {p}
                 </button>
