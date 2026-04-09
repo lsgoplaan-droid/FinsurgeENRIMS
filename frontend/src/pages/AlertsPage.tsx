@@ -21,13 +21,14 @@ const TABS = [
 
 function RiskScoreBadge({ score }: { score: number | null | undefined }) {
   if (score == null) return <span className="text-xs text-slate-400">-</span>
+  const rounded = Math.round(score * 10000) / 10000
   const color =
-    score > 70 ? 'text-red-600 bg-red-50' :
-    score > 40 ? 'text-amber-600 bg-amber-50' :
-    'text-green-600 bg-green-50'
+    score > 70 ? 'text-red-700 bg-red-100 border border-red-200' :
+    score > 40 ? 'text-amber-700 bg-amber-100 border border-amber-200' :
+    'text-green-700 bg-green-100 border border-green-200'
   return (
-    <span className={`inline-flex items-center justify-center w-9 h-7 rounded-md text-xs font-bold ${color}`}>
-      {score}
+    <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold ${color}`}>
+      {rounded.toFixed(1)}
     </span>
   )
 }
@@ -181,20 +182,20 @@ export default function AlertsPage() {
             <table className="w-full text-sm table-fixed">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[130px]">Alert#</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[80px]">Priority</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[120px]">Customer</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[170px]">Alert#</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[75px]">Priority</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[130px]">Customer</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Title</th>
-                  <th className="text-center py-2.5 px-3 font-medium text-slate-600 w-[60px]">Risk</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[120px]">SLA</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[110px]">Status</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[90px]"></th>
+                  <th className="text-center py-2.5 px-3 font-medium text-slate-600 w-[70px]">Risk</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[130px]">SLA</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[115px]">Status</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[95px]"></th>
                 </tr>
               </thead>
               <tbody>
                 {alerts.map(a => (
                   <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50 transition-colors">
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3 whitespace-nowrap">
                       <Link to={`/alerts/${a.id}`} className="text-blue-600 hover:underline font-mono text-xs">
                         {a.alert_number || a.id}
                       </Link>
