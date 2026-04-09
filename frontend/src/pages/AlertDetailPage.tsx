@@ -16,6 +16,9 @@ export default function AlertDetailPage() {
   const [noteText, setNoteText] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [actionLoading, setActionLoading] = useState('')
+  const [showAssignDropdown, setShowAssignDropdown] = useState(false)
+  const [users, setUsers] = useState<any[]>([])
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 
   const fetchAlert = () => {
     setLoading(true)
@@ -215,14 +218,57 @@ export default function AlertDetailPage() {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <h3 className="text-sm font-semibold text-slate-700 mb-3">Actions</h3>
             <div className="space-y-2">
+              {/* Assign to Me */}
               <button
-                onClick={() => handleAction('assign')}
+                onClick={async () => {
+                  setActionLoading('assign')
+                  try {
+                    await api.post(`/alerts/${id}/assign`, { assigned_to: currentUser.id })
+                    fetchAlert()
+                  } catch (err: any) { setError(err.response?.data?.detail || 'Failed to assign') }
+                  finally { setActionLoading('') }
+                }}
                 disabled={!!actionLoading}
                 className="w-full flex items-center gap-2 px-4 py-2.5 bg-purple-50 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-100 transition-colors disabled:opacity-50"
               >
                 <UserPlus size={16} />
                 {actionLoading === 'assign' ? 'Assigning...' : 'Assign to Me'}
               </button>
+
+              {/* Assign to User */}
+              <div className="relative">
+                <button
+                  onClick={() => { setShowAssignDropdown(!showAssignDropdown); if (!users.length) api.get('/admin/users').then(r => setUsers(r.data || [])).catch(() => {}) }}
+                  disabled={!!actionLoading}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                >
+                  <User size={16} />
+                  Assign to User
+                </button>
+                {showAssignDropdown && (
+                  <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-auto">
+                    {users.filter(u => u.is_active).map((u: any) => (
+                      <button
+                        key={u.id}
+                        onClick={async () => {
+                          setActionLoading('assign-user')
+                          setShowAssignDropdown(false)
+                          try {
+                            await api.post(`/alerts/${id}/assign`, { assigned_to: u.id })
+                            fetchAlert()
+                          } catch (err: any) { setError(err.response?.data?.detail || 'Failed to assign') }
+                          finally { setActionLoading('') }
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0"
+                      >
+                        <span className="font-medium text-slate-700">{u.full_name}</span>
+                        <span className="text-xs text-slate-400 ml-2">{(u.roles || []).join(', ')}</span>
+                      </button>
+                    ))}
+                    {users.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">Loading users...</p>}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => handleAction('escalate')}
                 disabled={!!actionLoading}
