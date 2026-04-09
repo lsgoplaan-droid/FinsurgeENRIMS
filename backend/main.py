@@ -49,13 +49,10 @@ async def lifespan(app: FastAPI):
         from app.models import User
         user_count = db.query(User).count()
         if user_count == 0:
-            if settings.DEBUG or os.getenv("SEED_ON_STARTUP", "false").lower() == "true":
-                logger.info("Database empty — seeding demo data...")
-                from app.seed.seed_all import seed_all
-                seed_all(db)
-                logger.info("Seeding complete!")
-            else:
-                logger.warning("Database empty but SEED_ON_STARTUP is not enabled. Run migrations manually.")
+            logger.info("Database empty — seeding demo data...")
+            from app.seed.seed_all import seed_all
+            seed_all(db)
+            logger.info("Seeding complete!")
         else:
             logger.info(f"Database has {user_count} users — skipping seed.")
     finally:
