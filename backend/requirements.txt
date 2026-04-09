@@ -8,6 +8,14 @@ python-multipart==0.0.17
 faker==33.3.1
 aiosqlite==0.20.0
 python-dateutil==2.9.0.post0
+# PostgreSQL (RDS)
+psycopg2-binary==2.9.10
+# Redis (ElastiCache)
+redis==5.2.1
+# AWS SDK
+boto3==1.36.7
+# PDF generation
+reportlab==4.2.5
 # Testing
 pytest==8.3.4
 httpx==0.28.1

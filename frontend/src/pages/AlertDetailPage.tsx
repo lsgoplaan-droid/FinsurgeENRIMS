@@ -17,6 +17,9 @@ export default function AlertDetailPage() {
   const [submitting, setSubmitting] = useState(false)
   const [actionLoading, setActionLoading] = useState('')
   const [showAssignDropdown, setShowAssignDropdown] = useState(false)
+  const [showCloseDialog, setShowCloseDialog] = useState(false)
+  const [closeDisposition, setCloseDisposition] = useState('true_positive')
+  const [closeReason, setCloseReason] = useState('')
   const [users, setUsers] = useState<any[]>([])
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 
@@ -47,7 +50,7 @@ export default function AlertDetailPage() {
     if (!noteText.trim()) return
     setSubmitting(true)
     try {
-      await api.post(`/alerts/${id}/notes`, { content: noteText })
+      await api.post(`/alerts/${id}/add-note`, { note: noteText })
       setNoteText('')
       fetchAlert()
     } catch (err: any) {
@@ -89,7 +92,7 @@ export default function AlertDetailPage() {
             {alert.risk_score != null && (
               <div className="text-center px-4">
                 <div className="text-2xl font-bold" style={{ color: alert.risk_score >= 75 ? '#ef4444' : alert.risk_score >= 50 ? '#f97316' : alert.risk_score >= 25 ? '#f59e0b' : '#10b981' }}>
-                  {alert.risk_score}
+                  {Number(alert.risk_score).toFixed(2)}
                 </div>
                 <div className="text-xs text-slate-400">Risk Score</div>
               </div>
@@ -278,12 +281,12 @@ export default function AlertDetailPage() {
                 {actionLoading === 'escalate' ? 'Escalating...' : 'Escalate'}
               </button>
               <button
-                onClick={() => handleAction('close')}
+                onClick={() => setShowCloseDialog(true)}
                 disabled={!!actionLoading}
                 className="w-full flex items-center gap-2 px-4 py-2.5 bg-slate-50 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-100 transition-colors disabled:opacity-50"
               >
                 <XCircle size={16} />
-                {actionLoading === 'close' ? 'Closing...' : 'Close Alert'}
+                Close Alert
               </button>
             </div>
           </div>
@@ -309,6 +312,73 @@ export default function AlertDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Close Alert Disposition Dialog */}
+      {showCloseDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCloseDialog(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Close Alert — Review Decision</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Disposition</label>
+                <div className="space-y-2">
+                  {[
+                    { value: 'true_positive', label: 'True Positive — Confirmed Case', color: 'border-red-300 bg-red-50' },
+                    { value: 'false_positive', label: 'False Positive — No threat', color: 'border-green-300 bg-green-50' },
+                    { value: 'inconclusive', label: 'Inconclusive — Insufficient evidence', color: 'border-amber-300 bg-amber-50' },
+                  ].map(opt => (
+                    <label
+                      key={opt.value}
+                      className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+                        closeDisposition === opt.value ? opt.color : 'border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="disposition"
+                        value={opt.value}
+                        checked={closeDisposition === opt.value}
+                        onChange={e => setCloseDisposition(e.target.value)}
+                        className="accent-blue-600"
+                      />
+                      <span className="text-sm font-medium text-slate-700">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Reason / Notes</label>
+                <textarea
+                  value={closeReason}
+                  onChange={e => setCloseReason(e.target.value)}
+                  rows={3}
+                  placeholder="Describe your findings..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setShowCloseDialog(false)} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button
+                disabled={!!actionLoading || !closeReason.trim()}
+                onClick={async () => {
+                  setActionLoading('close')
+                  try {
+                    await api.post(`/alerts/${id}/close`, { disposition: closeDisposition, reason: closeReason })
+                    setShowCloseDialog(false)
+                    setCloseReason('')
+                    fetchAlert()
+                  } catch (err: any) { setError(err.response?.data?.detail || 'Failed to close alert') }
+                  finally { setActionLoading('') }
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionLoading === 'close' ? 'Closing...' : 'Confirm & Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

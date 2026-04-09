@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Shield } from 'lucide-react'
+import { Shield } from 'lucide-react' // kept for potential fallback
 import api from '../config/api'
 
 export default function LoginPage({ onLogin }: { onLogin: () => void }) {
@@ -31,10 +31,8 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Shield className="text-white" size={28} />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-800">FinsurgeENRIMS</h1>
+          <img src="/finsurge-logo.png" alt="FinSurge" className="h-32 mx-auto mb-3" />
+          <h1 className="text-2xl font-bold text-slate-800">FRIMS</h1>
           <p className="text-slate-500 text-sm mt-1">Enterprise Fraud Risk Management</p>
           <p className="text-slate-400 text-xs mt-1">Finsurge National Bank</p>
         </div>

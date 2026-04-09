@@ -29,8 +29,8 @@ export default function TransactionsPage() {
     setLoading(true)
     const params: any = { page, page_size: 20 }
     if (channel) params.channel = channel
-    if (method) params.method = method
-    if (flaggedOnly) params.flagged = true
+    if (method) params.transaction_method = method
+    if (flaggedOnly) params.is_flagged = true
     if (search) params.search = search
 
     api.get('/transactions', { params })

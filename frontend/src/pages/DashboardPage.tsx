@@ -6,7 +6,8 @@ import {
 } from 'recharts'
 import {
   Bell, Briefcase, ShieldAlert, TrendingUp, Activity, Clock,
-  ArrowUpRight, CheckCircle2, Target, AlertTriangle, Zap, Timer
+  ArrowUpRight, CheckCircle2, Target, AlertTriangle, Zap, Timer,
+  MapPin, Gauge, ChevronRight, FileDown
 } from 'lucide-react'
 import api from '../config/api'
 import {
@@ -82,17 +83,24 @@ function SmallStatCard({ label, value, icon: Icon, iconColor, href }: {
 export default function DashboardPage() {
   const [executive, setExecutive] = useState<any>(null)
   const [fraudMetrics, setFraudMetrics] = useState<any>(null)
+  const [geoRisk, setGeoRisk] = useState<any>(null)
+  const [riskAppetite, setRiskAppetite] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [selectedState, setSelectedState] = useState<any>(null)
 
   useEffect(() => {
     Promise.all([
       api.get('/dashboard/executive'),
       api.get('/fraud-metrics/summary').catch(() => ({ data: null })),
+      api.get('/dashboard/geo-risk').catch(() => ({ data: null })),
+      api.get('/dashboard/risk-appetite').catch(() => ({ data: null })),
     ])
-      .then(([execRes, fraudRes]) => {
+      .then(([execRes, fraudRes, geoRes, appetiteRes]) => {
         setExecutive(execRes.data)
         setFraudMetrics(fraudRes.data)
+        setGeoRisk(geoRes.data)
+        setRiskAppetite(appetiteRes.data)
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load dashboard'))
       .finally(() => setLoading(false))
@@ -152,17 +160,40 @@ export default function DashboardPage() {
           <h1 className="text-lg font-bold text-slate-800">CRO Dashboard</h1>
           <p className="text-xs text-slate-500">Enterprise Risk Management Overview</p>
         </div>
-        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-          </span>
-          <span className="text-xs font-medium text-slate-600">
-            System Active
-          </span>
-          <span className="text-xs text-slate-400">
-            {formatNumber(liveStats.transactions_per_hour ?? 0)} txns/hr
-          </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              const token = localStorage.getItem('token')
+              fetch(`${api.defaults.baseURL}/reports/board-report`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+                .then(res => res.blob())
+                .then(blob => {
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `Board_Report_${new Date().toISOString().slice(0, 10)}.pdf`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                })
+            }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-4 py-2 rounded-lg shadow-sm transition-colors"
+          >
+            <FileDown size={14} />
+            Board Report
+          </button>
+          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-full px-4 py-1.5 shadow-sm">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+            </span>
+            <span className="text-xs font-medium text-slate-600">
+              System Active
+            </span>
+            <span className="text-xs text-slate-400">
+              {formatNumber(liveStats.transactions_per_hour ?? 0)} txns/hr
+            </span>
+          </div>
         </div>
       </div>
 
@@ -193,7 +224,7 @@ export default function DashboardPage() {
           href="/mis-reports"
         />
         <StatCard
-          label="True Positive Rate"
+          label="Alert Accuracy"
           value={`${alertPerf.true_positive_rate ?? 0}%`}
           icon={Target}
           iconColor="text-blue-600"
@@ -258,7 +289,201 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Row 3: Two charts side by side */}
+      {/* Row 3: Geographic Risk Heatmap + Risk Appetite */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        {/* LEFT (2/3): India State Risk Heatmap */}
+        <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <MapPin size={16} className="text-blue-600" />
+              <h3 className="text-sm font-semibold text-slate-700">Geographic Risk Heatmap</h3>
+            </div>
+            {geoRisk?.summary?.hotspot && (
+              <span className="text-xs bg-red-50 text-red-700 px-2.5 py-1 rounded-full font-medium">
+                Hotspot: {geoRisk.summary.hotspot}
+              </span>
+            )}
+          </div>
+
+          {geoRisk?.states?.length > 0 ? (
+            <div className="space-y-3">
+              {/* State bars — visual risk representation */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {(geoRisk.states || []).map((s: any) => {
+                  const riskPct = Math.min(s.avg_risk, 100)
+                  const barColor = riskPct >= 70 ? '#ef4444' : riskPct >= 50 ? '#f97316' : riskPct >= 30 ? '#f59e0b' : '#10b981'
+                  const isSelected = selectedState?.state === s.state
+                  return (
+                    <div
+                      key={s.state}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                        isSelected ? 'border-blue-400 bg-blue-50 shadow-sm' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                      }`}
+                      onClick={() => setSelectedState(isSelected ? null : s)}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-semibold text-slate-700">{s.state}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500">{s.customers} customers</span>
+                          <span className="text-xs font-bold" style={{ color: barColor }}>{s.avg_risk}</span>
+                        </div>
+                      </div>
+                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${riskPct}%`, backgroundColor: barColor }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-400">
+                        <span>{s.high_risk_count} high risk</span>
+                        <span>{s.open_alerts} open alerts</span>
+                        {s.flagged_amount > 0 && <span>{formatINR(s.flagged_amount)} flagged</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Selected state detail panel */}
+              {selectedState && (
+                <div className="mt-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-bold text-blue-900">{selectedState.state} — Detail</h4>
+                    <button onClick={() => setSelectedState(null)} className="text-xs text-blue-600 hover:underline">Close</button>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      ['Customers', selectedState.customers],
+                      ['Avg Risk Score', selectedState.avg_risk],
+                      ['High Risk', selectedState.high_risk_count],
+                      ['Open Alerts', selectedState.open_alerts],
+                      ['Transaction Vol', formatINR(selectedState.transaction_volume)],
+                      ['Flagged Amount', formatINR(selectedState.flagged_amount)],
+                    ].map(([label, value]) => (
+                      <div key={label as string}>
+                        <p className="text-[10px] text-blue-600 font-medium">{label}</p>
+                        <p className="text-sm font-bold text-blue-900">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <Link
+                    to={`/customers?state=${selectedState.state}`}
+                    className="inline-flex items-center gap-1 mt-2 text-xs text-blue-700 font-medium hover:underline"
+                  >
+                    View customers in {selectedState.state} <ChevronRight size={12} />
+                  </Link>
+                </div>
+              )}
+
+              {/* Summary bar */}
+              <div className="flex items-center gap-4 pt-2 border-t border-slate-100 text-xs text-slate-500">
+                <span><strong>{geoRisk.summary.total_states}</strong> states</span>
+                <span><strong>{geoRisk.summary.total_customers}</strong> customers</span>
+                <span className="text-red-600"><strong>{geoRisk.summary.total_high_risk}</strong> high risk</span>
+                <span><strong>{geoRisk.summary.total_open_alerts}</strong> open alerts</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-[280px] text-slate-400 text-sm">
+              No geographic data available
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT (1/3): Risk Appetite Meter */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Gauge size={16} className="text-purple-600" />
+            <h3 className="text-sm font-semibold text-slate-700">Risk Appetite</h3>
+          </div>
+
+          {riskAppetite?.metrics ? (
+            <div className="space-y-4">
+              {/* Overall status badge */}
+              <div className={`text-center py-3 rounded-lg ${
+                riskAppetite.summary.overall_status === 'breach' ? 'bg-red-50 border border-red-200' :
+                riskAppetite.summary.overall_status === 'warning' ? 'bg-amber-50 border border-amber-200' :
+                'bg-green-50 border border-green-200'
+              }`}>
+                <p className={`text-lg font-bold ${
+                  riskAppetite.summary.overall_status === 'breach' ? 'text-red-700' :
+                  riskAppetite.summary.overall_status === 'warning' ? 'text-amber-700' : 'text-green-700'
+                }`}>
+                  {riskAppetite.summary.overall_status === 'breach' ? 'APPETITE BREACHED' :
+                   riskAppetite.summary.overall_status === 'warning' ? 'APPROACHING LIMIT' : 'WITHIN APPETITE'}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {riskAppetite.summary.breaches} breach{riskAppetite.summary.breaches !== 1 ? 'es' : ''}, {riskAppetite.summary.warnings} warning{riskAppetite.summary.warnings !== 1 ? 's' : ''}
+                </p>
+              </div>
+
+              {/* Metric gauges */}
+              {(riskAppetite.metrics || []).map((m: any) => {
+                const pct = m.threshold.limit > 0 ? Math.min((m.value / m.threshold.limit) * 100, 120) : 0
+                const barColor = m.status === 'breach' ? '#ef4444' : m.status === 'warning' ? '#f59e0b' : '#10b981'
+                return (
+                  <div key={m.id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-slate-600">{m.label}</span>
+                      <span className="text-xs font-bold" style={{ color: barColor }}>
+                        {m.value}{m.unit}
+                      </span>
+                    </div>
+                    <div className="relative w-full h-2.5 bg-slate-100 rounded-full overflow-visible">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: barColor }}
+                      />
+                      {/* Warning threshold marker */}
+                      <div
+                        className="absolute top-0 h-full w-0.5 bg-amber-400"
+                        style={{ left: `${(m.threshold.warning / m.threshold.limit) * 100}%` }}
+                        title={`Warning: ${m.threshold.warning}`}
+                      />
+                      {/* Limit marker */}
+                      <div
+                        className="absolute top-0 h-full w-0.5 bg-red-500"
+                        style={{ left: '100%' }}
+                        title={`Limit: ${m.threshold.limit}`}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-[9px] text-slate-400">0</span>
+                      <span className="text-[9px] text-red-400">Limit: {m.threshold.limit}{m.unit}</span>
+                    </div>
+                  </div>
+                )
+              })}
+
+              {/* Quick stats */}
+              <div className="pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                <div className="text-center">
+                  <p className="font-bold text-slate-800">{riskAppetite.summary.open_alerts}</p>
+                  <p className="text-slate-400">Open Alerts</p>
+                </div>
+                <div className="text-center">
+                  <p className="font-bold text-red-600">{riskAppetite.summary.overdue_alerts}</p>
+                  <p className="text-slate-400">Overdue</p>
+                </div>
+                <div className="text-center">
+                  <p className="font-bold text-slate-800">{riskAppetite.summary.open_cases}</p>
+                  <p className="text-slate-400">Open Cases</p>
+                </div>
+                <div className="text-center">
+                  <p className="font-bold text-purple-600">{riskAppetite.summary.pep_count}</p>
+                  <p className="text-slate-400">PEP Customers</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-[280px] text-slate-400 text-sm">
+              No risk appetite data
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Row 4: Two charts side by side */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {/* LEFT: 14-Day Alert & Loss Trend */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">

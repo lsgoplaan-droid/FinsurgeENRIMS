@@ -26,10 +26,6 @@ function RiskTags({ customer }: { customer: any }) {
   if ((customer.risk_score ?? 0) > 80) {
     tags.push({ label: 'Mule Suspect', color: 'bg-orange-100 text-orange-700 border border-orange-200' })
   }
-  if (customer.kyc_status === 'expired') {
-    tags.push({ label: 'KYC Expired', color: 'bg-amber-100 text-amber-700 border border-amber-200' })
-  }
-
   if (tags.length === 0) return null
 
   return (
@@ -139,17 +135,6 @@ export default function CustomersPage() {
           </select>
 
           <select
-            value={kycStatus}
-            onChange={e => { setKycStatus(e.target.value); setPage(1) }}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white"
-          >
-            <option value="">All KYC</option>
-            {KYC_STATUSES.filter(Boolean).map(s => (
-              <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-
-          <select
             value={customerType}
             onChange={e => { setCustomerType(e.target.value); setPage(1) }}
             className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white"
@@ -180,7 +165,6 @@ export default function CustomersPage() {
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Name</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Type</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Category</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">KYC</th>
                   <th className="text-center py-2.5 px-3 font-medium text-slate-600">Total Tx</th>
                   <th className="text-center py-2.5 px-3 font-medium text-slate-600">Flagged</th>
                   <th className="text-center py-2.5 px-3 font-medium text-slate-600">Open Cases</th>
@@ -219,12 +203,6 @@ export default function CustomersPage() {
                         <Badge
                           text={c.risk_category || '-'}
                           colors={riskColors[c.risk_category] || 'bg-gray-100 text-gray-800'}
-                        />
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <Badge
-                          text={c.kyc_status || '-'}
-                          colors={statusColors[c.kyc_status] || 'bg-gray-100 text-gray-800'}
                         />
                       </td>
                       <td className="py-2.5 px-3 text-center text-xs text-slate-600 font-medium">

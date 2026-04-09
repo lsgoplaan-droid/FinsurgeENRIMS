@@ -46,7 +46,7 @@ FinsurgeENRIMS is a functional Enterprise Risk Management prototype covering AML
 
 | # | Gap | Severity | Current State | Required State |
 |---|-----|----------|---------------|----------------|
-| D1 | No encryption at rest | P0 | SQLite unencrypted | PostgreSQL with TDE or AES-256 volume encryption |
+| D1 | No encryption at rest | P0 | SQLite unencrypted | Azure PostgreSQL with TDE (enabled by default) |
 | D2 | PII in plaintext | P0 | PAN, Aadhaar, phone stored in clear | Field-level encryption (AES-256-GCM) for PAN, Aadhaar hash |
 | D3 | No API data masking | P1 | Full PAN/phone in list responses | Mask: PAN → XXXXX1234X, Phone → +91XXXXX3210 |
 | D4 | No retention policy | P1 | Data kept forever | Auto-archive 7 years, purge 10 years (RBI mandate) |
@@ -59,11 +59,11 @@ FinsurgeENRIMS is a functional Enterprise Risk Management prototype covering AML
 
 | # | Gap | Severity | Current State | Required State |
 |---|-----|----------|---------------|----------------|
-| I1 | SQLite in production | P0 | Single-file database | PostgreSQL 15+ with PgBouncer connection pooling |
+| I1 | SQLite in production | P0 | Single-file database | Azure Database for PostgreSQL Flexible Server with PgBouncer |
 | I2 | No migrations | P1 | `create_all()` on startup | Alembic versioned migrations |
 | I3 | No backup/restore | P0 | No backups | Daily automated backups, point-in-time recovery |
 | I4 | No HA/failover | P1 | Single instance | Primary-replica with automatic failover |
-| I5 | No containerization | P2 | Direct Python execution | Docker + Kubernetes/ECS orchestration |
+| I5 | No containerization | P2 | Direct Python execution | Docker + Azure Container Apps / AKS orchestration |
 | I6 | Auto-seed in prod | P0 | `seed_all()` on empty DB | Remove; use migrations for reference data only |
 | I7 | No reverse proxy | P1 | Direct uvicorn | Nginx + WAF + DDoS protection |
 
@@ -145,7 +145,7 @@ FinsurgeENRIMS is a functional Enterprise Risk Management prototype covering AML
 **Stream B — Infrastructure** (2 DevOps)
 | Day | Deliverable | Items |
 |-----|-------------|-------|
-| Mon | PostgreSQL setup + migrate database.py | I1, D1 |
+| Mon | Azure PostgreSQL Flexible Server setup + migrate database.py | I1, D1 |
 | Tue | Alembic migration framework + initial migration | I2 |
 | Wed | Docker: backend Dockerfile + frontend Dockerfile | I5 |
 | Thu | docker-compose.yml + Nginx reverse proxy + WAF | I7 |
@@ -173,7 +173,7 @@ FinsurgeENRIMS is a functional Enterprise Risk Management prototype covering AML
 | Mon | Prometheus metrics middleware | M2 |
 | Tue | Grafana dashboards + alerting rules | M3 |
 | Wed | Enhanced health check (DB, memory, disk) | M5 |
-| Thu | HA: Primary-replica PostgreSQL + failover | I4 |
+| Thu | HA: Azure PostgreSQL zone-redundant HA + failover | I4 |
 | Fri | OpenTelemetry tracing | M4 |
 
 **Stream C — Compliance** (Compliance officer + 1 dev)
@@ -201,7 +201,7 @@ FinsurgeENRIMS is a functional Enterprise Risk Management prototype covering AML
 | Day | Deliverable | Items |
 |-----|-------------|-------|
 | Mon | CD pipeline: staging → production with gates | C2 |
-| Tue | Infrastructure-as-code (Terraform) | C3 |
+| Tue | Infrastructure-as-code (Terraform + azurerm) | C3 |
 | Wed | Load testing: 1000 concurrent users | T5 |
 | Thu | Data localization proof + deployment certificate | D7, R5 |
 | Fri | DR test: backup restore in < 4 hours | I3 verify |
@@ -239,7 +239,7 @@ FinsurgeENRIMS is a functional Enterprise Risk Management prototype covering AML
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | CERT-IN audit delays | Medium | High | Engage auditor Day 1, provide codebase access early |
-| PostgreSQL migration data issues | Low | High | Test migration on staging with full dataset first |
+| Azure PostgreSQL migration data issues | Low | High | Test migration on staging with full dataset first |
 | Load test failures | Medium | Medium | Profile and optimize top 5 slow endpoints in Week 2 |
 | FIU-IND API access delays | High | Medium | Build mock interface, swap real API when credentials arrive |
 | Team availability | Medium | High | Cross-train: each stream has a backup person |
@@ -255,9 +255,9 @@ FinsurgeENRIMS is a functional Enterprise Risk Management prototype covering AML
 | 1 QA Engineer | 2,50,000 |
 | 1 Compliance Officer | 3,00,000 |
 | CERT-IN Auditor | 5,00,000 |
-| PostgreSQL (managed) | 15,000/mo |
+| Azure PostgreSQL Flexible Server | 15,000/mo |
 | Monitoring (Grafana Cloud) | 10,000/mo |
-| Infrastructure (AWS/Azure India) | 50,000/mo |
+| Infrastructure (Azure Central India) | 50,000/mo |
 | **Total** | **~23,25,000** |
 
 ---

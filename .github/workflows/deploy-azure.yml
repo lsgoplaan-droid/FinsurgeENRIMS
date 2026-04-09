@@ -1,0 +1,141 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "prod"
+        type: choice
+        options:
+          - staging
+          - prod
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || 'prod' }}
+  cancel-in-progress: false
+
+env:
+  AZURE_REGION: centralindia
+  ACR_NAME: finsurgeenrims
+  RESOURCE_GROUP: finsurge-enrims-${{ github.event.inputs.environment || 'prod' }}-rg
+  CONTAINER_APP_NAME: finsurge-enrims-backend
+  CONTAINER_APP_ENV: finsurge-enrims-${{ github.event.inputs.environment || 'prod' }}-env
+  STATIC_WEB_APP_NAME: finsurge-enrims-frontend
+
+jobs:
+  # ── Run tests first ────────────────────────────────────────────────────────
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  # ── Build & push backend to ACR ────────────────────────────────────────────
+  build-backend:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build, tag, push to ACR
+        id: build
+        working-directory: backend
+        env:
+          ACR_REGISTRY: ${{ env.ACR_NAME }}.azurecr.io
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ACR_REGISTRY/finsurge-enrims-backend:$IMAGE_TAG -t $ACR_REGISTRY/finsurge-enrims-backend:latest .
+          docker push $ACR_REGISTRY/finsurge-enrims-backend:$IMAGE_TAG
+          docker push $ACR_REGISTRY/finsurge-enrims-backend:latest
+          echo "image=$ACR_REGISTRY/finsurge-enrims-backend:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # ── Deploy backend to Azure Container Apps ─────────────────────────────────
+  deploy-backend:
+    needs: build-backend
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ${{ env.CONTAINER_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image ${{ needs.build-backend.outputs.image }}
+
+      - name: Verify deployment
+        run: |
+          echo "Checking deployment status..."
+          for i in {1..10}; do
+            STATUS=$(az containerapp revision list \
+              --name ${{ env.CONTAINER_APP_NAME }} \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --query "[0].properties.runningState" -o tsv)
+            echo "Revision status: $STATUS"
+            if [ "$STATUS" = "Running" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "Deployment did not stabilize in time"
+          exit 1
+
+  # ── Build & deploy frontend to Azure Static Web Apps ───────────────────────
+  deploy-frontend:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install & build
+        working-directory: frontend
+        env:
+          VITE_API_URL: /api/v1
+        run: |
+          npm ci
+          npm run build
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "frontend"
+          output_location: "dist"
+          skip_app_build: true

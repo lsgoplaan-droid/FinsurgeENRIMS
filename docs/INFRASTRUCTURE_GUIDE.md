@@ -11,7 +11,7 @@
 
 This guide covers the production infrastructure components that require real cloud services, certificates, and external tooling -- things that cannot be simulated in application code alone. Follow these instructions to deploy FinsurgeENRIMS in a production banking environment.
 
-**Deployment target**: AWS Mumbai (ap-south-1) or Azure Central India (per RBI data localization mandate)
+**Deployment target**: Azure Central India (per RBI data localization mandate)
 
 ---
 
@@ -33,45 +33,15 @@ This guide covers the production infrastructure components that require real clo
 
 ### 1.1 Managed Instance Setup
 
-**AWS RDS (recommended for ap-south-1)**
+**Azure Database for PostgreSQL Flexible Server (Central India)**
 
 ```bash
-# Create RDS PostgreSQL instance in Mumbai region
-aws rds create-db-instance \
-  --db-instance-identifier finsurge-enrims-prod \
-  --db-instance-class db.r6g.xlarge \
-  --engine postgres \
-  --engine-version 15.4 \
-  --master-username enrims_admin \
-  --master-user-password "$(vault kv get -field=db_password secret/enrims/prod)" \
-  --allocated-storage 100 \
-  --storage-type gp3 \
-  --storage-encrypted \
-  --kms-key-id alias/enrims-rds-key \
-  --multi-az \
-  --vpc-security-group-ids sg-0abc123def456 \
-  --db-subnet-group-name enrims-private-subnets \
-  --backup-retention-period 35 \
-  --preferred-backup-window "02:00-03:00" \
-  --preferred-maintenance-window "sun:04:00-sun:05:00" \
-  --deletion-protection \
-  --region ap-south-1 \
-  --tags Key=Project,Value=FinsurgeENRIMS Key=Environment,Value=production
+# Create resource group
+az group create --name finsurge-enrims-prod-rg --location centralindia
 
-# Create read replica for reporting queries
-aws rds create-db-instance-read-replica \
-  --db-instance-identifier finsurge-enrims-prod-replica \
-  --source-db-instance-identifier finsurge-enrims-prod \
-  --db-instance-class db.r6g.large \
-  --region ap-south-1
-```
-
-**Azure Database for PostgreSQL**
-
-```bash
 # Create Azure PostgreSQL Flexible Server in Central India
 az postgres flexible-server create \
-  --resource-group finsurge-rg \
+  --resource-group finsurge-enrims-prod-rg \
   --name finsurge-enrims-prod \
   --location centralindia \
   --admin-user enrims_admin \
@@ -84,6 +54,13 @@ az postgres flexible-server create \
   --backup-retention 35 \
   --geo-redundant-backup Disabled \
   --tags Project=FinsurgeENRIMS Environment=production
+
+# Create read replica for reporting queries
+az postgres flexible-server replica create \
+  --resource-group finsurge-enrims-prod-rg \
+  --replica-name finsurge-enrims-prod-replica \
+  --source-server finsurge-enrims-prod \
+  --location centralindia
 ```
 
 ### 1.2 Connection String Format
@@ -91,8 +68,8 @@ az postgres flexible-server create \
 Update the `DATABASE_URL` environment variable in the application config:
 
 ```bash
-# Standard PostgreSQL connection string
-DATABASE_URL=postgresql://enrims_admin:<password>@finsurge-enrims-prod.xxxxxxxxxxxx.ap-south-1.rds.amazonaws.com:5432/enrims_prod?sslmode=require
+# Standard PostgreSQL connection string (Azure Flexible Server)
+DATABASE_URL=postgresql://enrims_admin:<password>@finsurge-enrims-prod.postgres.database.azure.com:5432/enrims_prod?sslmode=require
 
 # With PgBouncer (connection pooling proxy)
 DATABASE_URL=postgresql://enrims_admin:<password>@localhost:6432/enrims_prod?sslmode=require
@@ -128,7 +105,7 @@ Install and configure PgBouncer for connection pooling between the application a
 ; /etc/pgbouncer/pgbouncer.ini
 
 [databases]
-enrims_prod = host=finsurge-enrims-prod.xxxxxxxxxxxx.ap-south-1.rds.amazonaws.com port=5432 dbname=enrims_prod
+enrims_prod = host=finsurge-enrims-prod.postgres.database.azure.com port=5432 dbname=enrims_prod
 
 [pgbouncer]
 listen_addr = 127.0.0.1
@@ -180,13 +157,12 @@ sudo systemctl start pgbouncer
 # /etc/cron.d/enrims-backup
 
 # Daily logical backup at 02:30 IST (21:00 UTC previous day)
-0 21 * * * postgres pg_dump -Fc -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -d enrims_prod | aws s3 cp - s3://finsurge-backups-prod/daily/enrims_$(date +\%Y\%m\%d_\%H\%M).dump --sse aws:kms --sse-kms-key-id alias/enrims-backup-key
+0 21 * * * postgres pg_dump -Fc -h finsurge-enrims-prod.postgres.database.azure.com -U enrims_admin -d enrims_prod | az storage blob upload --account-name finsurgeenrimsbackups --container-name daily --name "enrims_$(date +\%Y\%m\%d_\%H\%M).dump" --file /dev/stdin --auth-mode login --overwrite
 
 # Weekly full backup (Sunday 03:00 IST)
-30 21 * * 0 postgres pg_dump -Fc -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -d enrims_prod | aws s3 cp - s3://finsurge-backups-prod/weekly/enrims_$(date +\%Y\%m\%d).dump --sse aws:kms --sse-kms-key-id alias/enrims-backup-key
+30 21 * * 0 postgres pg_dump -Fc -h finsurge-enrims-prod.postgres.database.azure.com -U enrims_admin -d enrims_prod | az storage blob upload --account-name finsurgeenrimsbackups --container-name weekly --name "enrims_$(date +\%Y\%m\%d).dump" --file /dev/stdin --auth-mode login --overwrite
 
-# Cleanup: remove daily backups older than 30 days
-0 6 * * * root aws s3 ls s3://finsurge-backups-prod/daily/ --recursive | awk '{print $4}' | while read key; do created=$(echo $key | grep -oP '\d{8}'); [ $(( ($(date +%s) - $(date -d $created +%s)) / 86400 )) -gt 30 ] && aws s3 rm "s3://finsurge-backups-prod/$key"; done
+# Cleanup: handled by Azure Blob Storage lifecycle management policy (30-day retention for daily, 1 year for weekly)
 
 # Retain weekly backups for 1 year, monthly snapshots for 7 years (PMLA compliance)
 ```
@@ -195,19 +171,19 @@ sudo systemctl start pgbouncer
 
 ```bash
 # 1. List available backups
-aws s3 ls s3://finsurge-backups-prod/daily/ --human-readable | tail -10
+az storage blob list --account-name finsurgeenrimsbackups --container-name daily --output table | tail -10
 
 # 2. Download the target backup
-aws s3 cp s3://finsurge-backups-prod/daily/enrims_20260408_2100.dump /tmp/restore.dump
+az storage blob download --account-name finsurgeenrimsbackups --container-name daily --name "enrims_20260408_2100.dump" --file /tmp/restore.dump --auth-mode login
 
 # 3. Create a new database for restore (don't overwrite production directly)
-psql -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -c "CREATE DATABASE enrims_restore;"
+psql -h finsurge-enrims-prod.postgres.database.azure.com -U enrims_admin -c "CREATE DATABASE enrims_restore;"
 
 # 4. Restore into the new database
-pg_restore -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -d enrims_restore -Fc /tmp/restore.dump
+pg_restore -h finsurge-enrims-prod.postgres.database.azure.com -U enrims_admin -d enrims_restore -Fc /tmp/restore.dump
 
 # 5. Validate the restored data
-psql -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -d enrims_restore -c "
+psql -h finsurge-enrims-prod.postgres.database.azure.com -U enrims_admin -d enrims_restore -c "
 SELECT 'customers' AS table_name, COUNT(*) FROM customers
 UNION ALL SELECT 'transactions', COUNT(*) FROM transactions
 UNION ALL SELECT 'alerts', COUNT(*) FROM alerts
@@ -215,18 +191,17 @@ UNION ALL SELECT 'cases', COUNT(*) FROM cases;
 "
 
 # 6. Swap databases (maintenance window)
-psql -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -c "
+psql -h finsurge-enrims-prod.postgres.database.azure.com -U enrims_admin -c "
 ALTER DATABASE enrims_prod RENAME TO enrims_prod_old;
 ALTER DATABASE enrims_restore RENAME TO enrims_prod;
 "
 
-# 7. Point-in-Time Recovery (RDS native -- preferred for recent data loss)
-aws rds restore-db-instance-to-point-in-time \
-  --source-db-instance-identifier finsurge-enrims-prod \
-  --target-db-instance-identifier finsurge-enrims-pitr \
-  --restore-time "2026-04-08T15:30:00Z" \
-  --db-instance-class db.r6g.xlarge \
-  --region ap-south-1
+# 7. Point-in-Time Recovery (Azure native -- preferred for recent data loss)
+az postgres flexible-server restore \
+  --resource-group finsurge-enrims-prod-rg \
+  --name finsurge-enrims-pitr \
+  --source-server finsurge-enrims-prod \
+  --restore-time "2026-04-08T15:30:00Z"
 ```
 
 ---
@@ -556,11 +531,11 @@ kubectl create secret generic enrims-secrets -n enrims-prod \
   --from-literal=PII_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
   --from-literal=REDIS_URL="redis://redis-service:6379/0"
 
-# Create Docker registry secret (for private ECR)
-kubectl create secret docker-registry ecr-secret -n enrims-prod \
-  --docker-server=123456789012.dkr.ecr.ap-south-1.amazonaws.com \
-  --docker-username=AWS \
-  --docker-password="$(aws ecr get-login-password --region ap-south-1)"
+# Create Docker registry secret (for Azure Container Registry)
+kubectl create secret docker-registry acr-secret -n enrims-prod \
+  --docker-server=finsurgeenrimsacr.azurecr.io \
+  --docker-username="$(az acr credential show --name finsurgeenrimsacr --query username -o tsv)" \
+  --docker-password="$(az acr credential show --name finsurgeenrimsacr --query 'passwords[0].value' -o tsv)"
 ```
 
 ### 4.2 Backend Deployment
@@ -594,7 +569,7 @@ spec:
       serviceAccountName: enrims-backend
       containers:
         - name: backend
-          image: 123456789012.dkr.ecr.ap-south-1.amazonaws.com/enrims-backend:latest
+          image: finsurgeenrimsacr.azurecr.io/enrims-backend:latest
           ports:
             - containerPort: 8000
               protocol: TCP
@@ -639,7 +614,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 12
       imagePullSecrets:
-        - name: ecr-secret
+        - name: acr-secret
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
@@ -676,7 +651,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: 123456789012.dkr.ecr.ap-south-1.amazonaws.com/enrims-frontend:latest
+          image: finsurgeenrimsacr.azurecr.io/enrims-frontend:latest
           ports:
             - containerPort: 80
               protocol: TCP
@@ -693,7 +668,7 @@ spec:
               port: 80
             periodSeconds: 30
       imagePullSecrets:
-        - name: ecr-secret
+        - name: acr-secret
 ```
 
 ### 4.4 Services
@@ -1209,25 +1184,19 @@ Handoff: Monday 09:00 IST
 
 ### 7.1 Installation and Setup
 
-**AWS ElastiCache (Production)**
+**Azure Cache for Redis (Production)**
 
 ```bash
-aws elasticache create-replication-group \
-  --replication-group-id enrims-redis-prod \
-  --replication-group-description "ENRIMS production Redis" \
-  --engine redis \
-  --engine-version 7.0 \
-  --cache-node-type cache.r6g.large \
-  --num-cache-clusters 3 \
-  --automatic-failover-enabled \
-  --multi-az-enabled \
-  --cache-subnet-group-name enrims-private-subnets \
-  --security-group-ids sg-0redis123 \
-  --at-rest-encryption-enabled \
-  --transit-encryption-enabled \
-  --auth-token "$(vault kv get -field=redis_auth secret/enrims/prod)" \
-  --snapshot-retention-limit 7 \
-  --region ap-south-1
+az redis create \
+  --resource-group finsurge-enrims-prod-rg \
+  --name finsurge-enrims-prod-redis \
+  --location centralindia \
+  --sku Standard \
+  --vm-size c1 \
+  --enable-non-ssl-port false \
+  --minimum-tls-version 1.2 \
+  --redis-configuration maxmemory-policy=allkeys-lru \
+  --tags Project=FinsurgeENRIMS Environment=production
 ```
 
 **Docker (Development/Staging)**
@@ -1387,107 +1356,48 @@ class SessionStore:
 
 ## 8. WAF (Web Application Firewall)
 
-### 8.1 AWS WAF Configuration
+### 8.1 Azure WAF Configuration
+
+Azure WAF is deployed via Application Gateway WAF_v2 SKU. The WAF policy is managed via Terraform (see `infrastructure/terraform/modules/waf/main.tf`).
 
 ```bash
-# Create WAF Web ACL with OWASP Top 10 protection
-aws wafv2 create-web-acl \
-  --name enrims-waf \
-  --scope REGIONAL \
-  --default-action '{"Allow": {}}' \
-  --region ap-south-1 \
-  --rules '[
-    {
-      "Name": "AWS-AWSManagedRulesCommonRuleSet",
-      "Priority": 1,
-      "Statement": {
-        "ManagedRuleGroupStatement": {
-          "VendorName": "AWS",
-          "Name": "AWSManagedRulesCommonRuleSet"
-        }
-      },
-      "Action": {"Block": {}},
-      "VisibilityConfig": {
-        "SampledRequestsEnabled": true,
-        "CloudWatchMetricsEnabled": true,
-        "MetricName": "CommonRuleSet"
-      }
-    },
-    {
-      "Name": "AWS-AWSManagedRulesSQLiRuleSet",
-      "Priority": 2,
-      "Statement": {
-        "ManagedRuleGroupStatement": {
-          "VendorName": "AWS",
-          "Name": "AWSManagedRulesSQLiRuleSet"
-        }
-      },
-      "Action": {"Block": {}},
-      "VisibilityConfig": {
-        "SampledRequestsEnabled": true,
-        "CloudWatchMetricsEnabled": true,
-        "MetricName": "SQLiRuleSet"
-      }
-    },
-    {
-      "Name": "AWS-AWSManagedRulesKnownBadInputsRuleSet",
-      "Priority": 3,
-      "Statement": {
-        "ManagedRuleGroupStatement": {
-          "VendorName": "AWS",
-          "Name": "AWSManagedRulesKnownBadInputsRuleSet"
-        }
-      },
-      "Action": {"Block": {}},
-      "VisibilityConfig": {
-        "SampledRequestsEnabled": true,
-        "CloudWatchMetricsEnabled": true,
-        "MetricName": "KnownBadInputs"
-      }
-    },
-    {
-      "Name": "RateLimitRule",
-      "Priority": 4,
-      "Statement": {
-        "RateBasedStatement": {
-          "Limit": 2000,
-          "AggregateKeyType": "IP"
-        }
-      },
-      "Action": {"Block": {}},
-      "VisibilityConfig": {
-        "SampledRequestsEnabled": true,
-        "CloudWatchMetricsEnabled": true,
-        "MetricName": "RateLimit"
-      }
-    },
-    {
-      "Name": "GeoBlockOutsideIndia",
-      "Priority": 5,
-      "Statement": {
-        "NotStatement": {
-          "Statement": {
-            "GeoMatchStatement": {
-              "CountryCodes": ["IN"]
-            }
-          }
-        }
-      },
-      "Action": {"Block": {}},
-      "VisibilityConfig": {
-        "SampledRequestsEnabled": true,
-        "CloudWatchMetricsEnabled": true,
-        "MetricName": "GeoBlock"
-      }
-    }
-  ]' \
-  --visibility-config '{"SampledRequestsEnabled": true, "CloudWatchMetricsEnabled": true, "MetricName": "enrims-waf"}'
+# Create WAF policy with OWASP 3.2 managed rules
+az network application-gateway waf-policy create \
+  --resource-group finsurge-enrims-prod-rg \
+  --name enrims-waf-policy \
+  --location centralindia
 
-# Associate WAF with ALB
-aws wafv2 associate-web-acl \
-  --web-acl-arn arn:aws:wafv2:ap-south-1:123456789012:regional/webacl/enrims-waf/xxxx \
-  --resource-arn arn:aws:elasticloadbalancing:ap-south-1:123456789012:loadbalancer/app/enrims-alb/xxxx \
-  --region ap-south-1
+# Enable OWASP managed rule set
+az network application-gateway waf-policy managed-rule rule-set add \
+  --resource-group finsurge-enrims-prod-rg \
+  --policy-name enrims-waf-policy \
+  --type OWASP \
+  --version 3.2
+
+# Enable Bot Manager rule set
+az network application-gateway waf-policy managed-rule rule-set add \
+  --resource-group finsurge-enrims-prod-rg \
+  --policy-name enrims-waf-policy \
+  --type Microsoft_BotManagerRuleSet \
+  --version 1.0
+
+# Add custom rate-limit rule for login endpoint
+az network application-gateway waf-policy custom-rule create \
+  --resource-group finsurge-enrims-prod-rg \
+  --policy-name enrims-waf-policy \
+  --name RateLimitLogin \
+  --priority 2 \
+  --rule-type RateLimitRule \
+  --action Block \
+  --rate-limit-threshold 10 \
+  --rate-limit-duration FiveMins
+
+# Set WAF to Prevention mode
+az network application-gateway waf-policy update \
+  --resource-group finsurge-enrims-prod-rg \
+  --name enrims-waf-policy \
+  --state Enabled \
+  --mode Prevention
 ```
 
 ### 8.2 Cloudflare WAF Rules (Alternative)
@@ -1627,7 +1537,7 @@ vault kv put secret/enrims/prod/database \
 
 # Store Redis connection
 vault kv put secret/enrims/prod/redis \
-  url="rediss://default:<password>@enrims-redis-prod.xxxx.cache.amazonaws.com:6379/0"
+  url="rediss://default:<password>@finsurge-enrims-prod-redis.redis.cache.windows.net:6379/0"
 
 # Verify
 vault kv get secret/enrims/prod
@@ -1697,7 +1607,7 @@ spec:
       serviceAccountName: enrims-backend
       containers:
         - name: backend
-          image: 123456789012.dkr.ecr.ap-south-1.amazonaws.com/enrims-backend:latest
+          image: finsurgeenrimsacr.azurecr.io/enrims-backend:latest
           command: ["/bin/sh", "-c"]
           args:
             - "source /vault/secrets/config && python main.py"
@@ -1747,12 +1657,12 @@ kubectl rollout restart deployment/enrims-backend -n enrims-prod
 # Verify new pods are running
 kubectl rollout status deployment/enrims-backend -n enrims-prod
 
-# Rotate database password (coordinate with RDS)
+# Rotate database password (coordinate with Azure PostgreSQL)
 NEW_DB_PASS=$(openssl rand -base64 32)
-aws rds modify-db-instance \
-  --db-instance-identifier finsurge-enrims-prod \
-  --master-user-password "$NEW_DB_PASS" \
-  --apply-immediately
+az postgres flexible-server update \
+  --resource-group finsurge-enrims-prod-rg \
+  --name finsurge-enrims-prod \
+  --admin-password "$NEW_DB_PASS"
 
 vault kv put secret/enrims/prod \
   db_password="$NEW_DB_PASS" \
@@ -1788,7 +1698,7 @@ All environment variables the application needs, sourced from Vault in productio
 
 Before going live, verify each item:
 
-- [ ] PostgreSQL RDS instance running in ap-south-1 with encryption at rest
+- [ ] PostgreSQL Flexible Server running in Azure Central India with encryption at rest
 - [ ] PgBouncer connection pooling configured and tested
 - [ ] Daily backup CRON active, backup restore tested
 - [ ] TLS certificates issued and Nginx SSL config active
@@ -1799,7 +1709,7 @@ Before going live, verify each item:
 - [ ] Prometheus scraping metrics from backend pods
 - [ ] Grafana dashboard imported and showing live data
 - [ ] PagerDuty/OpsGenie alerting tested (fire test alert)
-- [ ] Redis cluster running with TLS and auth
+- [ ] Azure Cache for Redis running with TLS and access key auth
 - [ ] Rate limiting active on login (5/min) and API (100/min)
 - [ ] WAF rules active: SQLi, XSS, rate limit, geo-block
 - [ ] Vault secrets stored and agent sidecar injecting into pods
@@ -1807,7 +1717,7 @@ Before going live, verify each item:
 - [ ] DEBUG=false, SEED_ON_STARTUP=false in production
 - [ ] Swagger/OpenAPI docs blocked in production Nginx config
 - [ ] CORS whitelist set to production domain only
-- [ ] Data localization: all infrastructure in India region confirmed
+- [ ] Data localization: all Azure infrastructure in Central India region confirmed
 
 ---
 

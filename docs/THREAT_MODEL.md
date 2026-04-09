@@ -18,7 +18,7 @@ This document provides a STRIDE-based threat model for the FinsurgeENRIMS Enterp
 ```
                     Internet
                        |
-              [Nginx / WAF] (planned)
+          [Azure App Gateway + WAF] (planned)
                        |
               [FastAPI Backend :8000]
               /        |         \
@@ -26,7 +26,7 @@ This document provides a STRIDE-based threat model for the FinsurgeENRIMS Enterp
               \        |         /
            [SQLAlchemy ORM Layer]
                        |
-              [SQLite / PostgreSQL]
+       [SQLite / Azure PostgreSQL Flexible Server]
 
      [React Frontend :5173] --- REST API ---> [Backend]
 ```
@@ -98,12 +98,12 @@ This document provides a STRIDE-based threat model for the FinsurgeENRIMS Enterp
 
 | # | Threat | STRIDE | Risk Level | Mitigation | Status |
 |---|--------|--------|------------|------------|--------|
-| C1 | **Database file theft (SQLite)** -- Attacker or insider copies the unencrypted sentinel.db file | I | Critical | Migrate to PostgreSQL with TDE (Transparent Data Encryption); volume-level AES-256 encryption; restrict file system access | Planned -- SQLite in use; PostgreSQL migration documented |
+| C1 | **Database file theft (SQLite)** -- Attacker or insider copies the unencrypted sentinel.db file | I | Critical | Migrate to Azure Database for PostgreSQL with TDE (enabled by default); restrict network access via VNet | Planned -- SQLite in use; Azure PostgreSQL migration documented |
 | C2 | **PII exposure in database** -- PAN numbers, phone numbers, email stored in plaintext; Aadhaar as hash only | I | Critical | Field-level encryption (AES-256-GCM) for PAN, phone, email; Aadhaar already hashed; PII_ENCRYPTION_KEY from env | Partial -- encryption key configured; field-level encryption not applied to existing data |
-| C3 | **Database backup exposure** -- Unencrypted backups stolen from backup storage | I | High | Encrypt backups with AES-256; store in separate encrypted S3 bucket / Azure Blob with access logging; test restore quarterly | Planned -- no backup system in place |
+| C3 | **Database backup exposure** -- Unencrypted backups stolen from backup storage | I | High | Encrypt backups with AES-256; store in Azure Blob Storage with access logging and encryption; test restore quarterly | Planned -- no backup system in place |
 | C4 | **Audit log tampering** -- Insider modifies or deletes audit trail entries to cover tracks | T | Critical | Append-only audit table; no UPDATE/DELETE grants; separate audit database or immutable ledger; hash chaining for integrity | Planned -- audit model exists but not append-only |
-| C5 | **JWT secret key exposure** -- SECRET_KEY leaked from environment or config reveals ability to forge any token | I | Critical | Generate 256-bit key from cryptographic RNG; store in HashiCorp Vault or cloud KMS; rotate quarterly; never log or commit | Partial -- secrets.token_hex(32) generates strong key; Vault integration planned |
-| C6 | **PII_ENCRYPTION_KEY in environment** -- Single point of failure; if key is lost, all encrypted PII is irrecoverable | I | High | Store in Vault/KMS with key versioning; implement key rotation without downtime; maintain sealed backup of keys | Planned |
+| C5 | **JWT secret key exposure** -- SECRET_KEY leaked from environment or config reveals ability to forge any token | I | Critical | Generate 256-bit key from cryptographic RNG; store in Azure Key Vault; rotate quarterly; never log or commit | Partial -- secrets.token_hex(32) generates strong key; Key Vault integration planned |
+| C6 | **PII_ENCRYPTION_KEY in environment** -- Single point of failure; if key is lost, all encrypted PII is irrecoverable | I | High | Store in Azure Key Vault with key versioning; implement key rotation without downtime; maintain sealed backup of keys | Planned |
 | C7 | **No data retention enforcement** -- Old transaction/customer data retained indefinitely, increasing breach impact | I | Medium | Auto-archive records older than 7 years; purge after 10 years (PMLA minimum); anonymize for analytics | Planned |
 | C8 | **Log files containing PII** -- Application logs may inadvertently contain customer PII | I | Medium | Log scrubbing: mask PAN, Aadhaar, phone in all log output; structured logging with PII-safe serializer | Planned |
 
@@ -129,7 +129,7 @@ This document provides a STRIDE-based threat model for the FinsurgeENRIMS Enterp
 | E1 | **Man-in-the-middle (MITM) attack** -- Attacker intercepts HTTP traffic between client and server, capturing JWTs and PII | I | Critical | TLS 1.2+ mandatory; HSTS header with max-age 31536000; certificate pinning for mobile clients; no HTTP fallback | Planned -- HTTPS not configured; HTTP on port 8000 |
 | E2 | **Network eavesdropping on database connection** -- Attacker sniffs traffic between application and database server | I | High | TLS for database connections (sslmode=require in PostgreSQL); use private subnet/VPC peering; no public DB endpoint | Planned -- SQLite local file; PostgreSQL TLS not configured |
 | E3 | **DNS spoofing / hijacking** -- Attacker redirects users to a fake FinsurgeENRIMS login page | S | High | DNSSEC on domain; certificate transparency monitoring; HSTS preload; user training on URL verification | Planned |
-| E4 | **DDoS attack on API endpoints** -- Volumetric or application-layer DDoS overwhelms the service | D | High | AWS WAF / Cloudflare with rate limiting and bot detection; auto-scaling (HPA in Kubernetes); circuit breaker patterns | Planned |
+| E4 | **DDoS attack on API endpoints** -- Volumetric or application-layer DDoS overwhelms the service | D | High | Azure WAF + DDoS Protection with rate limiting and bot detection; auto-scaling (Container Apps); circuit breaker patterns | Planned |
 | E5 | **Exposed debug/admin endpoints** -- Debug mode or admin panel accessible from public internet | I | Critical | DEBUG=False in production; no /docs or /redoc in production; admin endpoints behind VPN or IP whitelist | Partial -- DEBUG configurable via env; Swagger docs still accessible |
 | E6 | **WebSocket hijacking** -- If WebSocket used for real-time alerts, attacker could inject or intercept messages | T | Medium | Authenticate WebSocket connections with JWT; validate origin; use WSS (TLS); message integrity checks | Planned -- WebSocket mentioned in architecture but not fully implemented |
 | E7 | **Exposed internal services** -- Database port, Redis port, or monitoring endpoints reachable from internet | I | High | All backend services in private subnet; only reverse proxy (port 443) exposed; security groups/NACLs restrict access | Planned |

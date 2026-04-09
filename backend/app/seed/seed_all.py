@@ -30,6 +30,9 @@ from app.models import (
     CTRReport, SARReport,
     CustomerRelationship, CustomerLink,
     AuditLog, SystemConfig,
+    EmployeeActivity,
+    PoliceFIR, FIRActivity,
+    NotificationRule, NotificationLog,
 )
 
 NOW = datetime.utcnow()
@@ -634,6 +637,290 @@ def seed_rules(db: Session) -> list:
          {"logic": "AND", "conditions": [{"field": "aggregate.unique_counterparties", "operator": "greater_than", "value": 10, "time_window": "30d"}]},
          [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "compliance"}}],
          "30d", None, 10),
+
+        # ── Internal Fraud Rules ──────────────────────────────────────────────
+
+        ("INT-001", "Employee Self-Account Credit Without Approval", "internal_fraud", "employee", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.is_employee_account", "operator": "equals", "value": True}, {"field": "transaction.transaction_type", "operator": "equals", "value": "credit"}, {"field": "transaction.amount", "operator": "greater_than", "value": 100000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Employee self-credit > INR 1L without maker-checker"}}],
+         None, 100000_00, None),
+
+        ("INT-002", "Employee Accessing Unrelated Customer Records", "internal_fraud", "access_abuse", "high",
+         {"logic": "AND", "conditions": [{"field": "audit.unique_customer_views", "operator": "greater_than", "value": 50, "time_window": "1h"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Employee browsing 50+ customer records in 1 hour — possible data theft"}}],
+         "1h", None, 50),
+
+        ("INT-003", "After-Hours CBS Override Transaction", "internal_fraud", "override", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.channel", "operator": "equals", "value": "branch"}, {"field": "transaction.amount", "operator": "greater_than", "value": 500000_00}, {"field": "transaction.is_after_hours", "operator": "equals", "value": True}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "After-hours branch override > INR 5L"}}],
+         None, 500000_00, None),
+
+        ("INT-004", "Ghost Account Activity — No KYC on File", "internal_fraud", "ghost_account", "critical",
+         {"logic": "AND", "conditions": [{"field": "customer.kyc_status", "operator": "equals", "value": "not_initiated"}, {"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Transaction on account with no KYC — possible ghost account"}}],
+         None, 50000_00, None),
+
+        ("INT-005", "Repeated Override of Transaction Limits", "internal_fraud", "override", "high",
+         {"logic": "AND", "conditions": [{"field": "audit.override_count", "operator": "greater_than", "value": 3, "time_window": "24h"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "3+ limit overrides in 24h by same employee"}}],
+         "24h", None, 3),
+
+        ("INT-006", "Employee Reversals Above Threshold", "internal_fraud", "reversal", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_type", "operator": "equals", "value": "reversal"}, {"field": "audit.reversal_count", "operator": "greater_than", "value": 5, "time_window": "7d"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Excessive reversals by employee — possible skimming"}}],
+         "7d", None, 5),
+
+        ("INT-007", "Cash Vault Discrepancy Detection", "internal_fraud", "cash_vault", "critical",
+         {"logic": "AND", "conditions": [{"field": "branch.cash_variance", "operator": "greater_than", "value": 50000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Cash vault variance > INR 50K detected at branch"}}],
+         None, 50000_00, None),
+
+        ("INT-008", "Loan Disbursement to Employee-Linked Account", "internal_fraud", "loan_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_type", "operator": "equals", "value": "loan_disbursement"}, {"field": "transaction.is_employee_linked", "operator": "equals", "value": True}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Loan disbursed to employee-linked account without independent verification"}}],
+         None, None, None),
+
+        ("INT-009", "Dormant Account Withdrawal by Branch Staff", "internal_fraud", "dormant_abuse", "high",
+         {"logic": "AND", "conditions": [{"field": "account.status", "operator": "equals", "value": "dormant"}, {"field": "transaction.channel", "operator": "equals", "value": "branch"}, {"field": "transaction.transaction_type", "operator": "equals", "value": "debit"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Withdrawal from dormant account via branch — verify customer presence"}}],
+         None, None, None),
+
+        ("INT-010", "Maker-Checker Bypass — Same User Approval", "internal_fraud", "maker_checker", "critical",
+         {"logic": "AND", "conditions": [{"field": "audit.maker_id", "operator": "equals_field", "value": "audit.checker_id"}, {"field": "transaction.amount", "operator": "greater_than", "value": 200000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "internal_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Same user as maker and checker for > INR 2L transaction"}}],
+         None, 200000_00, None),
+
+        # ── Cyber Fraud Rules ─────────────────────────────────────────────────
+
+        ("CYB-001", "SIM Swap Followed by Fund Transfer", "cyber_fraud", "sim_swap", "critical",
+         {"logic": "AND", "conditions": [{"field": "customer.sim_change_within_days", "operator": "less_than", "value": 3}, {"field": "transaction.amount", "operator": "greater_than", "value": 100000_00}, {"field": "transaction.channel", "operator": "in", "value": ["mobile_banking", "upi"]}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "SIM swap < 72h ago + mobile fund transfer > INR 1L"}}],
+         None, 100000_00, None),
+
+        ("CYB-002", "Phishing Link Click Followed by OTP Transaction", "cyber_fraud", "phishing", "critical",
+         {"logic": "AND", "conditions": [{"field": "session.referrer_suspicious", "operator": "equals", "value": True}, {"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Suspicious session referrer + high-value OTP transaction"}}],
+         None, 50000_00, None),
+
+        ("CYB-003", "Remote Desktop / AnyDesk Session During Transaction", "cyber_fraud", "remote_access", "critical",
+         {"logic": "AND", "conditions": [{"field": "device.remote_access_active", "operator": "equals", "value": True}, {"field": "transaction.channel", "operator": "in", "value": ["internet_banking", "mobile_banking"]}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Remote desktop software active during banking session — possible RDP fraud"}}],
+         None, None, None),
+
+        ("CYB-004", "Credential Stuffing — Multiple Failed Logins Then Success", "cyber_fraud", "credential_stuffing", "high",
+         {"logic": "AND", "conditions": [{"field": "auth.failed_attempts", "operator": "greater_than", "value": 5, "time_window": "30m"}, {"field": "auth.success_after_failures", "operator": "equals", "value": True}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "5+ failed logins then success — credential stuffing pattern"}}],
+         "30m", None, 5),
+
+        ("CYB-005", "VPN/Proxy/TOR Exit Node Login", "cyber_fraud", "anonymizer", "high",
+         {"logic": "AND", "conditions": [{"field": "session.ip_type", "operator": "in", "value": ["vpn", "proxy", "tor"]}, {"field": "transaction.amount", "operator": "greater_than", "value": 25000_00}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Transaction from anonymized IP (VPN/Proxy/TOR)"}}],
+         None, 25000_00, None),
+
+        ("CYB-006", "UPI Fraud — Collect Request Spoofing", "cyber_fraud", "upi_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "upi"}, {"field": "transaction.upi_type", "operator": "equals", "value": "collect"}, {"field": "aggregate.collect_request_count", "operator": "greater_than", "value": 5, "time_window": "1h"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Multiple UPI collect requests — possible collect-request fraud"}}],
+         "1h", None, 5),
+
+        ("CYB-007", "QR Code Tampering — Merchant Override", "cyber_fraud", "qr_fraud", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "upi"}, {"field": "transaction.merchant_mismatch", "operator": "equals", "value": True}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "UPI payment merchant ID mismatch — possible QR tampering"}}],
+         None, None, None),
+
+        ("CYB-008", "Vishing Pattern — Immediate Full Balance Transfer", "cyber_fraud", "vishing", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.amount_pct_of_balance", "operator": "greater_than", "value": 90}, {"field": "transaction.channel", "operator": "in", "value": ["mobile_banking", "upi"]}, {"field": "customer.last_call_center_contact_minutes", "operator": "less_than", "value": 30}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Near-full balance transfer within 30 min of call — vishing suspected"}}],
+         None, None, None),
+
+        ("CYB-009", "Malware-Driven Automated Transfers", "cyber_fraud", "malware", "critical",
+         {"logic": "AND", "conditions": [{"field": "session.browser_automation", "operator": "equals", "value": True}, {"field": "aggregate.transaction_count", "operator": "greater_than", "value": 3, "time_window": "5m"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Automated browser session with rapid transfers — malware pattern"}}],
+         "5m", None, 3),
+
+        ("CYB-010", "IMPS Instant Transfer to Newly Added VPA", "cyber_fraud", "instant_fraud", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "in", "value": ["imps", "upi"]}, {"field": "transaction.beneficiary_age_hours", "operator": "less_than", "value": 1}, {"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "IMPS/UPI > INR 50K to beneficiary added < 1 hour ago"}}],
+         None, 50000_00, None),
+
+        # ── AI / Deepfake Fraud Rules ─────────────────────────────────────────
+
+        ("AI-001", "Deepfake Video KYC Detection", "ai_fraud", "deepfake", "critical",
+         {"logic": "AND", "conditions": [{"field": "kyc.video_liveness_score", "operator": "less_than", "value": 0.7}, {"field": "kyc.type", "operator": "equals", "value": "video_kyc"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "ai_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Video KYC liveness score below threshold — possible deepfake"}}],
+         None, None, None),
+
+        ("AI-002", "Synthetic Identity — Document Anomaly", "ai_fraud", "synthetic_identity", "critical",
+         {"logic": "AND", "conditions": [{"field": "kyc.document_fraud_score", "operator": "greater_than", "value": 0.6}, {"field": "customer.account_age_days", "operator": "less_than", "value": 90}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "ai_fraud"}}, {"action": "flag_transaction", "params": {"reason": "KYC document anomaly on new account — synthetic identity suspected"}}],
+         None, None, None),
+
+        ("AI-003", "Voice Cloning — IVR Authentication Bypass", "ai_fraud", "voice_clone", "critical",
+         {"logic": "AND", "conditions": [{"field": "auth.voice_match_score", "operator": "less_than", "value": 0.65}, {"field": "auth.channel", "operator": "equals", "value": "ivr"}, {"field": "transaction.amount", "operator": "greater_than", "value": 100000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "ai_fraud"}}, {"action": "flag_transaction", "params": {"reason": "IVR voice authentication anomaly — possible voice cloning"}}],
+         None, 100000_00, None),
+
+        ("AI-004", "AI-Generated Document for Loan Application", "ai_fraud", "document_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "document.ai_generated_score", "operator": "greater_than", "value": 0.75}, {"field": "document.type", "operator": "in", "value": ["salary_slip", "itr", "bank_statement"]}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "ai_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Loan document flagged as AI-generated — forgery suspected"}}],
+         None, None, None),
+
+        ("AI-005", "Behavioral Biometric Anomaly — Bot Transaction", "ai_fraud", "bot_detection", "high",
+         {"logic": "AND", "conditions": [{"field": "session.keystroke_entropy", "operator": "less_than", "value": 0.3}, {"field": "session.mouse_linearity", "operator": "greater_than", "value": 0.95}, {"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "ai_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Non-human interaction pattern — bot or scripted transaction"}}],
+         None, 50000_00, None),
+
+        ("AI-006", "ChatGPT Social Engineering — Customer Support Exploit", "ai_fraud", "social_engineering", "high",
+         {"logic": "AND", "conditions": [{"field": "support.conversation_sentiment", "operator": "equals", "value": "manipulative"}, {"field": "support.action_requested", "operator": "in", "value": ["password_reset", "phone_change", "address_change", "beneficiary_add"]}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "ai_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Customer support conversation flagged as AI-generated social engineering"}}],
+         None, None, None),
+
+        ("AI-007", "Adversarial Attack on ML Scoring Model", "ai_fraud", "model_evasion", "critical",
+         {"logic": "AND", "conditions": [{"field": "model.prediction_confidence", "operator": "less_than", "value": 0.4}, {"field": "model.feature_drift_score", "operator": "greater_than", "value": 0.8}, {"field": "transaction.amount", "operator": "greater_than", "value": 200000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "ai_fraud"}}, {"action": "flag_transaction", "params": {"reason": "ML model feature drift detected — possible adversarial evasion attempt"}}],
+         None, 200000_00, None),
+
+        ("AI-008", "Deepfake Audio Call to Branch for Wire Transfer", "ai_fraud", "deepfake_audio", "critical",
+         {"logic": "AND", "conditions": [{"field": "call.audio_deepfake_score", "operator": "greater_than", "value": 0.7}, {"field": "transaction.transaction_method", "operator": "in", "value": ["rtgs", "neft", "swift"]}, {"field": "transaction.amount", "operator": "greater_than", "value": 500000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "ai_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Branch wire transfer request via call flagged as deepfake audio"}}],
+         None, 500000_00, None),
+
+        # ── Additional Fraud Rules — Real-Time & Behavioral ───────────────────
+
+        ("FRD-BEH-001", "Sudden Spending Pattern Change — 10x Historical Average", "fraud", "behavioral", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than", "value": 200000_00}, {"field": "aggregate.avg_transaction_amount_ratio", "operator": "greater_than", "value": 10}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Transaction 10x higher than customer's average — behavioral anomaly"}}],
+         None, 200000_00, None),
+
+        ("FRD-BEH-002", "Night Owl Pattern — Transactions Between 1AM-5AM", "fraud", "behavioral", "medium",
+         {"logic": "AND", "conditions": [{"field": "transaction.hour", "operator": "between", "value": [1, 5]}, {"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}, {"field": "customer.normal_activity_hours", "operator": "not_in_range", "value": [1, 5]}]},
+         [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Unusual early morning transaction outside customer's normal pattern"}}],
+         None, 50000_00, None),
+
+        ("FRD-BEH-003", "First-Time International Transaction > 5L", "fraud", "behavioral", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "swift"}, {"field": "transaction.amount", "operator": "greater_than", "value": 500000_00}, {"field": "customer.international_txn_count", "operator": "equals", "value": 0}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "First ever international transfer exceeds INR 5L — verify with customer"}}],
+         None, 500000_00, None),
+
+        ("FRD-BEH-004", "Rapid Account Draining — 80%+ Balance in 24h", "fraud", "behavioral", "critical",
+         {"logic": "AND", "conditions": [{"field": "aggregate.debit_sum_pct_balance", "operator": "greater_than", "value": 80, "time_window": "24h"}, {"field": "aggregate.debit_count", "operator": "greater_than", "value": 3, "time_window": "24h"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Account draining: 80%+ balance withdrawn across multiple transactions in 24h"}}],
+         "24h", None, 3),
+
+        ("FRD-BEH-005", "Customer Age < 25 With High-Value Transactions", "fraud", "behavioral", "medium",
+         {"logic": "AND", "conditions": [{"field": "customer.age", "operator": "less_than", "value": 25}, {"field": "transaction.amount", "operator": "greater_than", "value": 500000_00}]},
+         [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Young customer (<25y) with high-value transaction — profile mismatch"}}],
+         None, 500000_00, None),
+
+        # ── Mule Account Detection ────────────────────────────────────────────
+
+        ("FRD-MULE-001", "Mule Account Pattern — Rapid In-Out Same Day", "fraud", "mule_account", "critical",
+         {"logic": "AND", "conditions": [{"field": "aggregate.credit_count", "operator": "greater_than", "value": 3, "time_window": "24h"}, {"field": "aggregate.debit_count", "operator": "greater_than", "value": 3, "time_window": "24h"}, {"field": "aggregate.credit_debit_ratio", "operator": "between", "value": [0.8, 1.2]}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Mule account pattern: rapid credit+debit with near-equal amounts"}}],
+         "24h", None, 3),
+
+        ("FRD-MULE-002", "New Account Sudden High Volume", "fraud", "mule_account", "high",
+         {"logic": "AND", "conditions": [{"field": "customer.account_age_days", "operator": "less_than", "value": 30}, {"field": "aggregate.transaction_count", "operator": "greater_than", "value": 10, "time_window": "7d"}, {"field": "aggregate.transaction_sum", "operator": "greater_than", "value": 1000000_00, "time_window": "7d"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "New account (<30d) with 10+ txns and > INR 10L in 7 days — mule suspected"}}],
+         "7d", 1000000_00, 10),
+
+        ("FRD-MULE-003", "Multiple Credits From Different Sources Then Single Withdrawal", "fraud", "mule_account", "critical",
+         {"logic": "AND", "conditions": [{"field": "aggregate.unique_creditors", "operator": "greater_than", "value": 5, "time_window": "24h"}, {"field": "transaction.transaction_type", "operator": "equals", "value": "debit"}, {"field": "transaction.amount_pct_of_balance", "operator": "greater_than", "value": 70}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "5+ unique creditors in 24h followed by near-full balance withdrawal"}}],
+         "24h", None, 5),
+
+        # ── Loan & Insurance Fraud ────────────────────────────────────────────
+
+        ("FRD-LOAN-001", "Multiple Loan Applications From Same Device", "fraud", "loan_fraud", "high",
+         {"logic": "AND", "conditions": [{"field": "device.fingerprint_count", "operator": "greater_than", "value": 3, "time_window": "30d"}, {"field": "application.type", "operator": "equals", "value": "loan"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "3+ loan applications from same device in 30 days — possible syndicate"}}],
+         "30d", None, 3),
+
+        ("FRD-LOAN-002", "Loan Diversion — Disbursement to Third Party", "fraud", "loan_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_type", "operator": "equals", "value": "loan_disbursement"}, {"field": "transaction.beneficiary_is_applicant", "operator": "equals", "value": False}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Loan disbursement credited to account other than applicant's"}}],
+         None, None, None),
+
+        ("FRD-LOAN-003", "Gold Loan — Valuation Anomaly", "fraud", "loan_fraud", "high",
+         {"logic": "AND", "conditions": [{"field": "loan.type", "operator": "equals", "value": "gold_loan"}, {"field": "loan.ltv_ratio", "operator": "greater_than", "value": 0.85}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Gold loan LTV > 85% — possible overvaluation of collateral"}}],
+         None, None, None),
+
+        # ── Merchant & POS Fraud ──────────────────────────────────────────────
+
+        ("FRD-MER-001", "Merchant Split Transaction — Avoiding Limit", "fraud", "merchant", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.merchant_id", "operator": "is_not_null"}, {"field": "aggregate.same_merchant_count", "operator": "greater_than", "value": 3, "time_window": "1h"}, {"field": "aggregate.same_merchant_sum", "operator": "greater_than", "value": 200000_00, "time_window": "1h"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "3+ split transactions at same merchant in 1h totaling > INR 2L"}}],
+         "1h", 200000_00, 3),
+
+        ("FRD-MER-002", "POS Terminal Anomaly — After-Hours High Volume", "fraud", "merchant", "medium",
+         {"logic": "AND", "conditions": [{"field": "transaction.channel", "operator": "equals", "value": "pos"}, {"field": "transaction.hour", "operator": "between", "value": [23, 5]}, {"field": "aggregate.transaction_count", "operator": "greater_than", "value": 5, "time_window": "2h"}]},
+         [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "POS terminal active after hours with 5+ transactions — skimming risk"}}],
+         "2h", None, 5),
+
+        ("FRD-MER-003", "Refund Fraud — Excessive Refunds at Merchant", "fraud", "merchant", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_type", "operator": "equals", "value": "refund"}, {"field": "aggregate.refund_count", "operator": "greater_than", "value": 5, "time_window": "24h"}, {"field": "aggregate.refund_sum", "operator": "greater_than", "value": 100000_00, "time_window": "24h"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Merchant issued 5+ refunds totaling > INR 1L in 24h — refund abuse"}}],
+         "24h", 100000_00, 5),
+
+        # ── Check / DD Fraud ──────────────────────────────────────────────────
+
+        ("FRD-CHQ-001", "Cheque Kiting — Circular Deposits Between Accounts", "fraud", "cheque_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "cheque"}, {"field": "aggregate.circular_transfer_detected", "operator": "equals", "value": True}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Cheque kiting detected — circular deposits between related accounts"}}],
+         None, None, None),
+
+        ("FRD-CHQ-002", "Altered Cheque — Amount Mismatch", "fraud", "cheque_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "cheque.ocr_amount", "operator": "not_equals_field", "value": "cheque.micr_amount"}, {"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Cheque OCR and MICR amounts don't match — possible alteration"}}],
+         None, 50000_00, None),
+
+        ("FRD-DD-001", "Demand Draft Issued Without Corresponding Debit", "fraud", "cheque_fraud", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_type", "operator": "equals", "value": "dd_issue"}, {"field": "transaction.corresponding_debit", "operator": "equals", "value": False}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "DD issued without corresponding account debit — possible insider fraud"}}],
+         None, None, None),
+
+        # ── Cross-Border & SWIFT Fraud ────────────────────────────────────────
+
+        ("FRD-SWIFT-001", "SWIFT Message Tampering — Unusual BIC Code", "fraud", "swift_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "swift"}, {"field": "transaction.beneficiary_bic_suspicious", "operator": "equals", "value": True}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "SWIFT transfer to BIC code flagged as suspicious — possible message tampering"}}],
+         None, None, None),
+
+        ("FRD-SWIFT-002", "Trade-Based Money Laundering — Over/Under Invoicing", "fraud", "swift_fraud", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "swift"}, {"field": "transaction.trade_invoice_variance", "operator": "greater_than", "value": 30}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "Trade invoice variance > 30% — possible TBML over/under invoicing"}}],
+         None, None, None),
+
+        # ── ATM & Cash Fraud ──────────────────────────────────────────────────
+
+        ("FRD-ATM-001", "ATM Cash-Out Attack — Rapid Sequential Withdrawals", "fraud", "atm_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.channel", "operator": "equals", "value": "atm"}, {"field": "aggregate.atm_withdrawal_count", "operator": "greater_than", "value": 5, "time_window": "30m"}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "5+ ATM withdrawals in 30 min — jackpotting or cloned card cash-out"}}],
+         "30m", None, 5),
+
+        ("FRD-ATM-002", "ATM Withdrawal in Foreign Country While Card Used Domestically", "fraud", "atm_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.channel", "operator": "equals", "value": "atm"}, {"field": "aggregate.concurrent_domestic_use", "operator": "equals", "value": True}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "ATM withdrawal abroad while card used domestically — cloned card"}}],
+         None, None, None),
+
+        # ── Insurance & Claim Fraud ───────────────────────────────────────────
+
+        ("FRD-INS-001", "Multiple Insurance Claims From Same Hospital", "fraud", "insurance_fraud", "high",
+         {"logic": "AND", "conditions": [{"field": "claim.hospital_id", "operator": "is_not_null"}, {"field": "aggregate.same_hospital_claims", "operator": "greater_than", "value": 3, "time_window": "30d"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "3+ claims from same hospital in 30 days — possible collusion"}}],
+         "30d", None, 3),
+
+        # ── Crypto / Digital Asset Fraud ──────────────────────────────────────
+
+        ("CYB-011", "Crypto Exchange Transfer Post Account Compromise", "cyber_fraud", "crypto_fraud", "critical",
+         {"logic": "AND", "conditions": [{"field": "transaction.beneficiary_type", "operator": "equals", "value": "crypto_exchange"}, {"field": "customer.password_changed_hours", "operator": "less_than", "value": 24}, {"field": "transaction.amount", "operator": "greater_than", "value": 100000_00}]},
+         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Transfer to crypto exchange within 24h of password change — account compromise cashout"}}],
+         None, 100000_00, None),
+
+        ("CYB-012", "Bulk Gift Card Purchase — Social Engineering Cashout", "cyber_fraud", "social_engineering", "high",
+         {"logic": "AND", "conditions": [{"field": "transaction.merchant_category", "operator": "equals", "value": "gift_cards"}, {"field": "aggregate.gift_card_sum", "operator": "greater_than", "value": 50000_00, "time_window": "24h"}]},
+         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "cyber_fraud"}}, {"action": "flag_transaction", "params": {"reason": "Gift card purchases > INR 50K in 24h — social engineering cashout pattern"}}],
+         "24h", 50000_00, None),
     ]
 
     for name, desc, cat, subcat, sev, conds, acts, tw, threshold_amt, threshold_cnt in rules_data:
@@ -676,6 +963,30 @@ def seed_scenarios(db: Session, rules: list):
          ["CMP-001"]),
         ("Beneficiary Risk Monitoring", "Tracks unusual beneficiary addition patterns", "compliance",
          ["CMP-002"]),
+        ("Internal Fraud — Employee Abuse", "Detects insider threats including self-credit, override abuse, and ghost accounts", "internal_fraud",
+         ["INT-001", "INT-003", "INT-004", "INT-005", "INT-007", "INT-008", "INT-010"]),
+        ("Internal Fraud — Data Theft", "Monitors employee access patterns for potential data exfiltration", "internal_fraud",
+         ["INT-002", "INT-006", "INT-009"]),
+        ("Cyber Fraud — SIM Swap & Phishing", "Real-time detection of SIM swap attacks, phishing, and vishing", "cyber_fraud",
+         ["CYB-001", "CYB-002", "CYB-008"]),
+        ("Cyber Fraud — Digital Channel Attacks", "Monitors for remote access fraud, VPN abuse, credential stuffing, and malware", "cyber_fraud",
+         ["CYB-003", "CYB-004", "CYB-005", "CYB-009"]),
+        ("Cyber Fraud — UPI / Instant Payment", "UPI collect fraud, QR tampering, and instant transfer to new beneficiaries", "cyber_fraud",
+         ["CYB-006", "CYB-007", "CYB-010"]),
+        ("AI Fraud — Deepfake & Synthetic Identity", "Detects AI-generated KYC documents, deepfake video/audio, and synthetic identities", "ai_fraud",
+         ["AI-001", "AI-002", "AI-003", "AI-004", "AI-008"]),
+        ("AI Fraud — Bot & Evasion Detection", "Behavioral biometrics, bot detection, social engineering, and ML model evasion", "ai_fraud",
+         ["AI-005", "AI-006", "AI-007"]),
+        ("Behavioral Anomaly Detection", "Detects sudden changes in spending patterns, unusual timing, and profile mismatches", "fraud",
+         ["FRD-BEH-001", "FRD-BEH-002", "FRD-BEH-003", "FRD-BEH-004", "FRD-BEH-005"]),
+        ("Mule Account Detection", "Identifies money mule patterns — rapid in-out, new accounts with high volume", "fraud",
+         ["FRD-MULE-001", "FRD-MULE-002", "FRD-MULE-003"]),
+        ("Loan & Insurance Fraud", "Detects loan application fraud, diversion, and collateral overvaluation", "fraud",
+         ["FRD-LOAN-001", "FRD-LOAN-002", "FRD-LOAN-003"]),
+        ("Merchant & POS Fraud", "Split transactions, after-hours POS activity, and refund abuse", "fraud",
+         ["FRD-MER-001", "FRD-MER-002", "FRD-MER-003"]),
+        ("Cheque & DD Fraud", "Cheque kiting, altered cheques, and DD fraud detection", "fraud",
+         ["FRD-CHQ-001", "FRD-CHQ-002", "FRD-DD-001"]),
     ]
 
     for name, desc, cat, rule_names in scenarios_data:
@@ -1055,6 +1366,637 @@ def seed_system_config(db: Session):
     db.flush()
 
 
+def seed_employee_activities(db: Session):
+    """Seed realistic internal fraud monitoring data — employee activities and insider threats."""
+    employees = [
+        ("EMP-3345", "Sanjay Iyer", "Branch Banking", "Relationship Manager"),
+        ("EMP-0789", "Kavitha Menon", "Risk Management", "Risk Analyst"),
+        ("EMP-5521", "Vikash Gupta", "IT Operations", "Database Administrator"),
+        ("EMP-2234", "Deepak Rao", "ATM Operations", "ATM Support Engineer"),
+        ("EMP-2847", "Rajesh Kumar", "Retail Banking Operations", "Branch Manager"),
+        ("EMP-1234", "Sneha Patel", "Digital Banking Support", "Support Analyst"),
+        ("EMP-0045", "Priya Nair", "Compliance", "Compliance Officer"),
+        ("EMP-3891", "Amit Sharma", "Credit Operations", "Credit Officer"),
+        ("EMP-4422", "Rohit Verma", "Treasury", "Treasury Analyst"),
+        ("EMP-6677", "Meena Das", "HR", "HR Manager"),
+        ("EMP-7890", "Suresh Reddy", "IT Security", "Security Engineer"),
+        ("EMP-1122", "Anita Joshi", "Loan Operations", "Loan Officer"),
+    ]
+
+    workstations = [
+        "WRK-BRANCH-01", "WRK-BRANCH-04", "WRK-BRANCH-11", "WRK-RISK-03",
+        "WRK-IT-ADMIN-01", "WRK-ATM-05", "WRK-OPS-12", "WRK-COMP-02",
+        "WRK-CREDIT-08", "WRK-TREASURY-01", "WRK-HR-02", "WRK-SEC-01",
+    ]
+
+    # Normal activities — routine day-to-day for each employee
+    normal_activities = [
+        (0, "Login", "Successful login from approved workstation during business hours — shift start."),
+        (0, "Account Access", "Accessed VIP customer account to process service request TKT-48291."),
+        (1, "Login", "Successful login from risk analytics workstation. Morning session."),
+        (1, "Report Generation", "Generated weekly risk summary report for compliance review."),
+        (2, "Login", "Successful login to IT admin console for routine maintenance."),
+        (2, "Config Change", "Updated nightly backup schedule per approved change request CR-1124."),
+        (3, "Login", "Successful login from ATM operations desk."),
+        (3, "Account Access", "Checked ATM reconciliation for branch ATM-PUNE-005."),
+        (4, "Login", "Branch manager login from operations terminal."),
+        (4, "Report Generation", "Generated daily branch transaction summary — EOD processing."),
+        (5, "Login", "Login to digital banking support portal for ticket queue."),
+        (5, "Account Access", "Accessed customer account for dispute resolution TKT-51022."),
+        (6, "Login", "Compliance officer morning login."),
+        (6, "Report Generation", "Generated regulatory compliance checklist for RBI audit."),
+        (7, "Login", "Credit officer session start."),
+        (7, "Account Access", "Reviewed credit application CA-2026-0891 for processing."),
+        (8, "Login", "Treasury analyst login from secure terminal."),
+        (8, "Report Generation", "Generated daily treasury position report."),
+        (9, "Login", "HR manager system access for attendance processing."),
+        (9, "Report Generation", "Generated monthly headcount report for finance."),
+        (10, "Login", "Security engineer login to monitoring console."),
+        (10, "Report Generation", "Generated weekly access audit report for review."),
+        (11, "Login", "Loan officer session start from branch terminal."),
+        (11, "Account Access", "Reviewed loan disbursement schedule for batch processing."),
+    ]
+
+    for emp_idx, activity_type, desc in normal_activities:
+        emp_id, name, dept, role = employees[emp_idx]
+        days_ago = random.randint(0, 7)
+        hours = random.randint(8, 17)
+        dt = (NOW - timedelta(days=days_ago)).replace(hour=hours, minute=random.randint(0, 59))
+        db.add(EmployeeActivity(
+            id=_uid(),
+            employee_id=emp_id,
+            employee_name=name,
+            department=dept,
+            role=role,
+            risk_level="low",
+            status="normal",
+            activity_type=activity_type,
+            description=desc,
+            workstation_id=workstations[emp_idx % len(workstations)],
+            ip_address=f"10.0.{random.randint(0, 10)}.{random.randint(1, 254)}",
+            after_hours=False,
+            unauthorized_access=False,
+            created_at=dt,
+        ))
+
+    # Suspicious / insider threat activities — the core of what makes this module valuable
+    suspicious = [
+        # EMP-5521: DBA accessed production PII directly (CRITICAL)
+        (2, "critical", "under_review", "Privileged Action",
+         "Accessed production database directly bypassing application layer. Queried customer PII tables (pan_number, aadhaar_hash). 14,200 rows exported to local session.",
+         True, True),
+        # EMP-2234: Accessed fraud case customer without assignment (MEDIUM)
+        (3, "medium", "suspicious", "Account Access",
+         "Accessed customer account CIF-1050 linked to ongoing fraud case CASE-2026-019. No investigative assignment on record. Duration: 14 minutes.",
+         False, True),
+        # EMP-2847: Mass account access at 2 AM (CRITICAL)
+        (4, "critical", "under_review", "Account Access",
+         "Accessed 847 customer accounts between 02:00-04:30 AM without documented business reason. Pattern: sequential CIF numbers suggesting enumeration.",
+         True, True),
+        # EMP-1234: USB data export (HIGH)
+        (5, "high", "suspicious", "Data Export",
+         "Exported 5,200 customer transaction records to personal USB drive (Device: SanDisk Ultra 64GB SN:4A2B). Export volume exceeds normal business need by 20x.",
+         False, True),
+        # EMP-0045: Modified detection threshold (HIGH — cleared after review)
+        (6, "high", "cleared", "Config Change",
+         "Modified velocity rule R-017 threshold from 5 to 50 transactions/hour during off-peak period. Approved by compliance head post-facto.",
+         False, False),
+        # EMP-3891: Fraud block override without approval (CRITICAL — confirmed)
+        (7, "critical", "confirmed_fraud", "Override",
+         "Manual override of fraud block on transaction TXN-2026-89421 for INR 8,50,000 without supervisor approval. Beneficiary account linked to employee's spouse.",
+         False, True),
+        # EMP-4422: Dormant account reactivation (HIGH)
+        (8, "high", "under_review", "Account Access",
+         "Accessed 12 dormant accounts (inactive >2 years) and initiated reactivation workflow. No customer requests on file. Accounts in Lucknow and Jaipur branches.",
+         True, False),
+        # EMP-6677: Cross-department salary access (MEDIUM)
+        (9, "medium", "suspicious", "Report Generation",
+         "Generated salary reports for IT Operations and Treasury departments — outside area of responsibility. Downloaded 3 reports in PDF format.",
+         False, False),
+        # EMP-1122: Loan amount modification after hours (HIGH)
+        (11, "high", "under_review", "Customer Record Modification",
+         "Modified loan approval amounts for 3 accounts (CA-2026-0712, CA-2026-0715, CA-2026-0718) after business hours without maker-checker approval. Total increase: INR 12,50,000.",
+         True, True),
+        # Additional activities for richer demo data
+        # EMP-3345: Unusual branch transfer pattern (MEDIUM)
+        (0, "medium", "suspicious", "Account Access",
+         "Initiated 8 inter-branch transfers totalling INR 45,00,000 in 15 minutes. All transfers to same beneficiary account in different branch.",
+         False, False),
+        # EMP-7890: Security engineer accessed audit logs then deleted entries (CRITICAL)
+        (10, "critical", "under_review", "Privileged Action",
+         "Accessed security audit log table directly via admin console. 47 entries from previous week deleted. Deleted entries related to EMP-3891 override activity.",
+         True, True),
+    ]
+
+    for emp_idx, risk, status, activity_type, desc, after_hrs, unauth in suspicious:
+        emp_id, name, dept, role = employees[emp_idx]
+        days_ago = random.randint(0, 30)
+        hours = random.randint(0, 5) if after_hrs else random.randint(9, 18)
+        dt = (NOW - timedelta(days=days_ago)).replace(hour=hours, minute=random.randint(0, 59))
+        db.add(EmployeeActivity(
+            id=_uid(),
+            employee_id=emp_id,
+            employee_name=name,
+            department=dept,
+            role=role,
+            risk_level=risk,
+            status=status,
+            activity_type=activity_type,
+            description=desc,
+            workstation_id=workstations[emp_idx % len(workstations)],
+            ip_address=f"10.0.{random.randint(0, 5)}.{random.randint(1, 254)}",
+            after_hours=after_hrs,
+            unauthorized_access=unauth,
+            created_at=dt,
+        ))
+
+    db.flush()
+
+
+# ─── Police FIRs ───────────────────────────────────────────────────────────
+
+def seed_police_firs(db: Session, cases, user_map):
+    """Seed police FIR records linked to fraud cases."""
+    if not cases:
+        return
+
+    police_stations = [
+        ("Cyber Crime PS, BKC", "Mumbai", "Maharashtra"),
+        ("EOW, Mandir Marg", "Delhi", "Delhi"),
+        ("Cyber Crime Cell, HAL", "Bangalore", "Karnataka"),
+        ("Cyber Crime Wing, Egmore", "Chennai", "Tamil Nadu"),
+        ("Lalbazar Cyber Crime", "Kolkata", "West Bengal"),
+        ("Cyber Crime PS, Banjara Hills", "Hyderabad", "Telangana"),
+    ]
+
+    officers = [
+        ("Inspector Rajendra Patil", "+91-22-2600-1234", "Inspector"),
+        ("SI Kavitha Sharma", "+91-11-2301-5678", "Sub-Inspector"),
+        ("Inspector M. Krishnamurthy", "+91-80-2294-9012", "Inspector"),
+        ("DSP Arjun Reddy", "+91-40-2785-3456", "Dy. Superintendent"),
+        ("Inspector Sourav Ghosh", "+91-33-2250-7890", "Inspector"),
+    ]
+
+    offense_map = {
+        "fraud_investigation": ["cheating", "cyber_fraud", "card_fraud", "upi_fraud", "account_takeover"],
+        "aml_investigation": ["money_laundering", "cheating"],
+        "kyc_review": ["identity_theft", "forgery"],
+        "compliance_review": ["cheating"],
+    }
+
+    ipc_map = {
+        "cheating": "IPC 420",
+        "cyber_fraud": "IT Act Sec 66C, 66D",
+        "card_fraud": "IPC 420, IT Act Sec 66C",
+        "upi_fraud": "IPC 420, IT Act Sec 66D",
+        "account_takeover": "IPC 420, IT Act Sec 43",
+        "money_laundering": "PMLA Sec 3, 4",
+        "identity_theft": "IT Act Sec 66C",
+        "forgery": "IPC 468, 471",
+    }
+
+    fir_statuses = ["draft", "filed", "acknowledged", "under_investigation", "charge_sheet_filed"]
+    fir_data = []
+
+    # Create FIRs for first 8 cases (confirmed fraud cases)
+    fraud_cases = [c for c in cases if c.disposition == "true_positive" or c.status in ("under_investigation", "escalated")][:8]
+    if not fraud_cases:
+        fraud_cases = cases[:5]
+
+    comp_user = user_map.get("compliance1") or list(user_map.values())[0]
+
+    for i, case in enumerate(fraud_cases):
+        ps = police_stations[i % len(police_stations)]
+        off = officers[i % len(officers)]
+        offenses = offense_map.get(case.case_type, ["cheating"])
+        offense = random.choice(offenses)
+        status = fir_statuses[min(i, len(fir_statuses) - 1)]
+        days_ago = random.randint(5, 45)
+        created = NOW - timedelta(days=days_ago)
+
+        fir = PoliceFIR(
+            id=str(uuid.uuid4()),
+            fir_number=f"FIR-{(NOW - timedelta(days=days_ago)).strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}",
+            case_id=case.id,
+            customer_id=case.customer_id,
+            police_station=ps[0],
+            police_district=ps[1],
+            police_state=ps[2],
+            investigating_officer=off[0],
+            officer_contact=off[1],
+            officer_designation=off[2],
+            offense_type=offense,
+            ipc_sections=ipc_map.get(offense, "IPC 420"),
+            fraud_amount=case.total_suspicious_amount or random.randint(500000, 50000000),
+            offense_date=created - timedelta(days=random.randint(1, 10)),
+            offense_description=f"Fraud detected in case {case.case_number}. {offense.replace('_', ' ').title()} involving customer account.",
+            status=status,
+            priority=case.priority,
+            filed_by=comp_user.id if status != "draft" else None,
+            filed_at=(created + timedelta(days=1)) if status != "draft" else None,
+            acknowledged_at=(created + timedelta(days=3)) if status in ("acknowledged", "under_investigation", "charge_sheet_filed") else None,
+            acknowledgment_number=f"ACK-{uuid.uuid4().hex[:8].upper()}" if status in ("acknowledged", "under_investigation", "charge_sheet_filed") else None,
+            charge_sheet_date=(created + timedelta(days=20)) if status == "charge_sheet_filed" else None,
+            charge_sheet_number=f"CS-{uuid.uuid4().hex[:6].upper()}" if status == "charge_sheet_filed" else None,
+            court_name="Metropolitan Magistrate Court, Mumbai" if status == "charge_sheet_filed" else None,
+            amount_recovered=int((case.total_suspicious_amount or 1000000) * random.uniform(0, 0.4)) if status in ("under_investigation", "charge_sheet_filed") else 0,
+            assets_frozen=(status in ("under_investigation", "charge_sheet_filed") and random.random() > 0.5),
+            rbi_fraud_reported=(random.random() > 0.3),
+            rbi_report_date=(created + timedelta(days=2)) if random.random() > 0.3 else None,
+            rbi_reference=f"FMR-{created.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}" if random.random() > 0.3 else None,
+            cyber_cell_reported=(offense in ("cyber_fraud", "card_fraud", "upi_fraud", "account_takeover", "phishing")),
+            cyber_complaint_number=f"CC-{uuid.uuid4().hex[:8].upper()}" if offense in ("cyber_fraud", "card_fraud", "upi_fraud", "account_takeover") else None,
+            notes=f"Police case for {offense.replace('_', ' ')} detected via transaction monitoring.",
+            created_by=comp_user.id,
+            created_at=created,
+        )
+        db.add(fir)
+        fir_data.append(fir)
+
+        # Add activity trail
+        db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
+                           activity_type="created", description=f"FIR draft created for case {case.case_number}", created_at=created))
+        if status != "draft":
+            db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
+                               activity_type="filed", description=f"FIR filed at {ps[0]}", created_at=created + timedelta(days=1)))
+        if status in ("acknowledged", "under_investigation", "charge_sheet_filed"):
+            db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
+                               activity_type="acknowledged", description=f"FIR acknowledged by police", created_at=created + timedelta(days=3)))
+        if fir.rbi_fraud_reported:
+            db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
+                               activity_type="rbi_reported", description=f"Fraud reported to RBI via FMR-1", created_at=created + timedelta(days=2)))
+
+    db.flush()
+    return fir_data
+
+
+# ─── Notification Rules ────────────────────────────────────────────────────
+
+def seed_notification_rules(db: Session):
+    """Seed default notification rules — industry-standard alert routing."""
+    rules = [
+        # Critical alerts — immediate SMS + email to RM and risk manager
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Critical Alert — SMS to Risk Manager",
+            description="Immediately notify risk manager via SMS when a critical alert is created",
+            trigger_event="alert_created", condition_priority="critical",
+            recipient_type="risk_manager", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="CRITICAL ALERT {alert_number}: {customer_name} — {amount} INR. Priority: {priority}. Immediate review required.",
+            is_active=True, cooldown_minutes=30, max_per_day=50, severity="critical",
+        ),
+        # High-value transaction — notify compliance
+        NotificationRule(
+            id=str(uuid.uuid4()), name="High-Value Transaction — Compliance Alert",
+            description="Notify compliance officer for transactions above INR 10 lakh",
+            trigger_event="high_risk_transaction", condition_amount_min=1000000_00,
+            recipient_type="compliance_officer", channel_email=True, channel_in_app=True,
+            message_template="HIGH VALUE: Transaction of {amount} INR detected for {customer_name}. CTR may be required.",
+            is_active=True, cooldown_minutes=60, max_per_day=100, severity="high",
+        ),
+        # Alert escalation — notify branch head
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Alert Escalated — Branch Head Notification",
+            description="Notify branch head when an alert is escalated",
+            trigger_event="alert_escalated",
+            recipient_type="branch_head", channel_email=True, channel_in_app=True,
+            message_template="ESCALATION: Alert {alert_number} has been escalated. Customer: {customer_name}. Please review.",
+            is_active=True, cooldown_minutes=0, severity="high",
+        ),
+        # SLA breach — notify manager
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Alert SLA Breach — Manager Alert",
+            description="Notify risk manager when alert SLA is breached",
+            trigger_event="alert_sla_breach",
+            recipient_type="risk_manager", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="SLA BREACH: Alert {alert_number} has exceeded SLA deadline. Assigned to: {assignee}. Immediate action required.",
+            is_active=True, cooldown_minutes=120, severity="critical",
+        ),
+        # Case SLA breach
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Case SLA Breach — CRO Notification",
+            description="Notify CRO when case investigation exceeds SLA",
+            trigger_event="case_sla_breach",
+            recipient_type="cro", channel_email=True, channel_in_app=True,
+            message_template="CASE SLA BREACH: Case {case_number} investigation has exceeded SLA. Priority: {priority}.",
+            is_active=True, cooldown_minutes=240, severity="critical",
+        ),
+        # SAR filing — notify principal officer
+        NotificationRule(
+            id=str(uuid.uuid4()), name="SAR Filed — Principal Officer Notification",
+            description="Notify PMLA Principal Officer when SAR is filed",
+            trigger_event="sar_filed",
+            recipient_type="principal_officer", channel_email=True, channel_in_app=True,
+            message_template="SAR FILED: Suspicious Activity Report filed for {customer_name}. Amount: {amount} INR. Reference: {report_number}.",
+            is_active=True, severity="high",
+        ),
+        # FIR filed — notify CRO
+        NotificationRule(
+            id=str(uuid.uuid4()), name="FIR Filed — CRO Notification",
+            description="Notify CRO when police FIR is filed",
+            trigger_event="fir_filed",
+            recipient_type="cro", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="FIR FILED: Police complaint {fir_number} filed at {police_station}. Fraud amount: {amount} INR.",
+            is_active=True, severity="critical",
+        ),
+        # PEP transaction — enhanced monitoring
+        NotificationRule(
+            id=str(uuid.uuid4()), name="PEP Transaction — Enhanced Monitoring",
+            description="Notify compliance when PEP customer conducts a transaction",
+            trigger_event="pep_transaction",
+            recipient_type="compliance_officer", channel_email=True, channel_in_app=True,
+            message_template="PEP ALERT: Transaction by PEP customer {customer_name}. Amount: {amount} INR. Enhanced review required per RBI guidelines.",
+            is_active=True, cooldown_minutes=60, severity="high",
+        ),
+        # Watchlist match
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Watchlist Match — Immediate Freeze",
+            description="Notify compliance and risk manager on watchlist match",
+            trigger_event="watchlist_match",
+            recipient_type="compliance_officer", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="WATCHLIST MATCH: {customer_name} matched against sanctions/watchlist. Immediate account review required.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        # KYC expiry
+        NotificationRule(
+            id=str(uuid.uuid4()), name="KYC Expired — RM Notification",
+            description="Notify RM when customer KYC expires",
+            trigger_event="kyc_expired",
+            recipient_type="rm", channel_email=True, channel_in_app=True,
+            message_template="KYC EXPIRED: Customer {customer_name} KYC has expired. Transactions restricted until renewal per RBI Direction.",
+            is_active=True, cooldown_minutes=1440, severity="medium",
+        ),
+        # Case creation — notify investigator
+        NotificationRule(
+            id=str(uuid.uuid4()), name="New Case Created — Investigator Alert",
+            description="Notify assigned investigator when new case is created",
+            trigger_event="case_created",
+            recipient_type="role", recipient_roles="investigator",
+            channel_email=True, channel_in_app=True,
+            message_template="NEW CASE: Case {case_number} created. Type: {case_type}. Priority: {priority}. Please begin investigation.",
+            is_active=True, severity="medium",
+        ),
+        # Court hearing reminder
+        NotificationRule(
+            id=str(uuid.uuid4()), name="FIR Court Hearing Reminder",
+            description="Remind compliance 3 days before court hearing",
+            trigger_event="fir_hearing",
+            recipient_type="compliance_officer", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="HEARING REMINDER: Court hearing for FIR {fir_number} in 3 days at {court_name}. Prepare case documents.",
+            is_active=True, escalation_delay_minutes=0, severity="high",
+        ),
+        # All alerts — in-app for analysts
+        NotificationRule(
+            id=str(uuid.uuid4()), name="New Alert — Analyst In-App",
+            description="In-app notification for all new alerts to analyst team",
+            trigger_event="alert_created",
+            recipient_type="role", recipient_roles="analyst",
+            channel_in_app=True,
+            message_template="New alert {alert_number}: {customer_name}. Priority: {priority}.",
+            is_active=True, severity="low",
+        ),
+        # CTR auto-generated
+        NotificationRule(
+            id=str(uuid.uuid4()), name="CTR Auto-Generated — Review Required",
+            description="Notify compliance when CTR is auto-generated for review",
+            trigger_event="ctr_filed",
+            recipient_type="compliance_officer", channel_email=True, channel_in_app=True,
+            message_template="CTR GENERATED: Cash Transaction Report {report_number} auto-generated for {customer_name}. Amount: {amount} INR. Review and file with FIU-IND.",
+            is_active=True, severity="medium",
+        ),
+        # ── Internal Fraud Notifications ──────────────────────────────────────
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Internal Fraud — Immediate CVO Alert",
+            description="Notify Chief Vigilance Officer on any internal fraud detection",
+            trigger_event="internal_fraud_detected",
+            recipient_type="cvo", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="INTERNAL FRAUD ALERT: {rule_name} triggered for employee {employee_name}. {description}. Immediate investigation required.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Employee Override — Branch Manager",
+            description="Notify branch manager when employee overrides transaction limits",
+            trigger_event="employee_override",
+            recipient_type="branch_manager", channel_email=True, channel_in_app=True,
+            message_template="OVERRIDE ALERT: Employee {employee_name} has overridden transaction limit. Amount: {amount} INR. Customer: {customer_name}. Please verify.",
+            is_active=True, cooldown_minutes=30, severity="high",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Maker-Checker Violation — Audit Team",
+            description="Alert audit team on maker-checker bypass attempts",
+            trigger_event="maker_checker_violation",
+            recipient_type="role", recipient_roles="auditor",
+            channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="MAKER-CHECKER VIOLATION: Same user ({employee_name}) attempted maker and checker for {amount} INR transaction. Auto-blocked.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Data Access Anomaly — CISO Alert",
+            description="Notify CISO when employee accesses unusual volume of customer records",
+            trigger_event="data_access_anomaly",
+            recipient_type="ciso", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="DATA ACCESS ANOMALY: Employee {employee_name} accessed {record_count} customer records in {time_window}. Normal: {baseline_count}. Possible data theft.",
+            is_active=True, cooldown_minutes=60, severity="critical",
+        ),
+        # ── Cyber Fraud Notifications ─────────────────────────────────────────
+        NotificationRule(
+            id=str(uuid.uuid4()), name="SIM Swap Fraud — Block + Notify Customer",
+            description="Auto-block account and notify customer on SIM swap fraud detection",
+            trigger_event="sim_swap_fraud",
+            recipient_type="customer", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="SECURITY ALERT: Suspicious activity detected on your account after SIM change. Account temporarily frozen. Call 1800-XXX-XXXX immediately.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Remote Access Fraud — SOC Team",
+            description="Notify Security Operations Center when remote desktop fraud is detected",
+            trigger_event="remote_access_fraud",
+            recipient_type="role", recipient_roles="soc_analyst",
+            channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="REMOTE ACCESS FRAUD: Customer {customer_name} session has active remote desktop (AnyDesk/TeamViewer). Transaction of {amount} INR blocked. IP: {ip_address}.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="UPI Fraud — Auto-Hold + Notify",
+            description="Hold UPI transaction and notify fraud ops on collect request fraud",
+            trigger_event="upi_collect_fraud",
+            recipient_type="fraud_ops", channel_email=True, channel_in_app=True,
+            message_template="UPI FRAUD DETECTED: {collect_count} collect requests to {customer_name} from VPA {vpa}. Total: {amount} INR. Transactions held for review.",
+            is_active=True, cooldown_minutes=15, severity="high",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Credential Stuffing — IT Security",
+            description="Notify IT security on credential stuffing attack detection",
+            trigger_event="credential_stuffing",
+            recipient_type="role", recipient_roles="it_security",
+            channel_email=True, channel_in_app=True,
+            message_template="CREDENTIAL STUFFING: {failed_count} failed login attempts from IP {ip_address} in {time_window}. Account {username} successfully accessed after failures. Force password reset initiated.",
+            is_active=True, cooldown_minutes=5, severity="high",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Vishing Alert — Contact Center Lead",
+            description="Alert contact center lead when vishing pattern detected post-call",
+            trigger_event="vishing_detected",
+            recipient_type="contact_center_lead", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="VISHING ALERT: Customer {customer_name} transferred {amount} INR ({pct_balance}% of balance) within {minutes}min of call. Transaction held. Callback required.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        # ── AI Fraud Notifications ────────────────────────────────────────────
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Deepfake KYC — Compliance + IT",
+            description="Notify compliance and IT when deepfake detected in video KYC",
+            trigger_event="deepfake_detected",
+            recipient_type="compliance_officer", channel_sms=True, channel_email=True, channel_in_app=True,
+            message_template="DEEPFAKE DETECTED: Video KYC for {customer_name} flagged (liveness score: {score}). Application ID: {app_id}. KYC rejected. Manual verification required.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Synthetic Identity — Fraud Investigation",
+            description="Route synthetic identity alerts to fraud investigation team",
+            trigger_event="synthetic_identity",
+            recipient_type="role", recipient_roles="investigator",
+            channel_email=True, channel_in_app=True,
+            message_template="SYNTHETIC IDENTITY: Account {account_number} opened with suspected AI-generated documents. Document fraud score: {score}. Account frozen pending investigation.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="AI Document Forgery — Loan Team",
+            description="Notify loan processing team on AI-generated document detection",
+            trigger_event="ai_document_fraud",
+            recipient_type="role", recipient_roles="loan_officer",
+            channel_email=True, channel_in_app=True,
+            message_template="AI DOCUMENT FRAUD: Loan application {app_id} flagged — {document_type} appears AI-generated (score: {score}). Application auto-rejected. Forward to fraud team.",
+            is_active=True, cooldown_minutes=0, severity="critical",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="ML Model Drift — Data Science Team",
+            description="Alert data science team when adversarial drift detected in fraud models",
+            trigger_event="model_drift",
+            recipient_type="role", recipient_roles="data_science",
+            channel_email=True, channel_in_app=True,
+            message_template="MODEL DRIFT ALERT: Fraud scoring model showing {drift_pct}% feature drift. {anomaly_count} transactions with low-confidence scores in last {time_window}. Model retraining may be needed.",
+            is_active=True, cooldown_minutes=360, severity="high",
+        ),
+        NotificationRule(
+            id=str(uuid.uuid4()), name="Bot Detection — Auto-Block + SOC",
+            description="Auto-block bot sessions and notify SOC team",
+            trigger_event="bot_detected",
+            recipient_type="role", recipient_roles="soc_analyst",
+            channel_email=True, channel_in_app=True,
+            message_template="BOT DETECTED: Non-human session on account {customer_name}. Keystroke entropy: {entropy}, mouse linearity: {linearity}. Session terminated. {txn_count} transactions blocked.",
+            is_active=True, cooldown_minutes=5, severity="high",
+        ),
+    ]
+
+    for r in rules:
+        db.add(r)
+    db.flush()  # Flush rules before adding logs that reference them
+
+    # Seed some notification logs for demo
+    demo_logs = [
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[0].id,
+            trigger_event="alert_created", resource_type="alert", resource_id="demo",
+            channel="sms", status="delivered", subject="Critical Alert",
+            message="CRITICAL ALERT ALT-20260405-AB12: Rajesh Mehta — 15,00,000 INR",
+            sent_at=NOW - timedelta(hours=6), delivered_at=NOW - timedelta(hours=6),
+            created_at=NOW - timedelta(hours=6),
+        ),
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[0].id,
+            trigger_event="alert_created", resource_type="alert", resource_id="demo",
+            channel="email", status="delivered", subject="Critical Alert Notification",
+            message="CRITICAL ALERT ALT-20260405-AB12: Rajesh Mehta — 15,00,000 INR. Immediate review required.",
+            sent_at=NOW - timedelta(hours=6), delivered_at=NOW - timedelta(hours=5, minutes=59),
+            created_at=NOW - timedelta(hours=6),
+        ),
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[1].id,
+            trigger_event="high_risk_transaction", resource_type="transaction", resource_id="demo",
+            channel="email", status="sent", subject="High Value Transaction Alert",
+            message="HIGH VALUE: Transaction of 25,00,000 INR detected for Hassan Trading LLC.",
+            sent_at=NOW - timedelta(hours=3), created_at=NOW - timedelta(hours=3),
+        ),
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[3].id,
+            trigger_event="alert_sla_breach", resource_type="alert", resource_id="demo",
+            channel="sms", status="delivered", subject="SLA Breach",
+            message="SLA BREACH: Alert ALT-20260408-CD34 has exceeded SLA deadline.",
+            sent_at=NOW - timedelta(hours=1), delivered_at=NOW - timedelta(minutes=59),
+            created_at=NOW - timedelta(hours=1),
+        ),
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[8].id,
+            trigger_event="watchlist_match", resource_type="customer", resource_id="demo",
+            channel="sms", status="failed", subject="Watchlist Match",
+            message="WATCHLIST MATCH: K. Dhanabalan matched against PEP list.",
+            failure_reason="SMS gateway timeout — retry scheduled",
+            created_at=NOW - timedelta(hours=2),
+        ),
+        # Internal fraud notifications
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[14].id,
+            trigger_event="internal_fraud_detected", resource_type="alert", resource_id="demo",
+            channel="sms", status="delivered", subject="Internal Fraud Alert",
+            message="INTERNAL FRAUD: Employee override of INR 8,50,000 transaction at Andheri branch. CVO notified.",
+            sent_at=NOW - timedelta(hours=4), delivered_at=NOW - timedelta(hours=4),
+            created_at=NOW - timedelta(hours=4),
+        ),
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[17].id,
+            trigger_event="data_access_anomaly", resource_type="audit", resource_id="demo",
+            channel="email", status="delivered", subject="Data Access Anomaly",
+            message="DATA ACCESS ANOMALY: Employee Rakesh Gupta accessed 127 customer records in 45 min. Normal baseline: 15.",
+            sent_at=NOW - timedelta(hours=8), delivered_at=NOW - timedelta(hours=8),
+            created_at=NOW - timedelta(hours=8),
+        ),
+        # Cyber fraud notifications
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[18].id,
+            trigger_event="sim_swap_fraud", resource_type="transaction", resource_id="demo",
+            channel="sms", status="delivered", subject="SIM Swap Fraud",
+            message="SECURITY ALERT: SIM swap detected for Ananya Sharma. Account frozen. INR 2,50,000 transfer blocked.",
+            sent_at=NOW - timedelta(hours=2), delivered_at=NOW - timedelta(hours=2),
+            created_at=NOW - timedelta(hours=2),
+        ),
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[19].id,
+            trigger_event="remote_access_fraud", resource_type="session", resource_id="demo",
+            channel="email", status="delivered", subject="Remote Access Fraud Detected",
+            message="REMOTE ACCESS: AnyDesk session detected on Vikram Patel's account. INR 4,75,000 NEFT blocked. IP: 103.21.XX.XX.",
+            sent_at=NOW - timedelta(minutes=90), delivered_at=NOW - timedelta(minutes=89),
+            created_at=NOW - timedelta(minutes=90),
+        ),
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[22].id,
+            trigger_event="vishing_detected", resource_type="transaction", resource_id="demo",
+            channel="sms", status="delivered", subject="Vishing Alert",
+            message="VISHING: Priya Nair transferred INR 3,20,000 (92% balance) within 12 min of inbound call. Transaction held.",
+            sent_at=NOW - timedelta(minutes=45), delivered_at=NOW - timedelta(minutes=44),
+            created_at=NOW - timedelta(minutes=45),
+        ),
+        # AI fraud notifications
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[23].id,
+            trigger_event="deepfake_detected", resource_type="kyc", resource_id="demo",
+            channel="email", status="delivered", subject="Deepfake KYC Rejected",
+            message="DEEPFAKE: Video KYC for applicant flagged — liveness score 0.31. Application auto-rejected. Evidence preserved for investigation.",
+            sent_at=NOW - timedelta(hours=12), delivered_at=NOW - timedelta(hours=12),
+            created_at=NOW - timedelta(hours=12),
+        ),
+        NotificationLog(
+            id=str(uuid.uuid4()), notification_rule_id=rules[25].id,
+            trigger_event="ai_document_fraud", resource_type="loan", resource_id="demo",
+            channel="email", status="sent", subject="AI Document Fraud — Loan Application",
+            message="AI FRAUD: Loan application LN-20260407-X9 salary slip flagged as AI-generated (score: 0.89). Auto-rejected.",
+            sent_at=NOW - timedelta(hours=18), created_at=NOW - timedelta(hours=18),
+        ),
+    ]
+    for log in demo_logs:
+        db.add(log)
+
+    db.flush()
+
+
 # ─── Master Seeder ──────────────────────────────────────────────────────────
 
 def seed_all(db: Session):
@@ -1112,6 +2054,15 @@ def seed_all(db: Session):
 
     print("  Seeding system config...")
     seed_system_config(db)
+
+    print("  Seeding employee activities...")
+    seed_employee_activities(db)
+
+    print("  Seeding police FIRs...")
+    seed_police_firs(db, cases, user_map)
+
+    print("  Seeding notification rules...")
+    seed_notification_rules(db)
 
     db.commit()
     print("  All seed data committed!")

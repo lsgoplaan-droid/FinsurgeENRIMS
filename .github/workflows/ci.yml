@@ -29,13 +29,15 @@ jobs:
           DATABASE_URL: "sqlite:///./test.db"
           SECRET_KEY: "ci-test-key"
           DEBUG: "true"
+          ENVIRONMENT: "test"
           SEED_ON_STARTUP: "false"
+          TESTING: "true"
         run: pytest tests/ -v --cov=app --cov-report=term-missing --cov-fail-under=60
 
       - name: Security scan (Bandit)
         run: |
           pip install bandit
-          bandit -r app/ -ll --skip B101 || true
+          bandit -r app/ -ll --skip B101
 
   frontend-build:
     runs-on: ubuntu-latest

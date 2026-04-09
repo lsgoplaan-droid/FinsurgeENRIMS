@@ -10,6 +10,7 @@ class CustomerResponse(BaseModel):
     last_name: str | None = None
     company_name: str | None = None
     display_name: str = ""
+    full_name: str = ""
     date_of_birth: date | None = None
     gender: str | None = None
     nationality: str | None = None

@@ -18,8 +18,8 @@ const STATUS_TABS = [
   { key: 'open', label: 'Open' },
   { key: 'under_investigation', label: 'Under Investigation' },
   { key: 'pending_regulatory', label: 'Pending Regulatory' },
-  { key: 'closed_true_positive', label: 'Closed (TP)' },
-  { key: 'closed_false_positive', label: 'Closed (FP)' },
+  { key: 'closed_true_positive', label: 'Closed (Confirmed)' },
+  { key: 'closed_false_positive', label: 'Closed (False Alarm)' },
 ]
 
 function CaseCard({ caseItem }: { caseItem: any }) {
@@ -261,7 +261,7 @@ export default function CasesPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
-                <input value={newCase.title} onChange={e => setNewCase({ ...newCase, title: e.target.value })} placeholder="e.g., AML Investigation - Rajesh Mehta" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <input value={newCase.title} onChange={e => setNewCase({ ...newCase, title: e.target.value })} placeholder="e.g., Fraud Investigation - Rajesh Mehta" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
@@ -272,8 +272,8 @@ export default function CasesPage() {
                   <label className="block text-sm font-medium text-slate-700 mb-1">Case Type</label>
                   <select value={newCase.case_type} onChange={e => setNewCase({ ...newCase, case_type: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
                     <option value="fraud_investigation">Fraud Investigation</option>
-                    <option value="aml_investigation">AML Investigation</option>
-                    <option value="kyc_review">KYC Review</option>
+                    <option value="cyber_fraud">Cyber Fraud Investigation</option>
+                    <option value="internal_fraud">Internal Fraud Investigation</option>
                     <option value="compliance_review">Compliance Review</option>
                   </select>
                 </div>

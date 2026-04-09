@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   AlertTriangle, CheckCircle, CircleAlert, Skull, Shield, Clock,
-  Monitor, Wifi, User, Search, Filter, ChevronDown
+  Monitor, Wifi, User, Search, Filter, ChevronDown, BookOpen
 } from 'lucide-react'
 import api from '../config/api'
 import { formatDateTime, formatNumber } from '../utils/formatters'
@@ -60,10 +60,12 @@ const STATUS_OPTIONS = [
 export default function InternalFraudPage() {
   const [stats, setStats] = useState<any>(null)
   const [activities, setActivities] = useState<any[]>([])
+  const [rules, setRules] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [riskFilter, setRiskFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [activeTab, setActiveTab] = useState<'activities' | 'rules'>('activities')
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -75,10 +77,12 @@ export default function InternalFraudPage() {
     Promise.all([
       api.get('/internal-fraud/stats'),
       api.get('/internal-fraud/activities', { params }),
+      api.get('/internal-fraud/rules'),
     ])
-      .then(([statsRes, activitiesRes]) => {
+      .then(([statsRes, activitiesRes, rulesRes]) => {
         setStats(statsRes.data)
         setActivities(activitiesRes.data?.items || activitiesRes.data?.activities || activitiesRes.data || [])
+        setRules(rulesRes.data || [])
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load internal fraud data'))
       .finally(() => setLoading(false))
@@ -143,6 +147,25 @@ export default function InternalFraudPage() {
         ))}
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-slate-200 pb-0">
+        {[
+          { key: 'activities', label: `Activities (${activities.length})` },
+          { key: 'rules', label: `Detection Rules (${rules.length})` },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key as any)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === t.key ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'activities' && <>
       {/* Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
         <div className="flex items-center gap-4 flex-wrap">
@@ -274,6 +297,54 @@ export default function InternalFraudPage() {
           ))
         )}
       </div>
+      </>}
+
+      {/* Rules Tab */}
+      {activeTab === 'rules' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50">
+                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Rule ID</th>
+                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Name</th>
+                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Category</th>
+                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Severity</th>
+                  <th className="text-right py-2.5 px-4 font-medium text-slate-600">Triggers</th>
+                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map(r => (
+                  <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
+                    <td className="py-2.5 px-4 font-mono text-xs font-semibold text-blue-600">{r.id}</td>
+                    <td className="py-2.5 px-4">
+                      <p className="text-sm font-medium text-slate-800">{r.name}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{r.description}</p>
+                    </td>
+                    <td className="py-2.5 px-4 text-xs text-slate-500 capitalize">{(r.category || '-').replace(/_/g, ' ')}</td>
+                    <td className="py-2.5 px-4">
+                      <Badge
+                        text={r.severity || '-'}
+                        colors={riskBadgeColors[r.severity] || 'bg-gray-100 text-gray-800'}
+                      />
+                    </td>
+                    <td className="py-2.5 px-4 text-right font-mono text-slate-700">{r.triggers ?? 0}</td>
+                    <td className="py-2.5 px-4">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${r.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
+                        {r.enabled ? 'Active' : 'Disabled'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {rules.length === 0 && (
+                  <tr><td colSpan={6} className="py-12 text-center text-slate-400">No rules defined</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

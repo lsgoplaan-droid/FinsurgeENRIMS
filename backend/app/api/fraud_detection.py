@@ -65,7 +65,8 @@ def fraud_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
     )
 
     # Top triggered fraud rules
-    fraud_rules = db.query(Rule).filter(Rule.category == "fraud").order_by(Rule.detection_count.desc()).limit(10).all()
+    fraud_categories = ["fraud", "cyber_fraud", "ai_fraud", "internal_fraud"]
+    fraud_rules = db.query(Rule).filter(Rule.category.in_(fraud_categories)).order_by(Rule.detection_count.desc()).limit(10).all()
     top_rules = [
         {"name": r.name, "description": r.description, "subcategory": r.subcategory,
          "severity": r.severity, "detections": r.detection_count or 0,
@@ -102,27 +103,34 @@ def fraud_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
 @router.get("/rules")
 def get_fraud_rules(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get all fraud detection rules with their configuration."""
-    rules = db.query(Rule).filter(Rule.category == "fraud").order_by(Rule.priority, Rule.name).all()
+    fraud_categories = ["fraud", "cyber_fraud", "ai_fraud", "internal_fraud"]
+    rules = db.query(Rule).filter(Rule.category.in_(fraud_categories)).order_by(Rule.priority, Rule.name).all()
 
-    return [
-        {
+    result = []
+    for r in rules:
+        actions = json.loads(r.actions) if r.actions else []
+        # Extract flag_reason as description from actions
+        flag_reason = ""
+        for a in actions:
+            if a.get("action") == "flag_transaction":
+                flag_reason = a.get("params", {}).get("reason", "")
+                break
+        result.append({
             "id": r.id,
             "rule_id": r.name,
             "name": r.description,
+            "description": flag_reason or r.description,
+            "category": r.category,
             "subcategory": r.subcategory,
             "severity": r.severity,
             "is_enabled": r.is_enabled,
-            "conditions": json.loads(r.conditions) if r.conditions else {},
-            "actions": json.loads(r.actions) if r.actions else [],
-            "action_summary": _summarize_actions(json.loads(r.actions) if r.actions else []),
-            "applicable_channels": json.loads(r.applicable_channels) if r.applicable_channels else ["All Channels"],
+            "action_summary": _summarize_actions(actions),
             "time_window": r.time_window,
             "threshold_amount": r.threshold_amount,
             "detection_count": r.detection_count or 0,
             "last_triggered": r.last_triggered_at.isoformat() if r.last_triggered_at else None,
-        }
-        for r in rules
-    ]
+        })
+    return result
 
 
 def _summarize_actions(actions: list) -> str:

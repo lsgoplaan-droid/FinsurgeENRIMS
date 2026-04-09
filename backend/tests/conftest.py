@@ -34,6 +34,8 @@ TestSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_db():
+    # Drop existing tables first to avoid stale state from crashed runs
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     # Seed minimal test data
     db = TestSession()

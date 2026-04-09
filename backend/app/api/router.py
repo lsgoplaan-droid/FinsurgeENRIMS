@@ -3,6 +3,9 @@ from app.api import (
     auth, customers, transactions, alerts, cases, rules, kyc, watchlists,
     network, dashboard, reports, admin, integrations, workflows, features,
     internal_fraud, fraud_scenarios, ai_agent, mis_reports, compliance_sar, fraud_detection, fraud_metrics,
+    board_report, alert_tuning, sla_burndown,
+    police_fir, notification_rules, system_monitoring, rules_management,
+    compliance_scorecard, filing_deadlines, audit_trail, user_activity,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -29,3 +32,14 @@ api_router.include_router(mis_reports.router)
 api_router.include_router(compliance_sar.router)
 api_router.include_router(fraud_detection.router)
 api_router.include_router(fraud_metrics.router)
+api_router.include_router(board_report.router)
+api_router.include_router(alert_tuning.router)
+api_router.include_router(sla_burndown.router)
+api_router.include_router(police_fir.router)
+api_router.include_router(notification_rules.router)
+api_router.include_router(system_monitoring.router)
+api_router.include_router(rules_management.router)
+api_router.include_router(compliance_scorecard.router)
+api_router.include_router(filing_deadlines.router)
+api_router.include_router(audit_trail.router)
+api_router.include_router(user_activity.router)

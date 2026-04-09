@@ -29,6 +29,7 @@ export default function FraudDetectionPage() {
   const [liveFeed, setLiveFeed] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'overview' | 'rules' | 'live'>('overview')
+  const [drillDown, setDrillDown] = useState<{ title: string; data: any[] } | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -87,13 +88,13 @@ export default function FraudDetectionPage() {
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {[
-              { label: 'Fraud Alerts Today', value: dashboard.fraud_alerts_today, color: 'text-red-600', icon: AlertTriangle },
-              { label: 'Open Fraud Alerts', value: dashboard.open_fraud_alerts, color: 'text-amber-600', icon: Zap },
-              { label: 'Active Fraud Cases', value: dashboard.active_fraud_cases, color: 'text-blue-600', icon: Shield },
-              { label: 'Flagged Txns Today', value: dashboard.flagged_transactions_today, color: 'text-purple-600', icon: TrendingUp },
-              { label: 'Amount at Risk (7d)', value: formatINR(dashboard.amount_at_risk || 0), color: 'text-red-700', icon: CreditCard },
+              { label: 'Fraud Alerts Today', value: dashboard.fraud_alerts_today, color: 'text-red-600', icon: AlertTriangle, onClick: () => navigate('/alerts') },
+              { label: 'Open Fraud Alerts', value: dashboard.open_fraud_alerts, color: 'text-amber-600', icon: Zap, onClick: () => navigate('/alerts') },
+              { label: 'Active Fraud Cases', value: dashboard.active_fraud_cases, color: 'text-blue-600', icon: Shield, onClick: () => navigate('/cases') },
+              { label: 'Flagged Txns Today', value: dashboard.flagged_transactions_today, color: 'text-purple-600', icon: TrendingUp, onClick: () => setTab('live') },
+              { label: 'Amount at Risk (7d)', value: formatINR(dashboard.amount_at_risk || 0), color: 'text-red-700', icon: CreditCard, onClick: () => setTab('live') },
             ].map((kpi, i) => (
-              <div key={i} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+              <div key={i} onClick={kpi.onClick} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 cursor-pointer hover:shadow-md hover:border-slate-300 transition-all">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-medium text-slate-500 uppercase">{kpi.label}</span>
                   <kpi.icon size={16} className={kpi.color} />
@@ -109,11 +110,16 @@ export default function FraudDetectionPage() {
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Fraud by Channel (7 days)</h3>
               <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={channelData}>
+                <BarChart data={channelData} onClick={(data: any) => {
+                  if (data?.activePayload?.[0]) {
+                    const item = data.activePayload[0].payload
+                    setDrillDown({ title: `Fraud Details — ${item.name}`, data: channelData })
+                  }
+                }}>
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="value" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="value" fill="#ef4444" radius={[4, 4, 0, 0]} cursor="pointer" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -123,7 +129,12 @@ export default function FraudDetectionPage() {
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Fraud by Method (7 days)</h3>
               <ResponsiveContainer width="100%" height={250}>
                 <PieChart>
-                  <Pie data={methodData} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, value }) => `${name}: ${value}`}>
+                  <Pie data={methodData} cx="50%" cy="50%" outerRadius={90} dataKey="value" label={({ name, value }) => `${name}: ${value}`}
+                    onClick={(_, index) => {
+                      setDrillDown({ title: `Fraud Details — ${methodData[index]?.name}`, data: methodData })
+                    }}
+                    cursor="pointer"
+                  >
                     {methodData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                   </Pie>
                   <Tooltip />
@@ -139,7 +150,7 @@ export default function FraudDetectionPage() {
               <h3 className="text-sm font-semibold text-slate-700 mb-3">Top Triggered Fraud Rules</h3>
               <div className="space-y-2">
                 {(dashboard.top_fraud_rules || []).slice(0, 7).map((r: any, i: number) => (
-                  <div key={i} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                  <div key={i} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 cursor-pointer hover:bg-slate-50 -mx-2 px-2 rounded" onClick={() => navigate('/rules')}>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-700 truncate">{r.name}</p>
                       <p className="text-xs text-slate-400">{r.subcategory?.replace(/_/g, ' ')}</p>
@@ -183,48 +194,80 @@ export default function FraudDetectionPage() {
       )}
 
       {/* Rules Tab */}
-      {tab === 'rules' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Rule ID</th>
-                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Description</th>
-                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Category</th>
-                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Severity</th>
-                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Action</th>
-                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Channels</th>
-                  <th className="text-right py-2.5 px-4 font-medium text-slate-600">Detections</th>
-                  <th className="text-left py-2.5 px-4 font-medium text-slate-600">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rules.map(r => (
-                  <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
-                    <td className="py-2.5 px-4 font-mono text-xs font-semibold text-blue-600">{r.rule_id}</td>
-                    <td className="py-2.5 px-4">
-                      <p className="text-sm text-slate-700">{r.name}</p>
-                    </td>
-                    <td className="py-2.5 px-4 text-xs text-slate-500 capitalize">{r.subcategory?.replace(/_/g, ' ') || 'general'}</td>
-                    <td className="py-2.5 px-4"><Badge text={r.severity} colors={severityColors[r.severity] || ''} /></td>
-                    <td className="py-2.5 px-4">
-                      <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{r.action_summary}</span>
-                    </td>
-                    <td className="py-2.5 px-4 text-xs text-slate-500">{(r.applicable_channels || []).join(', ')}</td>
-                    <td className="py-2.5 px-4 text-right font-mono text-slate-700">{formatNumber(r.detection_count)}</td>
-                    <td className="py-2.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${r.is_enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
-                        {r.is_enabled ? 'Active' : 'Disabled'}
-                      </span>
-                    </td>
-                  </tr>
+      {tab === 'rules' && (() => {
+        const categoryOrder = ['fraud', 'cyber_fraud', 'ai_fraud', 'internal_fraud']
+        const categoryLabels: Record<string, string> = {
+          fraud: 'Transaction & Card Fraud',
+          cyber_fraud: 'Cyber Fraud',
+          ai_fraud: 'AI & Deepfake Fraud',
+          internal_fraud: 'Internal / Insider Fraud',
+        }
+        const grouped = categoryOrder.map(cat => ({
+          key: cat,
+          label: categoryLabels[cat] || cat,
+          rules: rules.filter(r => (r.category || 'fraud') === cat),
+        })).filter(g => g.rules.length > 0)
+
+        return (
+          <div className="space-y-4">
+            {/* Summary */}
+            <div className="flex items-center gap-4 bg-white rounded-xl shadow-sm border border-slate-200 p-3 px-5">
+              <span className="text-sm font-semibold text-slate-700">{rules.length} Detection Rules</span>
+              <div className="flex items-center gap-3 ml-4 text-xs text-slate-500">
+                {grouped.map(g => (
+                  <span key={g.key}><strong className="text-slate-700">{g.rules.length}</strong> {g.label}</span>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            </div>
+
+            {grouped.map(group => (
+              <div key={group.key} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
+                  <h3 className="text-sm font-bold text-slate-700">{group.label} ({group.rules.length})</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50/50">
+                        <th className="text-left py-2 px-4 font-medium text-slate-500 text-xs w-[120px]">Rule ID</th>
+                        <th className="text-left py-2 px-4 font-medium text-slate-500 text-xs">Rule Name</th>
+                        <th className="text-left py-2 px-4 font-medium text-slate-500 text-xs">Description</th>
+                        <th className="text-left py-2 px-4 font-medium text-slate-500 text-xs w-[80px]">Severity</th>
+                        <th className="text-left py-2 px-4 font-medium text-slate-500 text-xs w-[70px]">Action</th>
+                        <th className="text-right py-2 px-4 font-medium text-slate-500 text-xs w-[80px]">Detections</th>
+                        <th className="text-left py-2 px-4 font-medium text-slate-500 text-xs w-[70px]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {group.rules.map(r => (
+                        <tr key={r.id} className="border-t border-slate-100 hover:bg-blue-50/30">
+                          <td className="py-2.5 px-4 font-mono text-xs font-semibold text-blue-600">{r.rule_id}</td>
+                          <td className="py-2.5 px-4">
+                            <p className="text-sm font-medium text-slate-700">{r.name}</p>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <p className="text-xs text-slate-500">{r.description || '-'}</p>
+                          </td>
+                          <td className="py-2.5 px-4"><Badge text={r.severity} colors={severityColors[r.severity] || ''} /></td>
+                          <td className="py-2.5 px-4 whitespace-nowrap">
+                            <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded whitespace-nowrap">{r.action_summary}</span>
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono text-slate-700">{formatNumber(r.detection_count)}</td>
+                          <td className="py-2.5 px-4">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${r.is_enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
+                              {r.is_enabled ? 'Active' : 'Off'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Live Feed Tab */}
       {tab === 'live' && (
@@ -271,6 +314,31 @@ export default function FraudDetectionPage() {
           {liveFeed.length === 0 && (
             <div className="text-center py-12 text-slate-400">No flagged transactions found</div>
           )}
+        </div>
+      )}
+
+      {/* Drill-Down Modal */}
+      {drillDown && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setDrillDown(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">{drillDown.title}</h2>
+            <div className="space-y-2">
+              {drillDown.data.map((item: any, i: number) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <span className="text-sm font-medium text-slate-700 capitalize">{item.name}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-24 h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-red-500" style={{ width: `${Math.min(100, ((item.value as number) / Math.max(...drillDown.data.map((d: any) => d.value as number))) * 100)}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-slate-800 w-10 text-right">{item.value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end mt-6">
+              <button onClick={() => setDrillDown(null)} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">Close</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,0 +1,17 @@
+# docker-compose.azure.yml — For local testing with Azure-like setup
+# Usage: docker compose -f docker-compose.yml -f docker-compose.azure.yml up
+#
+# This override file can be used to test with production-like settings locally.
+# In actual Azure, Container Apps definitions replace this entirely.
+
+version: "3.8"
+
+services:
+  backend:
+    environment:
+      - ENVIRONMENT=staging
+      - SEED_ON_STARTUP=false
+      - DEBUG=false
+      # These would come from Azure Key Vault in production
+      - SECRET_KEY=${SECRET_KEY}
+      - PII_ENCRYPTION_KEY=${PII_ENCRYPTION_KEY}

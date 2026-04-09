@@ -1,0 +1,32 @@
+# Copy to terraform.tfvars and fill in values — NEVER commit terraform.tfvars
+
+project     = "finsurge-enrims"
+environment = "prod"
+aws_region  = "ap-south-1"
+
+# Network
+vpc_cidr = "10.0.0.0/16"
+
+# Database (RDS PostgreSQL)
+db_name           = "finsurge_enrims"
+db_username       = "finsurge_admin"
+db_instance_class = "db.t3.medium"    # Prod: db.r6g.large
+
+# Redis (ElastiCache)
+redis_node_type = "cache.t3.micro"    # Prod: cache.r6g.large
+
+# ECS Fargate
+ecs_cpu           = 1024              # 1 vCPU
+ecs_memory        = 2048              # 2 GB
+ecs_desired_count = 2                 # Min 2 for HA
+
+# Domains (must have Route53 hosted zone or external DNS)
+api_domain      = "api.finsurge.example.com"
+frontend_domain = "app.finsurge.example.com"
+
+# Secrets (use TF_VAR_secret_key and TF_VAR_pii_encryption_key env vars instead)
+# secret_key         = "NEVER_PUT_HERE"
+# pii_encryption_key = "NEVER_PUT_HERE"
+
+# Monitoring
+alert_email = "risk-ops@example.com"

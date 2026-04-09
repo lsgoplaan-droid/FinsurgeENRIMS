@@ -1,5 +1,8 @@
 import json
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from typing import Optional, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
@@ -7,6 +10,36 @@ from app.dependencies import get_current_user
 from app.models import Rule, Scenario, User
 
 router = APIRouter(prefix="/rules", tags=["Rules Engine"])
+
+
+class RuleCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    category: str = "fraud"
+    subcategory: Optional[str] = ""
+    severity: str = "medium"
+    is_enabled: bool = True
+    priority: int = 20
+    conditions: Optional[Any] = {}
+    actions: Optional[Any] = []
+    time_window: Optional[str] = None
+    threshold_amount: Optional[int] = None
+    threshold_count: Optional[int] = None
+
+
+class RuleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
+    severity: Optional[str] = None
+    is_enabled: Optional[bool] = None
+    priority: Optional[int] = None
+    conditions: Optional[Any] = None
+    actions: Optional[Any] = None
+    time_window: Optional[str] = None
+    threshold_amount: Optional[int] = None
+    threshold_count: Optional[int] = None
 
 
 @router.get("")
@@ -97,6 +130,56 @@ def get_rule(rule_id: str, db: Session = Depends(get_db), current_user: User = D
         "detection_count": r.detection_count or 0,
         "last_triggered_at": r.last_triggered_at.isoformat() if r.last_triggered_at else None,
     }
+
+
+@router.post("/create")
+def create_rule(body: RuleCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    r = Rule(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        description=body.description,
+        category=body.category,
+        subcategory=body.subcategory,
+        severity=body.severity,
+        is_enabled=body.is_enabled,
+        priority=body.priority,
+        conditions=json.dumps(body.conditions) if body.conditions else "{}",
+        actions=json.dumps(body.actions) if body.actions else "[]",
+        time_window=body.time_window,
+        threshold_amount=body.threshold_amount,
+        threshold_count=body.threshold_count,
+        detection_count=0,
+    )
+    db.add(r)
+    db.commit()
+    return {"id": r.id, "name": r.name}
+
+
+@router.put("/{rule_id}")
+def update_rule(rule_id: str, body: RuleUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    r = db.query(Rule).filter(Rule.id == rule_id).first()
+    if not r:
+        raise HTTPException(404, "Rule not found")
+    for field in ["name", "description", "category", "subcategory", "severity", "is_enabled", "priority", "time_window", "threshold_amount", "threshold_count"]:
+        val = getattr(body, field, None)
+        if val is not None:
+            setattr(r, field, val)
+    if body.conditions is not None:
+        r.conditions = json.dumps(body.conditions)
+    if body.actions is not None:
+        r.actions = json.dumps(body.actions)
+    db.commit()
+    return {"id": r.id, "name": r.name}
+
+
+@router.delete("/{rule_id}")
+def delete_rule(rule_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    r = db.query(Rule).filter(Rule.id == rule_id).first()
+    if not r:
+        raise HTTPException(404, "Rule not found")
+    db.delete(r)
+    db.commit()
+    return {"deleted": True, "id": rule_id}
 
 
 @router.post("/{rule_id}/toggle")

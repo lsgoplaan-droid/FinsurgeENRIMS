@@ -27,6 +27,7 @@ class JSONFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
+            "environment": settings.ENVIRONMENT,
         }
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)
@@ -48,11 +49,18 @@ async def lifespan(app: FastAPI):
     try:
         from app.models import User
         user_count = db.query(User).count()
-        if user_count == 0:
-            logger.info("Database empty — seeding demo data...")
+        if user_count == 0 and settings.SEED_ON_STARTUP:
+            logger.info("Database empty + SEED_ON_STARTUP=true — seeding demo data...")
             from app.seed.seed_all import seed_all
             seed_all(db)
             logger.info("Seeding complete!")
+        elif user_count == 0 and settings.ENVIRONMENT == "development":
+            logger.info("Database empty (dev mode) — seeding demo data...")
+            from app.seed.seed_all import seed_all
+            seed_all(db)
+            logger.info("Seeding complete!")
+        elif user_count == 0:
+            logger.warning("Database empty but SEED_ON_STARTUP is not enabled. Set SEED_ON_STARTUP=true or run migrations.")
         else:
             logger.info(f"Database has {user_count} users — skipping seed.")
     finally:
@@ -74,10 +82,12 @@ app = FastAPI(
 # Middleware (order matters: last added = first executed)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware, login_limit=5, api_limit=100, window=60)
+# In production, CORS_ORIGINS env var must be set to specific domains
+_cors_origins = settings.CORS_ORIGINS if settings.ENVIRONMENT != "development" else ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=_cors_origins,
+    allow_credentials=False if _cors_origins == ["*"] else True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
@@ -102,7 +112,8 @@ def root():
 
 @app.get("/health")
 def health():
-    """Enhanced health check — verifies DB connectivity."""
+    """Enhanced health check — verifies DB + Redis connectivity."""
+    # DB check
     try:
         db = SessionLocal()
         from sqlalchemy import text
@@ -112,11 +123,25 @@ def health():
     except Exception as e:
         db_status = f"error: {e}"
 
+    # Redis check (if configured)
+    redis_status = "not configured"
+    if settings.REDIS_URL:
+        try:
+            import redis
+            r = redis.from_url(settings.REDIS_URL, socket_timeout=2)
+            r.ping()
+            redis_status = "connected"
+        except Exception as e:
+            redis_status = f"error: {e}"
+
+    all_healthy = db_status == "connected" and redis_status in ("connected", "not configured")
+
     return {
-        "status": "healthy" if db_status == "connected" else "degraded",
+        "status": "healthy" if all_healthy else "degraded",
         "database": db_status,
+        "redis": redis_status,
         "version": settings.APP_VERSION,
-        "debug": settings.DEBUG,
+        "environment": settings.ENVIRONMENT,
     }
 
 

@@ -2,22 +2,94 @@
 Compliance & SAR — Dedicated compliance module with filing workflows,
 regulatory calendar, and compliance dashboard.
 """
-import random
-from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, Query
+from datetime import date, timedelta
+from calendar import monthrange
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import CTRReport, SARReport, Customer, Alert, Case, User
+from app.models import CTRReport, SARReport, Customer, Case, User
 
 router = APIRouter(prefix="/compliance", tags=["Compliance & SAR"])
+
+
+def _next_occurrence(today: date, day_of_month: int, frequency: str) -> date:
+    """Calculate the next occurrence of a recurring deadline."""
+    if frequency == "daily":
+        return today + timedelta(days=1)
+    if frequency == "weekly":
+        days_ahead = 7 - today.weekday()  # Next Monday
+        return today + timedelta(days=days_ahead if days_ahead > 0 else 7)
+    if frequency == "monthly":
+        year, month = today.year, today.month
+        target_day = min(day_of_month, monthrange(year, month)[1])
+        target = date(year, month, target_day)
+        if target <= today:
+            month += 1
+            if month > 12:
+                month, year = 1, year + 1
+            target_day = min(day_of_month, monthrange(year, month)[1])
+            target = date(year, month, target_day)
+        return target
+    if frequency == "quarterly":
+        quarter_months = [3, 6, 9, 12]
+        for qm in quarter_months:
+            year = today.year
+            target_day = min(day_of_month, monthrange(year, qm)[1])
+            target = date(year, qm, target_day)
+            if target > today:
+                return target
+        return date(today.year + 1, 3, min(day_of_month, monthrange(today.year + 1, 3)[1]))
+    if frequency == "semi_annual":
+        for m in [6, 12]:
+            year = today.year
+            target_day = min(day_of_month, monthrange(year, m)[1])
+            target = date(year, m, target_day)
+            if target > today:
+                return target
+        return date(today.year + 1, 6, min(day_of_month, monthrange(today.year + 1, 6)[1]))
+    if frequency == "annual":
+        target = date(today.year, 3, 31)  # RBI fiscal year end
+        if target <= today:
+            target = date(today.year + 1, 3, 31)
+        return target
+    return today + timedelta(days=30)
+
+
+# RBI / PMLA regulatory deadlines with fixed recurrence rules
+REGULATORY_DEADLINES = [
+    {"name": "CTR Monthly Filing to FIU-IND", "owner": "Compliance", "frequency": "monthly", "day": 15, "priority": "high",
+     "description": "Cash Transaction Reports for transactions >10 lakh INR — RBI Master Direction on KYC"},
+    {"name": "PMLA Principal Officer Report", "owner": "Principal Officer", "frequency": "monthly", "day": 20, "priority": "critical",
+     "description": "Principal Officer monthly report to FIU-IND under PMLA Section 12"},
+    {"name": "STR Filing to FIU-IND", "owner": "Compliance", "frequency": "monthly", "day": 7, "priority": "critical",
+     "description": "Suspicious Transaction Reports within 7 days of detection — PMLA Rules 2005"},
+    {"name": "OFAC SDN List Update", "owner": "Compliance", "frequency": "daily", "day": 1, "priority": "high",
+     "description": "Screen against updated OFAC Specially Designated Nationals list"},
+    {"name": "UN Sanctions List Update", "owner": "Compliance", "frequency": "weekly", "day": 1, "priority": "high",
+     "description": "Update UN Security Council consolidated sanctions list"},
+    {"name": "KYC Periodic Review — High Risk", "owner": "KYC Team", "frequency": "quarterly", "day": 30, "priority": "high",
+     "description": "Re-verify KYC for high-risk customers per RBI Master Direction"},
+    {"name": "KYC Periodic Review — Medium Risk", "owner": "KYC Team", "frequency": "semi_annual", "day": 30, "priority": "medium",
+     "description": "Re-verify KYC for medium-risk customers"},
+    {"name": "Board AML/CFT Report", "owner": "Compliance Head", "frequency": "quarterly", "day": 15, "priority": "medium",
+     "description": "Quarterly AML/CFT compliance report to Board of Directors"},
+    {"name": "Internal Audit — AML Controls", "owner": "Internal Audit", "frequency": "quarterly", "day": 25, "priority": "medium",
+     "description": "Quarterly internal audit of AML/CFT controls effectiveness"},
+    {"name": "PEP List Review", "owner": "Compliance", "frequency": "quarterly", "day": 10, "priority": "high",
+     "description": "Review and update Politically Exposed Persons database"},
+    {"name": "RBI Annual Fraud Return", "owner": "Compliance", "frequency": "annual", "day": 31, "priority": "high",
+     "description": "Annual fraud return submission to RBI — due by March 31"},
+    {"name": "Risk Assessment Update", "owner": "Risk Team", "frequency": "annual", "day": 31, "priority": "medium",
+     "description": "Annual institution-wide AML/CFT risk assessment update"},
+]
 
 
 @router.get("/dashboard")
 def compliance_dashboard(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Compliance dashboard — filing status, deadlines, regulatory metrics."""
-    now = datetime.utcnow()
+    today = date.today()
 
     ctr_pending = db.query(func.count(CTRReport.id)).filter(CTRReport.filing_status.in_(["auto_generated", "pending_review"])).scalar() or 0
     ctr_filed = db.query(func.count(CTRReport.id)).filter(CTRReport.filing_status == "filed").scalar() or 0
@@ -31,6 +103,72 @@ def compliance_dashboard(db: Session = Depends(get_db), current_user: User = Dep
         ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
     ).scalar() or 0
 
+    # Build deadlines from deterministic schedule
+    deadlines = []
+    for item in REGULATORY_DEADLINES:
+        next_due = _next_occurrence(today, item["day"], item["frequency"])
+        days_until = (next_due - today).days
+        if days_until < 0:
+            status = "overdue"
+        elif days_until <= 3:
+            status = "due_soon"
+        elif days_until <= 14:
+            status = "upcoming"
+        else:
+            status = "scheduled"
+
+        deadlines.append({
+            "name": item["name"],
+            "owner": item["owner"],
+            "frequency": item["frequency"],
+            "due_date": next_due.isoformat(),
+            "next_due": next_due.isoformat(),
+            "days_until_due": days_until,
+            "priority": item["priority"],
+            "status": status,
+            "description": item["description"],
+        })
+
+    deadlines.sort(key=lambda x: x["days_until_due"])
+
+    # Recent filings from actual DB data
+    recent_ctrs = (
+        db.query(CTRReport)
+        .order_by(CTRReport.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    recent_sars = (
+        db.query(SARReport)
+        .order_by(SARReport.created_at.desc())
+        .limit(3)
+        .all()
+    )
+
+    recent_filings = []
+    for r in recent_ctrs:
+        customer = db.query(Customer).filter(Customer.id == r.customer_id).first() if r.customer_id else None
+        recent_filings.append({
+            "type": "CTR",
+            "report_number": r.report_number,
+            "customer": customer.full_name if customer else "-",
+            "amount": r.transaction_amount or 0,
+            "filed_date": r.filed_at.strftime("%Y-%m-%d") if r.filed_at else (r.created_at.strftime("%Y-%m-%d") if r.created_at else "-"),
+            "status": r.filing_status or "pending",
+        })
+    for r in recent_sars:
+        customer = db.query(Customer).filter(Customer.id == r.customer_id).first() if r.customer_id else None
+        recent_filings.append({
+            "type": "SAR",
+            "report_number": r.report_number,
+            "customer": customer.full_name if customer else "-",
+            "amount": r.total_amount or 0,
+            "filed_date": r.filed_at.strftime("%Y-%m-%d") if r.filed_at else (r.created_at.strftime("%Y-%m-%d") if r.created_at else "-"),
+            "status": r.filing_status or "pending",
+        })
+
+    recent_filings.sort(key=lambda x: x["filed_date"], reverse=True)
+
     return {
         "filing_status": {
             "ctr_pending": ctr_pending,
@@ -43,54 +181,30 @@ def compliance_dashboard(db: Session = Depends(get_db), current_user: User = Dep
             "pep_customers": pep_customers,
             "open_investigations": open_investigations,
         },
-        "regulatory_deadlines": [
-            {"name": "Monthly CTR Batch Filing to FIU-IND", "due_date": (now + timedelta(days=random.randint(5, 15))).strftime("%Y-%m-%d"), "status": "upcoming", "priority": "high"},
-            {"name": "Quarterly AML Compliance Report to Board", "due_date": (now + timedelta(days=random.randint(20, 45))).strftime("%Y-%m-%d"), "status": "upcoming", "priority": "medium"},
-            {"name": "Annual KYC Review for High-Risk Customers", "due_date": (now + timedelta(days=random.randint(30, 60))).strftime("%Y-%m-%d"), "status": "in_progress", "priority": "high"},
-            {"name": "PMLA Principal Officer Report to FIU-IND", "due_date": (now + timedelta(days=random.randint(10, 25))).strftime("%Y-%m-%d"), "status": "upcoming", "priority": "critical"},
-            {"name": "RBI Annual Fraud Return Submission", "due_date": (now + timedelta(days=random.randint(40, 90))).strftime("%Y-%m-%d"), "status": "not_started", "priority": "medium"},
-            {"name": "Sanctions List Update (OFAC/UN)", "due_date": (now + timedelta(days=random.randint(1, 3))).strftime("%Y-%m-%d"), "status": "scheduled", "priority": "high"},
-        ],
-        "recent_filings": [
-            {"type": "CTR", "report_number": f"CTR-{(now - timedelta(days=i)).strftime('%Y%m%d')}-{1000+i:04d}", "customer": f"Customer {random.randint(1001, 1070)}", "amount": random.randint(1000000, 5000000) * 100, "filed_date": (now - timedelta(days=i)).strftime("%Y-%m-%d"), "status": "filed"}
-            for i in range(1, 6)
-        ] + [
-            {"type": "SAR", "report_number": f"SAR-{(now - timedelta(days=i*3)).strftime('%Y%m%d')}-{2000+i:04d}", "customer": f"Customer {random.randint(1001, 1070)}", "amount": random.randint(5000000, 50000000) * 100, "filed_date": (now - timedelta(days=i*3)).strftime("%Y-%m-%d"), "status": random.choice(["filed", "pending_review"])}
-            for i in range(1, 4)
-        ],
+        "regulatory_deadlines": deadlines,
+        "recent_filings": recent_filings,
     }
 
 
 @router.get("/regulatory-calendar")
 def regulatory_calendar(current_user: User = Depends(get_current_user)):
     """Upcoming regulatory deadlines and compliance calendar."""
-    now = datetime.utcnow()
+    today = date.today()
 
     calendar = []
-    items = [
-        ("CTR Monthly Filing", "FIU-IND", "monthly", "high", 15),
-        ("STR Filing (if any)", "FIU-IND", "as_needed", "critical", 7),
-        ("OFAC SDN List Update", "Compliance", "daily", "high", 1),
-        ("UN Sanctions List Update", "Compliance", "weekly", "high", 3),
-        ("KYC Periodic Review - High Risk", "KYC Team", "quarterly", "high", 45),
-        ("KYC Periodic Review - Medium Risk", "KYC Team", "semi_annual", "medium", 90),
-        ("Board AML/CFT Report", "Compliance Head", "quarterly", "medium", 60),
-        ("RBI Annual Fraud Return", "Compliance", "annual", "high", 120),
-        ("PMLA Principal Officer Report", "Principal Officer", "monthly", "critical", 20),
-        ("Internal Audit - AML Controls", "Internal Audit", "quarterly", "medium", 75),
-        ("PEP List Review", "Compliance", "quarterly", "high", 50),
-        ("Risk Assessment Update", "Risk Team", "annual", "medium", 180),
-    ]
+    for item in REGULATORY_DEADLINES:
+        next_due = _next_occurrence(today, item["day"], item["frequency"])
+        days_until = (next_due - today).days
 
-    for name, owner, frequency, priority, days_until in items:
         calendar.append({
-            "name": name,
-            "owner": owner,
-            "frequency": frequency,
-            "priority": priority,
-            "next_due": (now + timedelta(days=days_until)).strftime("%Y-%m-%d"),
+            "name": item["name"],
+            "owner": item["owner"],
+            "frequency": item["frequency"],
+            "priority": item["priority"],
+            "next_due": next_due.isoformat(),
             "days_until_due": days_until,
-            "status": "overdue" if days_until < 0 else "due_soon" if days_until < 7 else "upcoming",
+            "status": "overdue" if days_until < 0 else "due_soon" if days_until <= 3 else "upcoming",
+            "description": item["description"],
         })
 
     calendar.sort(key=lambda x: x["days_until_due"])

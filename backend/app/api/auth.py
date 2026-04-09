@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from datetime import datetime
 from app.database import get_db
@@ -51,3 +51,21 @@ def get_me(current_user: User = Depends(get_current_user)):
         last_login_at=current_user.last_login_at,
         created_at=current_user.created_at,
     )
+
+
+# In-memory token blacklist (use Redis in production via REDIS_URL)
+_token_blacklist: set[str] = set()
+
+
+def is_token_blacklisted(token: str) -> bool:
+    return token in _token_blacklist
+
+
+@router.post("/logout")
+def logout(request: Request, current_user: User = Depends(get_current_user)):
+    """Invalidate the current token by adding it to the blacklist."""
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:]
+        _token_blacklist.add(token)
+    return {"detail": "Logged out successfully"}

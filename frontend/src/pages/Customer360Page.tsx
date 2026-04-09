@@ -8,7 +8,7 @@ const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
 )
 
-type Tab = 'overview' | 'transactions' | 'alerts' | 'kyc'
+type Tab = 'overview' | 'transactions' | 'alerts'
 
 // Circular gauge SVG for risk score
 function RiskGauge({ score }: { score: number }) {
@@ -60,7 +60,6 @@ export default function Customer360Page() {
     { key: 'overview', label: 'Overview', icon: User },
     { key: 'transactions', label: 'Transactions', icon: CreditCard },
     { key: 'alerts', label: 'Alerts & Cases', icon: Bell },
-    { key: 'kyc', label: 'KYC', icon: Shield },
   ]
 
   return (
@@ -269,49 +268,6 @@ export default function Customer360Page() {
         </div>
       )}
 
-      {/* KYC */}
-      {tab === 'kyc' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">KYC Status</h3>
-            <div className="space-y-3">
-              {[
-                ['KYC Status', customer.kyc_status],
-                ['Last KYC Date', formatDate(customer.last_kyc_date || kycInfo?.completed_at)],
-                ['Next Review Date', formatDate(customer.next_kyc_review || kycInfo?.next_review_date)],
-                ['Risk Category', customer.risk_category],
-                ['PEP', customer.is_pep ? 'Yes' : 'No'],
-                ['ID Verified', customer.id_verified ? 'Yes' : kycInfo?.id_verified ? 'Yes' : '-'],
-                ['Address Verified', customer.address_verified ? 'Yes' : kycInfo?.address_verified ? 'Yes' : '-'],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between py-1 border-b border-slate-50 last:border-0">
-                  <span className="text-sm text-slate-500">{label}</span>
-                  <span className="text-sm font-medium text-slate-700 capitalize">{(value ?? '-').toString().replace(/_/g, ' ')}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Documents</h3>
-            {(data.documents || kycInfo?.documents || []).length > 0 ? (
-              <div className="space-y-2">
-                {(data.documents || kycInfo?.documents || []).map((doc: any, i: number) => (
-                  <div key={doc.id || i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">{doc.document_type || doc.type || doc.name}</p>
-                      <p className="text-xs text-slate-400">{formatDate(doc.uploaded_at || doc.created_at)}</p>
-                    </div>
-                    <Badge text={doc.status || 'verified'} colors={statusColors[doc.status] || 'bg-green-100 text-green-800'} />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-slate-400 text-center py-4">No documents on file</p>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

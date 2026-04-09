@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-FinsurgeENRIMS — Enterprise Risk Management System for banking (AML, fraud detection, KYC, case management, regulatory reporting). Python 3.12 backend, React 18 frontend, SQLite for demo.
+FinsurgeENRIMS — Enterprise Risk Management System for banking (AML, fraud detection, KYC, case management, regulatory reporting). Python 3.12 backend, React 18 frontend, SQLite for demo. Production target: Azure Central India (RBI data localization).
 
 ## Commands
 
@@ -37,6 +37,15 @@ pytest tests/ --cov=app --cov-report=term     # With coverage
 ### Docker
 ```bash
 docker-compose up --build      # Backend :8000 + Frontend :3000
+docker compose -f docker-compose.yml -f docker-compose.azure.yml up  # Azure-like staging
+```
+
+### Infrastructure (Azure)
+```bash
+cd infrastructure/terraform
+terraform init                 # Initialize with Azure backend
+terraform plan                 # Preview Azure resource changes
+terraform apply                # Deploy to Azure Central India
 ```
 
 ## Architecture
@@ -104,6 +113,22 @@ Key demo personas: CIF-1001 Rajesh Mehta (structuring), CIF-1003 Hassan Trading 
 
 Must use **Python 3.12** (see `backend/.python-version`). Python 3.14 breaks pydantic-core (no pre-built wheels, needs Rust compiler).
 
+## Cloud Architecture (Azure)
+
+**Production stack** (Terraform in `infrastructure/terraform/`):
+- Azure Container Apps (backend) + Azure Static Web Apps (frontend)
+- Azure Database for PostgreSQL Flexible Server (zone-redundant HA)
+- Azure Cache for Redis (rate limiting, sessions)
+- Azure Application Gateway + WAF v2 (OWASP 3.2 rules)
+- Azure Front Door (CDN, global routing)
+- Azure Key Vault (secrets: SECRET_KEY, PII_ENCRYPTION_KEY)
+- Azure Container Registry (ACR) for Docker images
+- Azure Monitor + Log Analytics (metrics, alerts, dashboards)
+
+**CI/CD**: GitHub Actions → ACR → Container Apps (`.github/workflows/deploy-azure.yml`)
+
+**Default theme**: Dark mode (toggleable via sun/moon icon in header)
+
 ## Gotchas
 
 - `conftest.py` sets `TESTING=true` env var to disable rate limiter during tests
@@ -111,3 +136,4 @@ Must use **Python 3.12** (see `backend/.python-version`). Python 3.14 breaks pyd
 - Frontend `package.json` was manually created (not from Vite template) — needs `"type": "module"` and explicit scripts
 - Tailwind v4 has no config file — uses CSS `@theme` directive in `index.css`
 - `PendingAction` model lives in `services/maker_checker.py`, not in `models/` — imported via `models/__init__.py`
+- Dark theme is default — first visit uses dark mode; toggling stores preference in `localStorage('theme')`

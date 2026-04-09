@@ -15,16 +15,18 @@ const riskBadgeColors: Record<string, string> = {
 }
 
 const categoryBadgeColors: Record<string, string> = {
-  aml: 'bg-purple-100 text-purple-800',
   fraud: 'bg-red-100 text-red-800',
-  compliance: 'bg-blue-100 text-blue-800',
+  cyber_fraud: 'bg-orange-100 text-orange-800',
+  ai_fraud: 'bg-violet-100 text-violet-800',
+  internal_fraud: 'bg-amber-100 text-amber-800',
 }
 
 const TABS = [
   { key: '', label: 'All' },
-  { key: 'aml', label: 'AML' },
   { key: 'fraud', label: 'Fraud' },
-  { key: 'compliance', label: 'Compliance' },
+  { key: 'cyber_fraud', label: 'Cyber Fraud' },
+  { key: 'ai_fraud', label: 'AI Fraud' },
+  { key: 'internal_fraud', label: 'Internal Fraud' },
 ]
 
 export default function FraudScenariosPage() {

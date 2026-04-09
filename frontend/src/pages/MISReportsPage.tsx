@@ -290,16 +290,12 @@ function RiskTab({ data }: { data: any }) {
 function RegulatoryTab({ data }: { data: any }) {
   const ctr = data?.ctr || data?.ctr_status || {}
   const sar = data?.sar || data?.sar_status || {}
-  const kyc = data?.kyc_compliance || data?.kyc || {}
-
   const filingCards = [
     { label: 'CTR Filed', value: ctr.filed ?? 0, total: (ctr.filed ?? 0) + (ctr.pending ?? 0), color: 'text-green-600', barColor: 'bg-green-500' },
     { label: 'CTR Pending', value: ctr.pending ?? 0, total: (ctr.filed ?? 0) + (ctr.pending ?? 0), color: 'text-amber-600', barColor: 'bg-amber-500' },
     { label: 'SAR Filed', value: sar.filed ?? 0, total: (sar.filed ?? 0) + (sar.pending ?? 0), color: 'text-green-600', barColor: 'bg-green-500' },
     { label: 'SAR Pending', value: sar.pending ?? 0, total: (sar.filed ?? 0) + (sar.pending ?? 0), color: 'text-amber-600', barColor: 'bg-amber-500' },
   ]
-
-  const kycRate = kyc.compliance_rate ?? kyc.rate ?? 0
 
   return (
     <div className="space-y-4">
@@ -322,41 +318,6 @@ function RegulatoryTab({ data }: { data: any }) {
         })}
       </div>
 
-      {/* KYC Compliance gauge */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-        <h4 className="text-sm font-semibold text-slate-700 mb-4">KYC Compliance Rate</h4>
-        <div className="flex items-center gap-6">
-          <div className="relative w-32 h-32">
-            <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" strokeWidth="10" />
-              <circle
-                cx="60" cy="60" r="50" fill="none"
-                stroke={kycRate >= 90 ? '#10b981' : kycRate >= 70 ? '#f59e0b' : '#ef4444'}
-                strokeWidth="10"
-                strokeDasharray={`${(kycRate / 100) * 314.16} 314.16`}
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xl font-bold text-slate-800">{kycRate.toFixed(1)}%</span>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-500" />
-              <span className="text-sm text-slate-600">Compliant: {formatNumber(kyc.compliant ?? 0)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-amber-500" />
-              <span className="text-sm text-slate-600">Expiring Soon: {formatNumber(kyc.expiring_soon ?? 0)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-red-500" />
-              <span className="text-sm text-slate-600">Expired: {formatNumber(kyc.expired ?? 0)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

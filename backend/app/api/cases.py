@@ -6,7 +6,7 @@ from sqlalchemy import func
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Case, CaseActivity, CaseEvidence as CaseEvidenceModel, Customer, User, Alert, case_alerts
-from app.schemas.case import CaseResponse, CaseCreate, CaseAssign, CaseEscalate, CaseDisposition, CaseStats
+from app.schemas.case import CaseResponse, CaseCreate, CaseAssign, CaseEscalate, CaseDisposition, CaseStatusUpdate, CaseUpdate, CaseStats
 
 router = APIRouter(prefix="/cases", tags=["Cases"])
 
@@ -177,6 +177,51 @@ def get_case_alerts(case_id: str, db: Session = Depends(get_db), current_user: U
             "created_at": a.created_at.isoformat() if a.created_at else None,
         })
     return result
+
+
+VALID_STATUS_TRANSITIONS = {
+    "open": ["under_investigation", "assigned", "escalated"],
+    "assigned": ["under_investigation", "escalated"],
+    "under_investigation": ["pending_regulatory", "escalated", "closed_true_positive", "closed_false_positive", "closed_inconclusive"],
+    "escalated": ["under_investigation", "pending_regulatory"],
+    "pending_regulatory": ["under_investigation", "closed_true_positive", "closed_false_positive", "closed_inconclusive"],
+}
+
+
+@router.patch("/{case_id}/status")
+def update_case_status(case_id: str, body: CaseStatusUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    c = db.query(Case).filter(Case.id == case_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    allowed = VALID_STATUS_TRANSITIONS.get(c.status, [])
+    if body.status not in allowed:
+        raise HTTPException(status_code=400, detail=f"Cannot transition from '{c.status}' to '{body.status}'")
+    old_status = c.status
+    c.status = body.status
+    activity = CaseActivity(case_id=case_id, user_id=current_user.id, activity_type="status_changed", description=body.notes or f"Status changed to {body.status}", old_value=old_status, new_value=body.status)
+    db.add(activity)
+    db.commit()
+    db.refresh(c)
+    return _case_response(c, db)
+
+
+@router.put("/{case_id}")
+def update_case(case_id: str, body: CaseUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    c = db.query(Case).filter(Case.id == case_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    changes = []
+    for field in ["title", "description", "priority", "findings", "recommendation"]:
+        val = getattr(body, field, None)
+        if val is not None:
+            setattr(c, field, val)
+            changes.append(field)
+    if changes:
+        activity = CaseActivity(case_id=case_id, user_id=current_user.id, activity_type="updated", description=f"Updated: {', '.join(changes)}")
+        db.add(activity)
+    db.commit()
+    db.refresh(c)
+    return _case_response(c, db)
 
 
 @router.post("/{case_id}/assign")

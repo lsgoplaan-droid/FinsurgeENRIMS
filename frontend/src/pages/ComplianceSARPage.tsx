@@ -52,7 +52,6 @@ export default function ComplianceSARPage() {
   ]
 
   const complianceCards = [
-    { label: 'Expired KYC', value: metrics.expired_kyc ?? 0, color: 'text-red-600', bg: 'bg-red-50', icon: AlertTriangle },
     { label: 'PEP Customers', value: metrics.pep_customers ?? 0, color: 'text-purple-600', bg: 'bg-purple-50', icon: Users },
     { label: 'Open Investigations', value: metrics.open_investigations ?? 0, color: 'text-blue-600', bg: 'bg-blue-50', icon: Shield },
   ]
@@ -121,7 +120,7 @@ export default function ComplianceSARPage() {
               {deadlines.map((d: any, i: number) => {
                 const isOverdue = d.status === 'overdue' || (d.days_until_due != null && d.days_until_due < 0)
                 const isDueSoon = d.status === 'due_soon' || (d.days_until_due != null && d.days_until_due >= 0 && d.days_until_due <= 7)
-                const rowBg = isOverdue ? 'bg-red-50' : isDueSoon ? 'bg-amber-50' : ''
+                const rowBg = isOverdue ? 'bg-red-500/10' : isDueSoon ? 'bg-amber-500/10' : ''
 
                 return (
                   <tr key={d.id || i} className={`border-t border-slate-100 ${rowBg}`}>

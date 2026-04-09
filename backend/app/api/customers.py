@@ -18,6 +18,7 @@ def _customer_to_response(c: Customer, db: Session) -> CustomerResponse:
         last_name=c.last_name,
         company_name=c.company_name,
         display_name=c.full_name,
+        full_name=c.full_name,
         date_of_birth=c.date_of_birth,
         gender=c.gender,
         nationality=c.nationality,

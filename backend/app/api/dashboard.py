@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+from typing import Optional, Dict
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case as sql_case, and_
 from app.database import get_db
@@ -8,6 +10,53 @@ from app.models import Alert, Case, Customer, Transaction, User
 from app.schemas.dashboard import ExecutiveDashboard
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+# ─── In-memory risk appetite thresholds (CRO-configurable) ─────────────────
+_DEFAULT_THRESHOLDS = {
+    "high_risk_customer_pct": {"limit": 15.0, "warning": 12.0},
+    "portfolio_avg_risk": {"limit": 45.0, "warning": 35.0},
+    "pep_exposure_pct": {"limit": 5.0, "warning": 3.0},
+    "sla_compliance_pct": {"limit": 85.0, "warning": 90.0},
+    "flagged_txn_pct": {"limit": 2.0, "warning": 1.5},
+}
+_risk_thresholds: Dict[str, Dict[str, float]] = {k: dict(v) for k, v in _DEFAULT_THRESHOLDS.items()}
+
+
+def _get_risk_thresholds():
+    return _risk_thresholds
+
+
+class ThresholdUpdate(BaseModel):
+    metric_id: str
+    warning: Optional[float] = None
+    limit: Optional[float] = None
+
+
+@router.get("/risk-appetite/thresholds")
+def get_thresholds(current_user: User = Depends(get_current_user)):
+    """Get current CRO-defined risk appetite thresholds."""
+    return _risk_thresholds
+
+
+@router.put("/risk-appetite/thresholds")
+def update_threshold(body: ThresholdUpdate, current_user: User = Depends(get_current_user)):
+    """Update a risk appetite threshold (CRO action)."""
+    if body.metric_id not in _risk_thresholds:
+        from fastapi import HTTPException
+        raise HTTPException(400, f"Unknown metric: {body.metric_id}")
+    if body.warning is not None:
+        _risk_thresholds[body.metric_id]["warning"] = body.warning
+    if body.limit is not None:
+        _risk_thresholds[body.metric_id]["limit"] = body.limit
+    return {"metric_id": body.metric_id, **_risk_thresholds[body.metric_id]}
+
+
+@router.post("/risk-appetite/thresholds/reset")
+def reset_thresholds(current_user: User = Depends(get_current_user)):
+    """Reset all thresholds to defaults."""
+    global _risk_thresholds
+    _risk_thresholds = {k: dict(v) for k, v in _DEFAULT_THRESHOLDS.items()}
+    return _risk_thresholds
 
 
 @router.get("/executive")
@@ -158,3 +207,185 @@ def risk_heatmap(db: Session = Depends(get_db), current_user: User = Depends(get
         data.append(row)
 
     return {"channels": channels, "risk_levels": risk_levels, "data": data}
+
+
+@router.get("/geo-risk")
+def geographic_risk(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Geographic risk distribution by state — powers the India risk heatmap."""
+
+    # Get customer counts and avg risk by state
+    state_data = (
+        db.query(
+            Customer.state,
+            func.count(Customer.id).label("customers"),
+            func.avg(Customer.risk_score).label("avg_risk"),
+            func.sum(sql_case((Customer.risk_category.in_(["high", "very_high"]), 1), else_=0)).label("high_risk_count"),
+        )
+        .filter(Customer.is_active == True, Customer.state.isnot(None))
+        .group_by(Customer.state)
+        .all()
+    )
+
+    # Get alert counts by customer state
+    alert_by_state = dict(
+        db.query(Customer.state, func.count(Alert.id))
+        .join(Alert, Alert.customer_id == Customer.id)
+        .filter(Customer.state.isnot(None), ~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+        .group_by(Customer.state)
+        .all()
+    )
+
+    # Get transaction volume by customer state
+    txn_by_state = dict(
+        db.query(Customer.state, func.sum(Transaction.amount))
+        .join(Transaction, Transaction.customer_id == Customer.id)
+        .filter(Customer.state.isnot(None))
+        .group_by(Customer.state)
+        .all()
+    )
+
+    # Get flagged txn amount by state
+    flagged_by_state = dict(
+        db.query(Customer.state, func.sum(Transaction.amount))
+        .join(Transaction, Transaction.customer_id == Customer.id)
+        .filter(Customer.state.isnot(None), Transaction.is_flagged == True)
+        .group_by(Customer.state)
+        .all()
+    )
+
+    states = []
+    for row in state_data:
+        state_name = row[0]
+        avg_risk = float(row[2] or 0)
+        states.append({
+            "state": state_name,
+            "customers": row[1],
+            "avg_risk": round(avg_risk, 1),
+            "high_risk_count": row[3] or 0,
+            "open_alerts": alert_by_state.get(state_name, 0),
+            "transaction_volume": txn_by_state.get(state_name, 0) or 0,
+            "flagged_amount": flagged_by_state.get(state_name, 0) or 0,
+        })
+
+    # Sort by avg_risk descending
+    states.sort(key=lambda x: x["avg_risk"], reverse=True)
+
+    # Summary
+    total_customers = sum(s["customers"] for s in states)
+    total_high_risk = sum(s["high_risk_count"] for s in states)
+    total_alerts = sum(s["open_alerts"] for s in states)
+    hotspot_state = states[0]["state"] if states else None
+
+    return {
+        "states": states,
+        "summary": {
+            "total_states": len(states),
+            "total_customers": total_customers,
+            "total_high_risk": total_high_risk,
+            "total_open_alerts": total_alerts,
+            "hotspot": hotspot_state,
+        },
+    }
+
+
+@router.get("/risk-appetite")
+def risk_appetite(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Risk appetite dashboard — portfolio risk vs CRO-set thresholds."""
+    now = datetime.utcnow()
+
+    total_customers = db.query(func.count(Customer.id)).filter(Customer.is_active == True).scalar() or 1
+    high_risk = db.query(func.count(Customer.id)).filter(
+        Customer.is_active == True, Customer.risk_category.in_(["high", "very_high"])
+    ).scalar() or 0
+    avg_portfolio_risk = db.query(func.avg(Customer.risk_score)).filter(Customer.is_active == True).scalar() or 0
+
+    # PEP exposure
+    pep_count = db.query(func.count(Customer.id)).filter(Customer.is_active == True, Customer.pep_status == True).scalar() or 0
+
+    # Open alerts / cases
+    open_alerts = db.query(func.count(Alert.id)).filter(
+        ~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+    ).scalar() or 0
+    overdue_alerts = db.query(func.count(Alert.id)).filter(Alert.is_overdue == True).scalar() or 0
+    open_cases = db.query(func.count(Case.id)).filter(
+        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+    ).scalar() or 0
+
+    # Flagged transaction volume (last 30 days)
+    thirty_days_ago = now - timedelta(days=30)
+    flagged_txn_vol = db.query(func.sum(Transaction.amount)).filter(
+        Transaction.is_flagged == True, Transaction.transaction_date >= thirty_days_ago
+    ).scalar() or 0
+    total_txn_vol = db.query(func.sum(Transaction.amount)).filter(
+        Transaction.transaction_date >= thirty_days_ago
+    ).scalar() or 1
+
+    high_risk_pct = round(high_risk / total_customers * 100, 1)
+    flagged_pct = round(flagged_txn_vol / total_txn_vol * 100, 2) if total_txn_vol else 0
+
+    # Thresholds — in-memory store (persists until restart, production would use DB)
+    thresholds = _get_risk_thresholds()
+
+    sla_compliance = round((1 - overdue_alerts / max(open_alerts, 1)) * 100, 1) if open_alerts else 100.0
+    pep_pct = round(pep_count / total_customers * 100, 2)
+
+    metrics = [
+        {
+            "id": "high_risk_pct",
+            "label": "High-Risk Customer Exposure",
+            "value": high_risk_pct,
+            "unit": "%",
+            "threshold": thresholds["high_risk_customer_pct"],
+            "status": "breach" if high_risk_pct > thresholds["high_risk_customer_pct"]["limit"] else "warning" if high_risk_pct > thresholds["high_risk_customer_pct"]["warning"] else "ok",
+        },
+        {
+            "id": "avg_risk",
+            "label": "Portfolio Average Risk Score",
+            "value": round(float(avg_portfolio_risk), 1),
+            "unit": "/ 100",
+            "threshold": thresholds["portfolio_avg_risk"],
+            "status": "breach" if float(avg_portfolio_risk) > thresholds["portfolio_avg_risk"]["limit"] else "warning" if float(avg_portfolio_risk) > thresholds["portfolio_avg_risk"]["warning"] else "ok",
+        },
+        {
+            "id": "pep_exposure",
+            "label": "PEP Exposure",
+            "value": pep_pct,
+            "unit": "%",
+            "threshold": thresholds["pep_exposure_pct"],
+            "status": "breach" if pep_pct > thresholds["pep_exposure_pct"]["limit"] else "warning" if pep_pct > thresholds["pep_exposure_pct"]["warning"] else "ok",
+        },
+        {
+            "id": "sla_compliance",
+            "label": "SLA Compliance Rate",
+            "value": sla_compliance,
+            "unit": "%",
+            "threshold": thresholds["sla_compliance_pct"],
+            "status": "breach" if sla_compliance < thresholds["sla_compliance_pct"]["limit"] else "warning" if sla_compliance < thresholds["sla_compliance_pct"]["warning"] else "ok",
+        },
+        {
+            "id": "flagged_txn",
+            "label": "Flagged Transaction Volume",
+            "value": flagged_pct,
+            "unit": "%",
+            "threshold": thresholds["flagged_txn_pct"],
+            "status": "breach" if flagged_pct > thresholds["flagged_txn_pct"]["limit"] else "warning" if flagged_pct > thresholds["flagged_txn_pct"]["warning"] else "ok",
+        },
+    ]
+
+    breach_count = sum(1 for m in metrics if m["status"] == "breach")
+    warning_count = sum(1 for m in metrics if m["status"] == "warning")
+
+    return {
+        "metrics": metrics,
+        "summary": {
+            "overall_status": "breach" if breach_count > 0 else "warning" if warning_count > 0 else "ok",
+            "breaches": breach_count,
+            "warnings": warning_count,
+            "total_customers": total_customers,
+            "high_risk_customers": high_risk,
+            "pep_count": pep_count,
+            "open_alerts": open_alerts,
+            "overdue_alerts": overdue_alerts,
+            "open_cases": open_cases,
+        },
+    }

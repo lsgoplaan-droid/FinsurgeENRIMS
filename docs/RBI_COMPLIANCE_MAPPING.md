@@ -158,7 +158,7 @@ Reference: RBI/DoS/2023-24/106
 ### Immediate (before go-live)
 
 1. **FIU-IND integration** (P2, P9) -- CTR/STR electronic filing via FINnet 2.0
-2. **Data localization** (DL1-DL4) -- Deploy on AWS Mumbai / Azure Central India; obtain board SAR
+2. **Data localization** (DL1-DL4) -- Deploy on Azure Central India; obtain board SAR
 3. **TLS/HTTPS** (CS6) -- Mandatory for all API endpoints per encryption requirements
 4. **MFA** (CS5) -- TOTP for admin, compliance officer, system administrator roles
 5. **Audit trail completion** (IT1, DP5) -- Wire audit middleware to all API handlers

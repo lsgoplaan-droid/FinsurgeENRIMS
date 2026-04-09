@@ -55,6 +55,19 @@ class CaseDisposition(BaseModel):
     notes: str
 
 
+class CaseStatusUpdate(BaseModel):
+    status: str  # open, under_investigation, pending_regulatory, escalated
+    notes: str | None = None
+
+
+class CaseUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    priority: str | None = None
+    findings: str | None = None
+    recommendation: str | None = None
+
+
 class CaseStats(BaseModel):
     total: int = 0
     open: int = 0

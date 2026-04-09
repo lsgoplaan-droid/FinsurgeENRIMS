@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Bell, ChevronLeft, ChevronRight, Search, Clock, AlertTriangle } from 'lucide-react'
 import api from '../config/api'
-import { formatDate, timeAgo, priorityColors, statusColors } from '../utils/formatters'
+import { formatDate, formatINR, timeAgo, priorityColors, statusColors } from '../utils/formatters'
 
 const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>
@@ -21,14 +21,14 @@ const TABS = [
 
 function RiskScoreBadge({ score }: { score: number | null | undefined }) {
   if (score == null) return <span className="text-xs text-slate-400">-</span>
-  const rounded = Math.round(score * 10000) / 10000
+  const rounded = Math.round(score * 100) / 100
   const color =
     score > 70 ? 'text-red-700 bg-red-100 border border-red-200' :
     score > 40 ? 'text-amber-700 bg-amber-100 border border-amber-200' :
     'text-green-700 bg-green-100 border border-green-200'
   return (
     <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold ${color}`}>
-      {rounded.toFixed(1)}
+      {rounded.toFixed(2)}
     </span>
   )
 }
@@ -184,11 +184,13 @@ export default function AlertsPage() {
                 <tr className="bg-slate-50">
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[170px]">Alert#</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[75px]">Priority</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[130px]">Customer</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[120px]">Customer</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Title</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[110px]">Assigned To</th>
+                  <th className="text-right py-2.5 px-3 font-medium text-slate-600 w-[100px]">Amount</th>
                   <th className="text-center py-2.5 px-3 font-medium text-slate-600 w-[70px]">Risk</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[130px]">SLA</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[115px]">Status</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[150px]">SLA</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[145px]">Status</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[95px]"></th>
                 </tr>
               </thead>
@@ -205,28 +207,45 @@ export default function AlertsPage() {
                     </td>
                     <td className="py-2.5 px-3 text-slate-700 text-xs truncate">{a.customer_name || '-'}</td>
                     <td className="py-2.5 px-3 text-slate-700 text-xs truncate">{a.title || '-'}</td>
+                    <td className="py-2.5 px-3 text-slate-600 text-xs truncate">{a.assignee_name || '-'}</td>
+                    <td className="py-2.5 px-3 text-right text-xs font-mono text-slate-700">
+                      {(() => { try { const d = typeof a.details === 'string' ? JSON.parse(a.details) : a.details; return d?.triggered_values?.amount ? formatINR(d.triggered_values.amount) : '-' } catch { return '-' } })()}
+                    </td>
                     <td className="py-2.5 px-3 text-center">
                       <RiskScoreBadge score={a.risk_score} />
                     </td>
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3 whitespace-nowrap">
                       <SlaCountdown slaDueAt={a.sla_due_at} />
                     </td>
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3 whitespace-nowrap">
                       <Badge text={a.status || '-'} colors={statusColors[a.status] || 'bg-gray-100 text-gray-800'} />
                     </td>
                     <td className="py-2.5 px-3">
-                      <button
-                        onClick={() => navigate(`/alerts/${a.id}`)}
-                        className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap"
-                      >
-                        Investigate
-                      </button>
+                      {a.status === 'new' ? (
+                        <button
+                          onClick={() => navigate(`/alerts/${a.id}`)}
+                          className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap"
+                        >
+                          Investigate
+                        </button>
+                      ) : a.case_id ? (
+                        <Link to={`/cases/${a.case_id}`} className="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md hover:bg-indigo-100 transition-colors whitespace-nowrap inline-block">
+                          Case &rarr;
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => navigate(`/alerts/${a.id}`)}
+                          className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-md hover:bg-slate-200 transition-colors whitespace-nowrap"
+                        >
+                          View Alert
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
                 {alerts.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-400">
+                    <td colSpan={10} className="py-12 text-center text-slate-400">
                       No alerts found
                     </td>
                   </tr>

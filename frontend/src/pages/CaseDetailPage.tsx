@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Clock, User, FileText, Bell, Activity } from 'lucide-react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Clock, User, FileText, Bell, Activity, ChevronRight, Edit3, UserPlus, AlertTriangle, XCircle, CheckCircle } from 'lucide-react'
 import api from '../config/api'
 import { formatDateTime, formatINR, timeAgo, priorityColors, statusColors } from '../utils/formatters'
 
@@ -10,16 +10,45 @@ const Badge = ({ text, colors }: { text: string; colors: string }) => (
 
 type Tab = 'summary' | 'alerts' | 'timeline'
 
+const STATUS_TRANSITIONS: Record<string, { label: string; value: string; color: string }[]> = {
+  open: [
+    { label: 'Start Investigation', value: 'under_investigation', color: 'bg-blue-600 hover:bg-blue-700 text-white' },
+    { label: 'Escalate', value: 'escalated', color: 'bg-orange-600 hover:bg-orange-700 text-white' },
+  ],
+  assigned: [
+    { label: 'Start Investigation', value: 'under_investigation', color: 'bg-blue-600 hover:bg-blue-700 text-white' },
+    { label: 'Escalate', value: 'escalated', color: 'bg-orange-600 hover:bg-orange-700 text-white' },
+  ],
+  under_investigation: [
+    { label: 'Pending Regulatory', value: 'pending_regulatory', color: 'bg-purple-600 hover:bg-purple-700 text-white' },
+    { label: 'Escalate', value: 'escalated', color: 'bg-orange-600 hover:bg-orange-700 text-white' },
+  ],
+  escalated: [
+    { label: 'Resume Investigation', value: 'under_investigation', color: 'bg-blue-600 hover:bg-blue-700 text-white' },
+    { label: 'Pending Regulatory', value: 'pending_regulatory', color: 'bg-purple-600 hover:bg-purple-700 text-white' },
+  ],
+  pending_regulatory: [
+    { label: 'Resume Investigation', value: 'under_investigation', color: 'bg-blue-600 hover:bg-blue-700 text-white' },
+  ],
+}
+
 export default function CaseDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [caseData, setCaseData] = useState<any>(null)
   const [alerts, setAlerts] = useState<any[]>([])
   const [timeline, setTimeline] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<Tab>('summary')
+  const [actionLoading, setActionLoading] = useState('')
+  const [showDisposition, setShowDisposition] = useState(false)
+  const [disposition, setDisposition] = useState('true_positive')
+  const [dispositionNotes, setDispositionNotes] = useState('')
+  const [showEdit, setShowEdit] = useState(false)
+  const [editForm, setEditForm] = useState({ title: '', description: '', priority: '', findings: '', recommendation: '' })
 
-  useEffect(() => {
+  const fetchCase = () => {
     setLoading(true)
     Promise.all([
       api.get(`/cases/${id}`),
@@ -33,7 +62,45 @@ export default function CaseDetailPage() {
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load case'))
       .finally(() => setLoading(false))
-  }, [id])
+  }
+
+  useEffect(() => { fetchCase() }, [id])
+
+  const handleStatusChange = async (newStatus: string) => {
+    setActionLoading(newStatus)
+    try {
+      await api.patch(`/cases/${id}/status`, { status: newStatus })
+      fetchCase()
+    } catch (err: any) { setError(err.response?.data?.detail || 'Failed to update status') }
+    finally { setActionLoading('') }
+  }
+
+  const handleDisposition = async () => {
+    setActionLoading('disposition')
+    try {
+      await api.post(`/cases/${id}/disposition`, { disposition, notes: dispositionNotes })
+      setShowDisposition(false)
+      setDispositionNotes('')
+      fetchCase()
+    } catch (err: any) { setError(err.response?.data?.detail || 'Failed to set disposition') }
+    finally { setActionLoading('') }
+  }
+
+  const handleUpdate = async () => {
+    setActionLoading('update')
+    const body: any = {}
+    if (editForm.title && editForm.title !== caseData.title) body.title = editForm.title
+    if (editForm.description !== undefined) body.description = editForm.description
+    if (editForm.priority && editForm.priority !== caseData.priority) body.priority = editForm.priority
+    if (editForm.findings) body.findings = editForm.findings
+    if (editForm.recommendation) body.recommendation = editForm.recommendation
+    try {
+      await api.put(`/cases/${id}`, body)
+      setShowEdit(false)
+      fetchCase()
+    } catch (err: any) { setError(err.response?.data?.detail || 'Failed to update case') }
+    finally { setActionLoading('') }
+  }
 
   if (loading) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
   if (error && !caseData) return <div className="flex items-center justify-center h-full text-red-500">{error}</div>
@@ -73,16 +140,40 @@ export default function CaseDetailPage() {
               )}
             </div>
           </div>
-          <div className="text-right">
-            {caseData.total_amount != null && (
-              <div>
-                <div className="text-lg font-bold text-slate-800">{formatINR(caseData.total_amount)}</div>
-                <div className="text-xs text-slate-400">Total Amount</div>
-              </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Status transition buttons */}
+            {(STATUS_TRANSITIONS[caseData.status] || []).map(t => (
+              <button
+                key={t.value}
+                onClick={() => handleStatusChange(t.value)}
+                disabled={!!actionLoading}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${t.color}`}
+              >
+                <ChevronRight size={14} />
+                {actionLoading === t.value ? 'Updating...' : t.label}
+              </button>
+            ))}
+            {/* Close / Disposition */}
+            {!caseData.status?.startsWith('closed') && (
+              <button
+                onClick={() => setShowDisposition(true)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+              >
+                <XCircle size={14} /> Close Case
+              </button>
             )}
+            {/* Edit */}
+            <button
+              onClick={() => { setEditForm({ title: caseData.title || '', description: caseData.description || '', priority: caseData.priority || '', findings: caseData.findings || '', recommendation: caseData.recommendation || '' }); setShowEdit(true) }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              <Edit3 size={14} /> Edit
+            </button>
           </div>
         </div>
       </div>
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-slate-200">
@@ -190,19 +281,24 @@ export default function CaseDetailPage() {
               {timeline.map((event, i) => (
                 <div key={event.id || i} className="flex gap-4 relative">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 z-10 ${
-                    event.event_type === 'created' ? 'bg-blue-100 text-blue-600' :
-                    event.event_type === 'escalated' ? 'bg-orange-100 text-orange-600' :
-                    event.event_type === 'closed' ? 'bg-green-100 text-green-600' :
+                    event.activity_type === 'created' ? 'bg-blue-100 text-blue-600' :
+                    event.activity_type === 'escalated' ? 'bg-orange-100 text-orange-600' :
+                    event.activity_type === 'status_changed' ? 'bg-purple-100 text-purple-600' :
+                    event.activity_type === 'disposition_set' ? 'bg-green-100 text-green-600' :
                     'bg-slate-100 text-slate-600'
                   }`}>
                     <Activity size={14} />
                   </div>
                   <div className="flex-1 pb-2">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-slate-700">{event.description || event.title || event.event_type || 'Activity'}</p>
+                      <p className="text-sm font-medium text-slate-700">{event.description || event.title || event.activity_type || 'Activity'}</p>
                       <span className="text-xs text-slate-400">{event.created_at ? timeAgo(event.created_at) : ''}</span>
                     </div>
-                    {event.details && <p className="text-xs text-slate-500 mt-1">{event.details}</p>}
+                    {event.old_value && event.new_value && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        {event.old_value.replace(/_/g, ' ')} → {event.new_value.replace(/_/g, ' ')}
+                      </p>
+                    )}
                     {event.user_name && <p className="text-xs text-slate-400 mt-1">by {event.user_name}</p>}
                   </div>
                 </div>
@@ -210,6 +306,84 @@ export default function CaseDetailPage() {
               {timeline.length === 0 && (
                 <p className="text-sm text-slate-400 text-center py-8">No timeline events</p>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disposition Dialog */}
+      {showDisposition && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowDisposition(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Close Case — Disposition</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Disposition</label>
+                <div className="space-y-2">
+                  {[
+                    { value: 'true_positive', label: 'True Positive — Confirmed fraud/violation', color: 'border-red-300 bg-red-50' },
+                    { value: 'false_positive', label: 'False Positive — No threat found', color: 'border-green-300 bg-green-50' },
+                    { value: 'inconclusive', label: 'Inconclusive — Insufficient evidence', color: 'border-amber-300 bg-amber-50' },
+                  ].map(opt => (
+                    <label key={opt.value} className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${disposition === opt.value ? opt.color : 'border-slate-200 hover:bg-slate-50'}`}>
+                      <input type="radio" name="disposition" value={opt.value} checked={disposition === opt.value} onChange={e => setDisposition(e.target.value)} className="accent-blue-600" />
+                      <span className="text-sm font-medium text-slate-700">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                <textarea value={dispositionNotes} onChange={e => setDispositionNotes(e.target.value)} rows={3} placeholder="Describe your findings..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setShowDisposition(false)} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button disabled={!!actionLoading || !dispositionNotes.trim()} onClick={handleDisposition} className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">
+                {actionLoading === 'disposition' ? 'Closing...' : 'Confirm & Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Case Dialog */}
+      {showEdit && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowEdit(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Edit Case</h2>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
+                <input value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} rows={3} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                <select value={editForm.priority} onChange={e => setEditForm({ ...editForm, priority: e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Findings</label>
+                <textarea value={editForm.findings} onChange={e => setEditForm({ ...editForm, findings: e.target.value })} rows={2} placeholder="Investigation findings..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Recommendation</label>
+                <textarea value={editForm.recommendation} onChange={e => setEditForm({ ...editForm, recommendation: e.target.value })} rows={2} placeholder="Recommended actions..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={() => setShowEdit(false)} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button disabled={!!actionLoading} onClick={handleUpdate} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                {actionLoading === 'update' ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
         </div>

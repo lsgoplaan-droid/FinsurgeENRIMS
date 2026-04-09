@@ -38,10 +38,6 @@ function PriorityRiskTags({ customer }: { customer: any }) {
   if ((customer.risk_score ?? 0) > 80) {
     tags.push({ label: 'Mule Suspect', color: 'bg-orange-100 text-orange-700' })
   }
-  if (customer.kyc_status === 'expired') {
-    tags.push({ label: 'KYC Expired', color: 'bg-amber-100 text-amber-700' })
-  }
-
   if (tags.length === 0) return null
 
   return (

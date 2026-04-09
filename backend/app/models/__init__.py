@@ -10,6 +10,9 @@ from app.models.watchlist import WatchlistEntry
 from app.models.report import CTRReport, SARReport
 from app.models.network import CustomerRelationship, CustomerLink
 from app.models.audit import AuditLog, SystemConfig, Notification
+from app.models.employee_activity import EmployeeActivity
+from app.models.police_fir import PoliceFIR, FIRActivity
+from app.models.notification_rule import NotificationRule, NotificationLog
 from app.services.maker_checker import PendingAction
 
 
@@ -31,5 +34,8 @@ __all__ = [
     "CTRReport", "SARReport",
     "CustomerRelationship", "CustomerLink",
     "AuditLog", "SystemConfig", "Notification",
+    "EmployeeActivity",
+    "PoliceFIR", "FIRActivity",
+    "NotificationRule", "NotificationLog",
     "PendingAction",
 ]
