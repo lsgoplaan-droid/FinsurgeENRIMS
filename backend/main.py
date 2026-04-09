@@ -105,12 +105,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(api_router)
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"app": settings.APP_NAME, "version": settings.APP_VERSION, "status": "running"}
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     """Enhanced health check — verifies DB + Redis connectivity."""
     # DB check
