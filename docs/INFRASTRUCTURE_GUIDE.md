@@ -9,7 +9,7 @@
 
 ## Purpose
 
-This guide covers the production infrastructure components that require real cloud services, certificates, and external tooling -- things that cannot be simulated in the application code alone. Follow these instructions to deploy FinsurgeENRIMS in a production banking environment.
+This guide covers the production infrastructure components that require real cloud services, certificates, and external tooling -- things that cannot be simulated in application code alone. Follow these instructions to deploy FinsurgeENRIMS in a production banking environment.
 
 **Deployment target**: AWS Mumbai (ap-south-1) or Azure Central India (per RBI data localization mandate)
 
@@ -36,7 +36,7 @@ This guide covers the production infrastructure components that require real clo
 **AWS RDS (recommended for ap-south-1)**
 
 ```bash
-# Create RDS PostgreSQL instance
+# Create RDS PostgreSQL instance in Mumbai region
 aws rds create-db-instance \
   --db-instance-identifier finsurge-enrims-prod \
   --db-instance-class db.r6g.xlarge \
@@ -48,220 +48,213 @@ aws rds create-db-instance \
   --storage-type gp3 \
   --storage-encrypted \
   --kms-key-id alias/enrims-rds-key \
+  --multi-az \
   --vpc-security-group-ids sg-0abc123def456 \
   --db-subnet-group-name enrims-private-subnets \
-  --multi-az \
   --backup-retention-period 35 \
   --preferred-backup-window "02:00-03:00" \
   --preferred-maintenance-window "sun:04:00-sun:05:00" \
   --deletion-protection \
   --region ap-south-1 \
   --tags Key=Project,Value=FinsurgeENRIMS Key=Environment,Value=production
+
+# Create read replica for reporting queries
+aws rds create-db-instance-read-replica \
+  --db-instance-identifier finsurge-enrims-prod-replica \
+  --source-db-instance-identifier finsurge-enrims-prod \
+  --db-instance-class db.r6g.large \
+  --region ap-south-1
 ```
 
-**Azure Database for PostgreSQL (alternative)**
+**Azure Database for PostgreSQL**
 
 ```bash
-# Create Azure PostgreSQL Flexible Server
+# Create Azure PostgreSQL Flexible Server in Central India
 az postgres flexible-server create \
-  --resource-group rg-enrims-prod \
+  --resource-group finsurge-rg \
   --name finsurge-enrims-prod \
   --location centralindia \
   --admin-user enrims_admin \
   --admin-password "$(vault kv get -field=db_password secret/enrims/prod)" \
-  --sku-name Standard_D4ds_v4 \
+  --sku-name Standard_D4s_v3 \
   --tier GeneralPurpose \
   --storage-size 128 \
   --version 15 \
   --high-availability ZoneRedundant \
   --backup-retention 35 \
-  --geo-redundant-backup Enabled \
+  --geo-redundant-backup Disabled \
   --tags Project=FinsurgeENRIMS Environment=production
 ```
 
-### 1.2 Connection String Configuration
+### 1.2 Connection String Format
 
-Set the `DATABASE_URL` environment variable (never hardcode):
+Update the `DATABASE_URL` environment variable in the application config:
 
 ```bash
-# Format
-DATABASE_URL=postgresql+asyncpg://enrims_admin:<password>@finsurge-enrims-prod.xxxxx.ap-south-1.rds.amazonaws.com:5432/enrims_prod?sslmode=require
+# Standard PostgreSQL connection string
+DATABASE_URL=postgresql://enrims_admin:<password>@finsurge-enrims-prod.xxxxxxxxxxxx.ap-south-1.rds.amazonaws.com:5432/enrims_prod?sslmode=require
 
-# For synchronous SQLAlchemy (current codebase)
-DATABASE_URL=postgresql://enrims_admin:<password>@finsurge-enrims-prod.xxxxx.ap-south-1.rds.amazonaws.com:5432/enrims_prod?sslmode=require
+# With PgBouncer (connection pooling proxy)
+DATABASE_URL=postgresql://enrims_admin:<password>@localhost:6432/enrims_prod?sslmode=require
 ```
 
-Update `backend/app/database.py` for PostgreSQL:
+In the FastAPI application (`backend/app/database.py`), update the engine creation:
 
 ```python
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from app.config import settings
+from sqlalchemy.orm import sessionmaker
+import os
 
-# PostgreSQL connection with pool settings
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 engine = create_engine(
-    settings.DATABASE_URL,
+    DATABASE_URL,
     pool_size=20,
-    max_overflow=10,
+    max_overflow=30,
     pool_timeout=30,
     pool_recycle=1800,
     pool_pre_ping=True,
-    connect_args={"sslmode": "require"} if "postgresql" in settings.DATABASE_URL else {},
+    connect_args={"sslmode": "require"},
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 ```
 
-### 1.3 PgBouncer Connection Pooling
+### 1.3 PgBouncer Configuration
 
-PgBouncer sits between the application and PostgreSQL to manage connection pooling efficiently:
+Install and configure PgBouncer for connection pooling between the application and PostgreSQL:
 
 ```ini
-# /etc/pgbouncer/pgbouncer.ini
+; /etc/pgbouncer/pgbouncer.ini
 
 [databases]
-enrims_prod = host=finsurge-enrims-prod.xxxxx.ap-south-1.rds.amazonaws.com port=5432 dbname=enrims_prod
+enrims_prod = host=finsurge-enrims-prod.xxxxxxxxxxxx.ap-south-1.rds.amazonaws.com port=5432 dbname=enrims_prod
 
 [pgbouncer]
-listen_addr = 0.0.0.0
+listen_addr = 127.0.0.1
 listen_port = 6432
-auth_type = md5
+auth_type = scram-sha-256
 auth_file = /etc/pgbouncer/userlist.txt
 
-# Pool settings
+; Pool settings
 pool_mode = transaction
 default_pool_size = 25
-max_client_conn = 200
 min_pool_size = 5
 reserve_pool_size = 5
 reserve_pool_timeout = 3
+max_client_conn = 200
+max_db_connections = 50
 
-# Timeouts
+; Timeouts
 server_idle_timeout = 300
-client_idle_timeout = 600
+client_idle_timeout = 0
 query_timeout = 30
 query_wait_timeout = 60
 
-# Logging
+; Logging
 log_connections = 1
 log_disconnections = 1
 log_pooler_errors = 1
-stats_period = 60
 
-# TLS
+; TLS to RDS
 server_tls_sslmode = require
 server_tls_ca_file = /etc/ssl/certs/rds-combined-ca-bundle.pem
+
+; Admin
+admin_users = pgbouncer_admin
+stats_users = pgbouncer_stats
 ```
 
-```txt
+```bash
 # /etc/pgbouncer/userlist.txt
-"enrims_admin" "md5<hash>"
-"enrims_app" "md5<hash>"
+"enrims_admin" "SCRAM-SHA-256$4096:salt$stored_key:server_key"
+
+# Start PgBouncer
+sudo systemctl enable pgbouncer
+sudo systemctl start pgbouncer
 ```
 
-Update `DATABASE_URL` to point to PgBouncer:
+### 1.4 Backup Schedule (CRON)
 
 ```bash
-DATABASE_URL=postgresql://enrims_app:<password>@pgbouncer-service:6432/enrims_prod
+# /etc/cron.d/enrims-backup
+
+# Daily logical backup at 02:30 IST (21:00 UTC previous day)
+0 21 * * * postgres pg_dump -Fc -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -d enrims_prod | aws s3 cp - s3://finsurge-backups-prod/daily/enrims_$(date +\%Y\%m\%d_\%H\%M).dump --sse aws:kms --sse-kms-key-id alias/enrims-backup-key
+
+# Weekly full backup (Sunday 03:00 IST)
+30 21 * * 0 postgres pg_dump -Fc -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -d enrims_prod | aws s3 cp - s3://finsurge-backups-prod/weekly/enrims_$(date +\%Y\%m\%d).dump --sse aws:kms --sse-kms-key-id alias/enrims-backup-key
+
+# Cleanup: remove daily backups older than 30 days
+0 6 * * * root aws s3 ls s3://finsurge-backups-prod/daily/ --recursive | awk '{print $4}' | while read key; do created=$(echo $key | grep -oP '\d{8}'); [ $(( ($(date +%s) - $(date -d $created +%s)) / 86400 )) -gt 30 ] && aws s3 rm "s3://finsurge-backups-prod/$key"; done
+
+# Retain weekly backups for 1 year, monthly snapshots for 7 years (PMLA compliance)
 ```
 
-### 1.4 Backup Schedule
+### 1.5 Restore Procedure
 
 ```bash
-# Automated daily backup via AWS RDS (already configured above with --backup-retention-period 35)
-# Additional manual snapshot before major releases:
-aws rds create-db-snapshot \
-  --db-instance-identifier finsurge-enrims-prod \
-  --db-snapshot-identifier enrims-pre-release-$(date +%Y%m%d) \
-  --region ap-south-1
+# 1. List available backups
+aws s3 ls s3://finsurge-backups-prod/daily/ --human-readable | tail -10
 
-# Point-in-time recovery (if needed)
+# 2. Download the target backup
+aws s3 cp s3://finsurge-backups-prod/daily/enrims_20260408_2100.dump /tmp/restore.dump
+
+# 3. Create a new database for restore (don't overwrite production directly)
+psql -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -c "CREATE DATABASE enrims_restore;"
+
+# 4. Restore into the new database
+pg_restore -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -d enrims_restore -Fc /tmp/restore.dump
+
+# 5. Validate the restored data
+psql -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -d enrims_restore -c "
+SELECT 'customers' AS table_name, COUNT(*) FROM customers
+UNION ALL SELECT 'transactions', COUNT(*) FROM transactions
+UNION ALL SELECT 'alerts', COUNT(*) FROM alerts
+UNION ALL SELECT 'cases', COUNT(*) FROM cases;
+"
+
+# 6. Swap databases (maintenance window)
+psql -h finsurge-enrims-prod.xxxx.rds.amazonaws.com -U enrims_admin -c "
+ALTER DATABASE enrims_prod RENAME TO enrims_prod_old;
+ALTER DATABASE enrims_restore RENAME TO enrims_prod;
+"
+
+# 7. Point-in-Time Recovery (RDS native -- preferred for recent data loss)
 aws rds restore-db-instance-to-point-in-time \
   --source-db-instance-identifier finsurge-enrims-prod \
-  --target-db-instance-identifier finsurge-enrims-recovery \
-  --restore-time "2026-04-08T12:00:00Z" \
+  --target-db-instance-identifier finsurge-enrims-pitr \
+  --restore-time "2026-04-08T15:30:00Z" \
+  --db-instance-class db.r6g.xlarge \
   --region ap-south-1
-
-# Verify backup with monthly restore test
-# Schedule via cron or AWS EventBridge:
-# 0 6 1 * * /opt/scripts/backup-restore-test.sh
-```
-
-### 1.5 Database Users and Permissions
-
-```sql
--- Create application user (limited privileges)
-CREATE USER enrims_app WITH PASSWORD '<from-vault>';
-GRANT CONNECT ON DATABASE enrims_prod TO enrims_app;
-GRANT USAGE ON SCHEMA public TO enrims_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO enrims_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO enrims_app;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO enrims_app;
-
--- Create read-only user for reporting
-CREATE USER enrims_readonly WITH PASSWORD '<from-vault>';
-GRANT CONNECT ON DATABASE enrims_prod TO enrims_readonly;
-GRANT USAGE ON SCHEMA public TO enrims_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO enrims_readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO enrims_readonly;
-
--- Audit table: revoke UPDATE and DELETE from application user
-REVOKE UPDATE, DELETE ON audit_logs FROM enrims_app;
--- Only enrims_admin can manage audit logs
 ```
 
 ---
 
 ## 2. TLS / HTTPS
 
-### 2.1 Certificate Acquisition
-
-**Option A: Let's Encrypt (free, automated renewal)**
+### 2.1 Let's Encrypt Certificate with Certbot
 
 ```bash
 # Install certbot
-sudo apt-get update && sudo apt-get install -y certbot python3-certbot-nginx
+sudo apt update && sudo apt install -y certbot python3-certbot-nginx
 
-# Obtain certificate (DNS must point to server)
+# Obtain certificate for the domain
 sudo certbot certonly --nginx \
-  -d enrims.yourbank.co.in \
-  -d api.enrims.yourbank.co.in \
-  --email security@yourbank.co.in \
+  -d enrims.finsurge.in \
+  -d api.enrims.finsurge.in \
+  --email devops@finsurge.in \
   --agree-tos \
   --non-interactive
 
-# Certificate files will be at:
-# /etc/letsencrypt/live/enrims.yourbank.co.in/fullchain.pem
-# /etc/letsencrypt/live/enrims.yourbank.co.in/privkey.pem
+# Verify certificate
+sudo certbot certificates
 
-# Auto-renewal (certbot installs a systemd timer by default)
-# Verify:
-sudo systemctl list-timers | grep certbot
+# Auto-renewal is set up by certbot, verify the timer
+sudo systemctl status certbot.timer
 
-# Manual renewal test:
+# Test renewal
 sudo certbot renew --dry-run
-```
-
-**Option B: Commercial certificate (DigiCert / Entrust for banking)**
-
-```bash
-# Generate CSR
-openssl req -new -newkey rsa:2048 -nodes \
-  -keyout enrims.yourbank.co.in.key \
-  -out enrims.yourbank.co.in.csr \
-  -subj "/C=IN/ST=Maharashtra/L=Mumbai/O=Your Bank Ltd/OU=IT/CN=enrims.yourbank.co.in"
-
-# Submit CSR to CA (DigiCert, Entrust, etc.)
-# Download certificate chain after validation
-# Install certificate files to /etc/ssl/certs/
 ```
 
 ### 2.2 Nginx SSL Configuration
@@ -272,22 +265,30 @@ openssl req -new -newkey rsa:2048 -nodes \
 # Redirect HTTP to HTTPS
 server {
     listen 80;
-    server_name enrims.yourbank.co.in api.enrims.yourbank.co.in;
-    return 301 https://$host$request_uri;
+    listen [::]:80;
+    server_name enrims.finsurge.in api.enrims.finsurge.in;
+
+    # ACME challenge for Let's Encrypt renewal
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
 }
 
-# Frontend
+# Frontend (React app)
 server {
     listen 443 ssl http2;
-    server_name enrims.yourbank.co.in;
+    listen [::]:443 ssl http2;
+    server_name enrims.finsurge.in;
 
-    # TLS certificates
-    ssl_certificate     /etc/letsencrypt/live/enrims.yourbank.co.in/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/enrims.yourbank.co.in/privkey.pem;
-
-    # TLS configuration (A+ rating on SSL Labs)
+    # TLS configuration
+    ssl_certificate /etc/letsencrypt/live/enrims.finsurge.in/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/enrims.finsurge.in/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
     ssl_prefer_server_ciphers off;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:10m;
@@ -296,22 +297,19 @@ server {
     # OCSP stapling
     ssl_stapling on;
     ssl_stapling_verify on;
-    ssl_trusted_certificate /etc/letsencrypt/live/enrims.yourbank.co.in/fullchain.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/enrims.finsurge.in/chain.pem;
     resolver 8.8.8.8 8.8.4.4 valid=300s;
 
     # Security headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Frame-Options "DENY" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.enrims.yourbank.co.in; frame-ancestors 'none';" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.enrims.finsurge.in; frame-ancestors 'none';" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
 
-    # Request limits
-    client_max_body_size 1m;
-
-    # Serve frontend static files
+    # Serve React frontend
     root /var/www/enrims/frontend/dist;
     index index.html;
 
@@ -319,104 +317,102 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+    # Static assets caching
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
+
+    # Request size limit
+    client_max_body_size 10M;
 }
 
 # Backend API
 server {
     listen 443 ssl http2;
-    server_name api.enrims.yourbank.co.in;
+    listen [::]:443 ssl http2;
+    server_name api.enrims.finsurge.in;
 
-    ssl_certificate     /etc/letsencrypt/live/enrims.yourbank.co.in/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/enrims.yourbank.co.in/privkey.pem;
-
+    ssl_certificate /etc/letsencrypt/live/enrims.finsurge.in/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/enrims.finsurge.in/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
     ssl_prefer_server_ciphers off;
 
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-    add_header X-Content-Type-Options "nosniff" always;
+    # Same security headers as frontend
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
     add_header X-Frame-Options "DENY" always;
-
-    client_max_body_size 1m;
+    add_header X-Content-Type-Options "nosniff" always;
 
     # Rate limiting zones
     limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
     limit_req_zone $binary_remote_addr zone=api:10m rate=100r/m;
 
-    # Block Swagger docs in production
-    location ~ ^/(docs|redoc|openapi.json) {
-        deny all;
-        return 404;
-    }
-
-    # Login endpoint with strict rate limit
+    # API proxy
     location /api/v1/auth/login {
         limit_req zone=login burst=3 nodelay;
-        proxy_pass http://backend:8000;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # All other API endpoints
     location /api/ {
         limit_req zone=api burst=20 nodelay;
-        proxy_pass http://backend:8000;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 30s;
-        proxy_connect_timeout 5s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
     }
 
     # Health check (no rate limit)
-    location /api/v1/health {
-        proxy_pass http://backend:8000;
-        proxy_set_header Host $host;
+    location /health {
+        proxy_pass http://127.0.0.1:8000;
     }
+
+    # Block Swagger/OpenAPI docs in production
+    location ~ ^/(docs|redoc|openapi.json) {
+        return 404;
+    }
+
+    client_max_body_size 1M;
 }
 ```
 
 ```bash
-# Enable and test
+# Enable the site and test
 sudo ln -s /etc/nginx/sites-available/enrims /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 
-# Verify TLS (from another machine)
-openssl s_client -connect enrims.yourbank.co.in:443 -servername enrims.yourbank.co.in
-curl -I https://enrims.yourbank.co.in
+# Verify HSTS header
+curl -I https://enrims.finsurge.in | grep Strict-Transport-Security
 ```
 
 ---
 
 ## 3. MFA / TOTP
 
-### 3.1 PyOTP Integration
+### 3.1 Install Dependencies
 
-Add to `requirements.txt`:
-
-```
-pyotp==2.9.0
-qrcode[pil]==7.4.2
+```bash
+pip install pyotp qrcode[pil]
 ```
 
-Backend implementation for TOTP setup and verification:
+### 3.2 TOTP Enrollment Flow
+
+Add this to the backend auth service (`backend/app/services/auth_service.py`):
 
 ```python
-# backend/app/services/mfa_service.py
 import pyotp
 import qrcode
 import io
 import base64
-import secrets
+from typing import Optional
 
 
 def generate_totp_secret() -> str:
@@ -424,122 +420,123 @@ def generate_totp_secret() -> str:
     return pyotp.random_base32()
 
 
-def generate_qr_code(username: str, secret: str, issuer: str = "FinsurgeENRIMS") -> str:
-    """Generate a QR code image as base64 string for authenticator app enrollment."""
+def get_totp_provisioning_uri(secret: str, username: str) -> str:
+    """Generate the otpauth:// URI for QR code enrollment."""
     totp = pyotp.TOTP(secret)
-    provisioning_uri = totp.provisioning_uri(name=username, issuer_name=issuer)
+    return totp.provisioning_uri(
+        name=username,
+        issuer_name="FinsurgeENRIMS"
+    )
 
+
+def generate_qr_code_base64(provisioning_uri: str) -> str:
+    """Generate a QR code as a base64-encoded PNG for the frontend to display."""
     qr = qrcode.QRCode(version=1, box_size=10, border=4)
     qr.add_data(provisioning_uri)
     qr.make(fit=True)
-
     img = qr.make_image(fill_color="black", back_color="white")
+
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
     buffer.seek(0)
-
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
 def verify_totp(secret: str, token: str) -> bool:
-    """Verify a TOTP token (allows 1 step drift for clock skew)."""
+    """Verify a 6-digit TOTP token against the stored secret."""
     totp = pyotp.TOTP(secret)
-    return totp.verify(token, valid_window=1)
+    return totp.verify(token, valid_window=1)  # Allow 30-second clock drift
 
 
 def generate_recovery_codes(count: int = 10) -> list[str]:
-    """Generate one-time recovery codes for MFA backup."""
-    return [secrets.token_hex(4).upper() for _ in range(count)]
+    """Generate one-time-use recovery codes for backup access."""
+    import secrets
+    return [f"{secrets.token_hex(4)}-{secrets.token_hex(4)}" for _ in range(count)]
 ```
 
-### 3.2 QR Code Enrollment Flow
+### 3.3 MFA Enrollment API Endpoint
 
 ```python
-# backend/app/api/auth.py (additional endpoints)
+# Add to backend/app/api/auth.py
 
-@router.post("/mfa/setup")
-def setup_mfa(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Initialize MFA for the current user. Returns QR code and recovery codes."""
-    from app.services.mfa_service import generate_totp_secret, generate_qr_code, generate_recovery_codes
+@router.post("/mfa/enroll")
+def enroll_mfa(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Start MFA enrollment: generate secret, return QR code."""
+    from app.services.auth_service import generate_totp_secret, get_totp_provisioning_uri, generate_qr_code_base64, generate_recovery_codes
 
     secret = generate_totp_secret()
-    qr_base64 = generate_qr_code(current_user.username, secret)
-    recovery_codes = generate_recovery_codes()
+    provisioning_uri = get_totp_provisioning_uri(secret, current_user.username)
+    qr_base64 = generate_qr_code_base64(provisioning_uri)
+    recovery_codes = generate_recovery_codes(10)
 
-    # Store secret (encrypted) and hashed recovery codes
-    current_user.totp_secret = encrypt(secret)  # using PII_ENCRYPTION_KEY
-    current_user.recovery_codes = hash_recovery_codes(recovery_codes)
-    current_user.mfa_enabled = False  # Not active until verified
+    # Store secret temporarily (not activated until verified)
+    current_user.totp_secret_pending = secret
+    current_user.recovery_codes_pending = ",".join(recovery_codes)
     db.commit()
 
     return {
         "qr_code": f"data:image/png;base64,{qr_base64}",
         "secret": secret,  # For manual entry in authenticator app
-        "recovery_codes": recovery_codes,  # Show ONCE, user must save
-        "message": "Scan QR code with your authenticator app, then verify with a code.",
+        "recovery_codes": recovery_codes,
+        "message": "Scan the QR code with Google Authenticator or Authy, then verify with /mfa/verify"
     }
 
 
-@router.post("/mfa/verify-setup")
-def verify_mfa_setup(
-    token: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Verify TOTP token to complete MFA setup."""
-    from app.services.mfa_service import verify_totp
+@router.post("/mfa/verify")
+def verify_mfa_enrollment(token: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Verify a TOTP token to activate MFA for the account."""
+    from app.services.auth_service import verify_totp
 
-    secret = decrypt(current_user.totp_secret)
-    if not verify_totp(secret, token):
-        raise HTTPException(status_code=400, detail="Invalid TOTP token")
+    if not current_user.totp_secret_pending:
+        raise HTTPException(status_code=400, detail="No pending MFA enrollment")
 
+    if not verify_totp(current_user.totp_secret_pending, token):
+        raise HTTPException(status_code=401, detail="Invalid TOTP token")
+
+    # Activate MFA
+    current_user.totp_secret = current_user.totp_secret_pending
+    current_user.recovery_codes = current_user.recovery_codes_pending
     current_user.mfa_enabled = True
+    current_user.totp_secret_pending = None
+    current_user.recovery_codes_pending = None
     db.commit()
-    return {"message": "MFA enabled successfully."}
+
+    return {"status": "mfa_enabled", "message": "MFA is now active on your account"}
 
 
-@router.post("/mfa/validate")
-def validate_mfa(username: str, token: str, db: Session = Depends(get_db)):
-    """Validate TOTP during login (called after password verification)."""
-    from app.services.mfa_service import verify_totp
+@router.post("/mfa/challenge")
+def mfa_challenge(username: str, token: str, db: Session = Depends(get_db)):
+    """Second step of login: verify TOTP after password authentication."""
+    from app.services.auth_service import verify_totp
 
     user = db.query(User).filter(User.username == username).first()
     if not user or not user.mfa_enabled:
         raise HTTPException(status_code=400, detail="MFA not enabled")
 
-    secret = decrypt(user.totp_secret)
-    if not verify_totp(secret, token):
-        raise HTTPException(status_code=401, detail="Invalid MFA token")
+    if not verify_totp(user.totp_secret, token):
+        # Check recovery codes
+        recovery_list = (user.recovery_codes or "").split(",")
+        if token in recovery_list:
+            recovery_list.remove(token)
+            user.recovery_codes = ",".join(recovery_list)
+            db.commit()
+        else:
+            raise HTTPException(status_code=401, detail="Invalid MFA token")
 
-    return {"valid": True}
+    # Issue full access token
+    access_token = create_access_token({"sub": user.id, "username": user.username, "mfa_verified": True})
+    return {"access_token": access_token, "token_type": "bearer"}
 ```
 
-### 3.3 User Model Changes
+### 3.4 Database Columns for User Model
 
 ```python
-# Add to backend/app/models/user.py
-class User(Base):
-    # ... existing fields ...
-    totp_secret = Column(String, nullable=True)    # Encrypted TOTP secret
-    mfa_enabled = Column(Boolean, default=False)
-    recovery_codes = Column(Text, nullable=True)    # Hashed recovery codes (JSON array)
-```
-
-### 3.4 Login Flow with MFA
-
-```
-1. POST /api/v1/auth/login  {username, password}
-   -> If MFA enabled: return {"mfa_required": true, "mfa_session": "<temp-token>"}
-   -> If MFA not enabled: return JWT access_token (existing flow)
-
-2. POST /api/v1/auth/mfa/validate  {mfa_session, token}
-   -> Verify TOTP token
-   -> Return JWT access_token
-
-3. Recovery: POST /api/v1/auth/mfa/recover  {username, recovery_code}
-   -> Verify one-time recovery code
-   -> Return JWT access_token
-   -> Mark recovery code as used
+# Add to backend/app/models/user.py (User class)
+totp_secret = Column(String, nullable=True)           # Active TOTP secret (encrypted at rest)
+totp_secret_pending = Column(String, nullable=True)    # Pending enrollment secret
+mfa_enabled = Column(Boolean, default=False)           # Whether MFA is active
+recovery_codes = Column(Text, nullable=True)           # Comma-separated one-time recovery codes
+recovery_codes_pending = Column(Text, nullable=True)   # Pending recovery codes
 ```
 
 ---
@@ -548,30 +545,22 @@ class User(Base):
 
 ### 4.1 Namespace and Secrets
 
-```yaml
-# k8s/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: enrims
-  labels:
-    app: finsurge-enrims
-    environment: production
-```
+```bash
+# Create namespace
+kubectl create namespace enrims-prod
 
-```yaml
-# k8s/secrets.yaml (use with Vault CSI driver in production -- see Section 9)
-apiVersion: v1
-kind: Secret
-metadata:
-  name: enrims-secrets
-  namespace: enrims
-type: Opaque
-stringData:
-  DATABASE_URL: "postgresql://enrims_app:<password>@pgbouncer-service:6432/enrims_prod?sslmode=require"
-  SECRET_KEY: "<256-bit-hex-key>"
-  PII_ENCRYPTION_KEY: "<256-bit-hex-key>"
-  REDIS_URL: "redis://redis-service:6379/0"
+# Create secrets from Vault (or manually)
+kubectl create secret generic enrims-secrets -n enrims-prod \
+  --from-literal=DATABASE_URL="postgresql://enrims_admin:password@rds-host:5432/enrims_prod?sslmode=require" \
+  --from-literal=SECRET_KEY="$(openssl rand -hex 32)" \
+  --from-literal=PII_ENCRYPTION_KEY="$(openssl rand -hex 32)" \
+  --from-literal=REDIS_URL="redis://redis-service:6379/0"
+
+# Create Docker registry secret (for private ECR)
+kubectl create secret docker-registry ecr-secret -n enrims-prod \
+  --docker-server=123456789012.dkr.ecr.ap-south-1.amazonaws.com \
+  --docker-username=AWS \
+  --docker-password="$(aws ecr get-login-password --region ap-south-1)"
 ```
 
 ### 4.2 Backend Deployment
@@ -582,23 +571,21 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: enrims-backend
-  namespace: enrims
+  namespace: enrims-prod
   labels:
-    app: enrims-backend
+    app: enrims
+    component: backend
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: enrims-backend
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      app: enrims
+      component: backend
   template:
     metadata:
       labels:
-        app: enrims-backend
+        app: enrims
+        component: backend
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
@@ -607,7 +594,7 @@ spec:
       serviceAccountName: enrims-backend
       containers:
         - name: backend
-          image: your-registry.azurecr.io/enrims-backend:1.0.0
+          image: 123456789012.dkr.ecr.ap-south-1.amazonaws.com/enrims-backend:latest
           ports:
             - containerPort: 8000
               protocol: TCP
@@ -618,17 +605,19 @@ spec:
             - name: DEBUG
               value: "false"
             - name: CORS_ORIGINS
-              value: "https://enrims.yourbank.co.in"
+              value: "https://enrims.finsurge.in"
+            - name: SEED_ON_STARTUP
+              value: "false"
           resources:
             requests:
               cpu: "500m"
               memory: "512Mi"
             limits:
-              cpu: "1000m"
-              memory: "1Gi"
+              cpu: "2000m"
+              memory: "2Gi"
           livenessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /health
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 30
@@ -636,60 +625,123 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /health
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 1000
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
-      volumes:
-        - name: tmp
-          emptyDir: {}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchExpressions:
-                    - key: app
-                      operator: In
-                      values:
-                        - enrims-backend
-                topologyKey: kubernetes.io/hostname
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+      imagePullSecrets:
+        - name: ecr-secret
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: enrims
+              component: backend
 ```
 
-### 4.3 Service
+### 4.3 Frontend Deployment
+
+```yaml
+# k8s/frontend-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enrims-frontend
+  namespace: enrims-prod
+  labels:
+    app: enrims
+    component: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: enrims
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: enrims
+        component: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: 123456789012.dkr.ecr.ap-south-1.amazonaws.com/enrims-frontend:latest
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 30
+      imagePullSecrets:
+        - name: ecr-secret
+```
+
+### 4.4 Services
 
 ```yaml
 # k8s/backend-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: enrims-backend
-  namespace: enrims
+  name: enrims-backend-svc
+  namespace: enrims-prod
   labels:
-    app: enrims-backend
+    app: enrims
+    component: backend
 spec:
   type: ClusterIP
+  selector:
+    app: enrims
+    component: backend
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       targetPort: 8000
       protocol: TCP
-      name: http
+
+---
+# k8s/frontend-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: enrims-frontend-svc
+  namespace: enrims-prod
+  labels:
+    app: enrims
+    component: frontend
+spec:
+  type: ClusterIP
   selector:
-    app: enrims-backend
+    app: enrims
+    component: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
 ```
 
-### 4.4 Ingress
+### 4.5 Ingress with TLS
 
 ```yaml
 # k8s/ingress.yaml
@@ -697,49 +749,49 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: enrims-ingress
-  namespace: enrims
+  namespace: enrims-prod
   annotations:
-    kubernetes.io/ingress.class: nginx
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
-      add_header X-Content-Type-Options "nosniff" always;
-      add_header X-Frame-Options "SAMEORIGIN" always;
+      more_set_headers "Strict-Transport-Security: max-age=63072000; includeSubDomains; preload";
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
 spec:
   tls:
     - hosts:
-        - enrims.yourbank.co.in
-        - api.enrims.yourbank.co.in
-      secretName: enrims-tls
+        - enrims.finsurge.in
+        - api.enrims.finsurge.in
+      secretName: enrims-tls-cert
   rules:
-    - host: enrims.yourbank.co.in
+    - host: enrims.finsurge.in
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: enrims-frontend
+                name: enrims-frontend-svc
                 port:
                   number: 80
-    - host: api.enrims.yourbank.co.in
+    - host: api.enrims.finsurge.in
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: enrims-backend
+                name: enrims-backend-svc
                 port:
                   number: 8000
 ```
 
-### 4.5 Horizontal Pod Autoscaler
+### 4.6 Horizontal Pod Autoscaler (HPA)
 
 ```yaml
 # k8s/hpa.yaml
@@ -747,7 +799,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: enrims-backend-hpa
-  namespace: enrims
+  namespace: enrims-prod
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -783,33 +835,22 @@ spec:
           periodSeconds: 120
 ```
 
-### 4.6 Deploy Commands
+### 4.7 Apply All Resources
 
 ```bash
-# Apply all manifests
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/secrets.yaml
+# Apply in order
 kubectl apply -f k8s/backend-deployment.yaml
+kubectl apply -f k8s/frontend-deployment.yaml
 kubectl apply -f k8s/backend-service.yaml
+kubectl apply -f k8s/frontend-service.yaml
 kubectl apply -f k8s/ingress.yaml
 kubectl apply -f k8s/hpa.yaml
 
-# Verify
-kubectl get pods -n enrims
-kubectl get svc -n enrims
-kubectl get ingress -n enrims
-kubectl get hpa -n enrims
-
-# Check logs
-kubectl logs -f deployment/enrims-backend -n enrims
-
-# Rolling update
-kubectl set image deployment/enrims-backend \
-  backend=your-registry.azurecr.io/enrims-backend:1.1.0 \
-  -n enrims
-
-# Rollback if needed
-kubectl rollout undo deployment/enrims-backend -n enrims
+# Verify deployment
+kubectl get pods -n enrims-prod
+kubectl get svc -n enrims-prod
+kubectl get ingress -n enrims-prod
+kubectl describe hpa enrims-backend-hpa -n enrims-prod
 ```
 
 ---
@@ -824,558 +865,522 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-# Install Prometheus stack (includes Prometheus, Alertmanager, Grafana)
-helm install monitoring prometheus-community/kube-prometheus-stack \
+# Install Prometheus
+helm install prometheus prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --create-namespace \
   --set prometheus.prometheusSpec.retention=30d \
+  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.storageClassName=gp3 \
   --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=50Gi \
-  --set grafana.adminPassword="$(vault kv get -field=grafana_password secret/enrims/monitoring)" \
-  --set grafana.persistence.enabled=true \
-  --set grafana.persistence.size=10Gi \
-  --values monitoring/prometheus-values.yaml
+  --set alertmanager.enabled=true \
+  --set grafana.adminPassword="$(vault kv get -field=grafana_password secret/enrims/monitoring)"
 ```
 
-### 5.2 Scrape Configuration for FinsurgeENRIMS
+### 5.2 FastAPI Metrics (Application Side)
 
-```yaml
-# monitoring/prometheus-values.yaml
-prometheus:
-  prometheusSpec:
-    additionalScrapeConfigs:
-      - job_name: "enrims-backend"
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - enrims
-        relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-            action: keep
-            regex: true
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
-            action: replace
-            target_label: __metrics_path__
-            regex: (.+)
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            target_label: __address__
-            regex: (.+)
-            replacement: "$1"
-        metrics_path: /metrics
-        scrape_interval: 15s
-```
+Add Prometheus metrics middleware to the backend:
 
-### 5.3 FastAPI Prometheus Metrics
-
-Add to `requirements.txt`:
-
-```
-prometheus-fastapi-instrumentator==6.1.0
+```bash
+pip install prometheus-fastapi-instrumentator
 ```
 
 ```python
-# backend/main.py (add after app creation)
+# Add to backend/main.py
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Auto-instrument all endpoints
+app = FastAPI(title="FinsurgeENRIMS")
+
+# Instrument the app for Prometheus metrics
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 ```
 
-This auto-generates:
-- `http_requests_total` (counter by method, endpoint, status)
-- `http_request_duration_seconds` (histogram by method, endpoint)
-- `http_requests_in_progress` (gauge)
-- `http_request_size_bytes` (histogram)
-- `http_response_size_bytes` (histogram)
+### 5.3 Prometheus Scrape Config
 
-### 5.4 Custom Business Metrics
-
-```python
-# backend/app/utils/metrics.py
-from prometheus_client import Counter, Histogram, Gauge
-
-# Business metrics
-alerts_created_total = Counter(
-    "enrims_alerts_created_total",
-    "Total alerts created by the rules engine",
-    ["alert_type", "priority"]
-)
-
-rules_evaluated_total = Counter(
-    "enrims_rules_evaluated_total",
-    "Total rule evaluations",
-    ["rule_name", "result"]  # result: matched / not_matched
-)
-
-transaction_processing_duration = Histogram(
-    "enrims_transaction_processing_seconds",
-    "Time to process a transaction through the rules engine",
-    buckets=[0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0]
-)
-
-open_alerts_gauge = Gauge(
-    "enrims_open_alerts",
-    "Current number of open alerts",
-    ["priority"]
-)
-
-open_cases_gauge = Gauge(
-    "enrims_open_cases",
-    "Current number of open investigation cases",
-)
-
-sla_overdue_alerts = Gauge(
-    "enrims_sla_overdue_alerts",
-    "Number of alerts past SLA deadline",
-)
+```yaml
+# Add to Prometheus scrape config (via ServiceMonitor CRD)
+# k8s/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: enrims-backend-monitor
+  namespace: monitoring
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: enrims
+      component: backend
+  namespaceSelector:
+    matchNames:
+      - enrims-prod
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
 ```
 
-### 5.5 Pre-Built Grafana Dashboard
+Or if using static Prometheus config:
+
+```yaml
+# prometheus.yml additional scrape config
+scrape_configs:
+  - job_name: 'enrims-backend'
+    scrape_interval: 15s
+    metrics_path: /metrics
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - enrims-prod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: enrims
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_label_component]
+        regex: backend
+        action: keep
+```
+
+### 5.4 Grafana Dashboard JSON
+
+Import this dashboard in Grafana (Dashboards > Import > Paste JSON):
 
 ```json
 {
   "dashboard": {
-    "title": "FinsurgeENRIMS - Operations Dashboard",
-    "uid": "enrims-ops",
-    "tags": ["enrims", "production"],
+    "title": "FinsurgeENRIMS - Application Metrics",
+    "uid": "enrims-app-metrics",
     "timezone": "Asia/Kolkata",
     "panels": [
       {
-        "title": "API Request Rate",
+        "title": "Request Rate (req/s)",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "sum(rate(http_requests_total{namespace=\"enrims\"}[5m])) by (method)",
-            "legendFormat": "{{method}}"
+            "expr": "rate(http_requests_total{job=\"enrims-backend\"}[5m])",
+            "legendFormat": "{{method}} {{handler}} {{status}}"
           }
         ]
       },
       {
-        "title": "API Latency (p95)",
+        "title": "Request Latency (p95)",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "targets": [
           {
-            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"enrims\"}[5m])) by (le, handler))",
-            "legendFormat": "{{handler}}"
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"enrims-backend\"}[5m]))",
+            "legendFormat": "p95 {{handler}}"
           }
         ]
       },
       {
-        "title": "HTTP Error Rate (5xx)",
+        "title": "Error Rate (5xx)",
         "type": "stat",
         "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
         "targets": [
           {
-            "expr": "sum(rate(http_requests_total{namespace=\"enrims\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{namespace=\"enrims\"}[5m])) * 100",
+            "expr": "sum(rate(http_requests_total{job=\"enrims-backend\", status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"enrims-backend\"}[5m])) * 100",
             "legendFormat": "Error %"
           }
         ],
         "fieldConfig": {
           "defaults": {
+            "unit": "percent",
             "thresholds": {
               "steps": [
                 {"color": "green", "value": 0},
                 {"color": "yellow", "value": 1},
                 {"color": "red", "value": 5}
               ]
-            },
-            "unit": "percent"
-          }
-        }
-      },
-      {
-        "title": "Open Alerts by Priority",
-        "type": "bargauge",
-        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8},
-        "targets": [
-          {
-            "expr": "enrims_open_alerts",
-            "legendFormat": "{{priority}}"
-          }
-        ]
-      },
-      {
-        "title": "SLA Overdue Alerts",
-        "type": "stat",
-        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8},
-        "targets": [
-          {
-            "expr": "enrims_sla_overdue_alerts",
-            "legendFormat": "Overdue"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "thresholds": {
-              "steps": [
-                {"color": "green", "value": 0},
-                {"color": "orange", "value": 5},
-                {"color": "red", "value": 20}
-              ]
             }
           }
         }
       },
       {
-        "title": "Alerts Created (24h)",
-        "type": "timeseries",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+        "title": "Active DB Connections",
+        "type": "gauge",
+        "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8},
         "targets": [
           {
-            "expr": "sum(increase(enrims_alerts_created_total[1h])) by (alert_type)",
-            "legendFormat": "{{alert_type}}"
+            "expr": "sqlalchemy_pool_checked_out{job=\"enrims-backend\"}",
+            "legendFormat": "Active"
           }
         ]
       },
       {
-        "title": "Transaction Processing Time",
-        "type": "timeseries",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+        "title": "Alerts Generated (last 24h)",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8},
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, sum(rate(enrims_transaction_processing_seconds_bucket[5m])) by (le))",
-            "legendFormat": "p50"
-          },
-          {
-            "expr": "histogram_quantile(0.95, sum(rate(enrims_transaction_processing_seconds_bucket[5m])) by (le))",
-            "legendFormat": "p95"
-          },
-          {
-            "expr": "histogram_quantile(0.99, sum(rate(enrims_transaction_processing_seconds_bucket[5m])) by (le))",
-            "legendFormat": "p99"
+            "expr": "increase(enrims_alerts_created_total[24h])",
+            "legendFormat": "Alerts"
           }
         ]
       },
       {
-        "title": "Pod CPU Usage",
-        "type": "timeseries",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+        "title": "Rules Engine Evaluations (last 1h)",
+        "type": "stat",
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 8},
         "targets": [
           {
-            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"enrims\",container=\"backend\"}[5m])) by (pod)",
-            "legendFormat": "{{pod}}"
+            "expr": "increase(enrims_rules_evaluated_total[1h])",
+            "legendFormat": "Evaluations"
           }
         ]
       },
       {
-        "title": "Pod Memory Usage",
-        "type": "timeseries",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+        "title": "Request Duration Heatmap",
+        "type": "heatmap",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
         "targets": [
           {
-            "expr": "sum(container_memory_working_set_bytes{namespace=\"enrims\",container=\"backend\"}) by (pod) / 1024 / 1024",
-            "legendFormat": "{{pod}} (MB)"
+            "expr": "rate(http_request_duration_seconds_bucket{job=\"enrims-backend\"}[5m])",
+            "legendFormat": "{{le}}"
           }
         ]
       }
-    ]
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "namespace",
+          "type": "constant",
+          "current": {"value": "enrims-prod"}
+        }
+      ]
+    },
+    "refresh": "30s"
   }
 }
 ```
 
-Import this JSON into Grafana: Dashboards > Import > Upload JSON file.
-
----
-
-## 6. PagerDuty / OpsGenie Alerting
-
-### 6.1 Alertmanager Configuration
+### 5.5 Prometheus Alert Rules
 
 ```yaml
-# monitoring/alertmanager-config.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: alertmanager-config
-  namespace: monitoring
-stringData:
-  alertmanager.yaml: |
-    global:
-      resolve_timeout: 5m
-
-    route:
-      receiver: "default"
-      group_by: ["alertname", "namespace"]
-      group_wait: 30s
-      group_interval: 5m
-      repeat_interval: 4h
-      routes:
-        - match:
-            severity: critical
-          receiver: "pagerduty-critical"
-          group_wait: 10s
-          repeat_interval: 1h
-        - match:
-            severity: warning
-          receiver: "opsgenie-warning"
-          repeat_interval: 4h
-
-    receivers:
-      - name: "default"
-        webhook_configs:
-          - url: "https://hooks.slack.com/services/T.../B.../xxx"
-
-      - name: "pagerduty-critical"
-        pagerduty_configs:
-          - routing_key: "<pagerduty-integration-key>"
-            severity: critical
-            description: "{{ .CommonAnnotations.summary }}"
-            details:
-              alert: "{{ .CommonLabels.alertname }}"
-              namespace: "{{ .CommonLabels.namespace }}"
-              runbook: "{{ .CommonAnnotations.runbook_url }}"
-
-      - name: "opsgenie-warning"
-        opsgenie_configs:
-          - api_key: "<opsgenie-api-key>"
-            message: "{{ .CommonAnnotations.summary }}"
-            priority: "P2"
-            tags: "enrims,production"
-```
-
-### 6.2 Alert Rules
-
-```yaml
-# monitoring/enrims-alerts.yaml
+# k8s/prometheus-rules.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: enrims-alerts
   namespace: monitoring
   labels:
-    release: monitoring
+    release: prometheus
 spec:
   groups:
     - name: enrims.rules
       rules:
-        # API error rate spike
         - alert: HighErrorRate
-          expr: sum(rate(http_requests_total{namespace="enrims",status=~"5.."}[5m])) / sum(rate(http_requests_total{namespace="enrims"}[5m])) > 0.05
-          for: 2m
-          labels:
-            severity: critical
-          annotations:
-            summary: "ENRIMS API error rate above 5%"
-            description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
-            runbook_url: "https://wiki.yourbank.co.in/enrims/runbooks/high-error-rate"
-
-        # API latency degradation
-        - alert: HighLatency
-          expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace="enrims"}[5m])) by (le)) > 1.0
+          expr: sum(rate(http_requests_total{job="enrims-backend", status=~"5.."}[5m])) / sum(rate(http_requests_total{job="enrims-backend"}[5m])) > 0.05
           for: 5m
           labels:
-            severity: warning
-          annotations:
-            summary: "ENRIMS API p95 latency above 1 second"
-            description: "p95 latency is {{ $value | humanizeDuration }}."
-
-        # Pod restarts
-        - alert: PodRestarting
-          expr: increase(kube_pod_container_status_restarts_total{namespace="enrims"}[1h]) > 3
-          labels:
-            severity: warning
-          annotations:
-            summary: "ENRIMS pod {{ $labels.pod }} restarting frequently"
-
-        # Database connection issues
-        - alert: DatabaseDown
-          expr: up{job="enrims-backend"} == 0
-          for: 1m
-          labels:
             severity: critical
+            team: enrims-sre
           annotations:
-            summary: "ENRIMS backend is down"
-            description: "Backend pod is not responding to health checks."
+            summary: "ENRIMS backend error rate > 5%"
+            description: "Error rate is {{ $value | humanizePercentage }} for the past 5 minutes."
 
-        # SLA overdue alerts
-        - alert: SLAOverdueAlerts
-          expr: enrims_sla_overdue_alerts > 10
-          for: 15m
-          labels:
-            severity: warning
-          annotations:
-            summary: "More than 10 ENRIMS alerts are past SLA deadline"
-            description: "{{ $value }} alerts are overdue. Review assignment and workload."
-
-        # Disk usage
-        - alert: HighDiskUsage
-          expr: (kubelet_volume_stats_used_bytes{namespace="enrims"} / kubelet_volume_stats_capacity_bytes{namespace="enrims"}) > 0.85
+        - alert: HighLatency
+          expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="enrims-backend"}[5m])) > 0.5
           for: 10m
           labels:
             severity: warning
+            team: enrims-sre
           annotations:
-            summary: "ENRIMS volume usage above 85%"
+            summary: "ENRIMS p95 latency > 500ms"
+            description: "95th percentile latency is {{ $value }}s."
+
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total{namespace="enrims-prod"}[15m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+            team: enrims-sre
+          annotations:
+            summary: "ENRIMS pod {{ $labels.pod }} is crash-looping"
+
+        - alert: DatabaseConnectionPoolExhausted
+          expr: sqlalchemy_pool_checked_out{job="enrims-backend"} / sqlalchemy_pool_size{job="enrims-backend"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            team: enrims-sre
+          annotations:
+            summary: "DB connection pool >90% utilized"
+
+        - alert: HighMemoryUsage
+          expr: container_memory_working_set_bytes{namespace="enrims-prod", container="backend"} / container_spec_memory_limit_bytes{namespace="enrims-prod", container="backend"} > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            team: enrims-sre
+          annotations:
+            summary: "ENRIMS backend memory usage > 85%"
 ```
 
-### 6.3 Escalation Policy (PagerDuty)
+---
 
-Configure in PagerDuty UI or via API:
+## 6. PagerDuty / OpsGenie Alerting
 
-```bash
-# Create escalation policy via PagerDuty API
-curl -X POST 'https://api.pagerduty.com/escalation_policies' \
-  -H 'Authorization: Token token=<pagerduty-api-token>' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "escalation_policy": {
-      "name": "ENRIMS Production",
-      "escalation_rules": [
-        {
-          "escalation_delay_in_minutes": 5,
-          "targets": [
-            {"type": "user_reference", "id": "<on-call-sre-user-id>"}
-          ]
-        },
-        {
-          "escalation_delay_in_minutes": 15,
-          "targets": [
-            {"type": "user_reference", "id": "<sre-lead-user-id>"}
-          ]
-        },
-        {
-          "escalation_delay_in_minutes": 30,
-          "targets": [
-            {"type": "user_reference", "id": "<engineering-manager-user-id>"}
-          ]
-        }
-      ],
-      "repeat_enabled": true,
-      "num_loops": 3
-    }
-  }'
+### 6.1 PagerDuty Integration
+
+```yaml
+# Alertmanager config for PagerDuty routing
+# Add to Prometheus Alertmanager configmap or Helm values
+
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: 'enrims-pagerduty'
+      group_by: ['alertname', 'severity']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - match:
+            severity: critical
+          receiver: 'enrims-pagerduty-critical'
+          repeat_interval: 1h
+        - match:
+            severity: warning
+          receiver: 'enrims-pagerduty-warning'
+          repeat_interval: 4h
+
+    receivers:
+      - name: 'enrims-pagerduty-critical'
+        pagerduty_configs:
+          - routing_key: '<PAGERDUTY_INTEGRATION_KEY_CRITICAL>'
+            severity: critical
+            description: '{{ .CommonAnnotations.summary }}'
+            details:
+              alert: '{{ .CommonLabels.alertname }}'
+              description: '{{ .CommonAnnotations.description }}'
+              namespace: '{{ .CommonLabels.namespace }}'
+
+      - name: 'enrims-pagerduty-warning'
+        pagerduty_configs:
+          - routing_key: '<PAGERDUTY_INTEGRATION_KEY_WARNING>'
+            severity: warning
+            description: '{{ .CommonAnnotations.summary }}'
+
+      - name: 'enrims-pagerduty'
+        pagerduty_configs:
+          - routing_key: '<PAGERDUTY_INTEGRATION_KEY_DEFAULT>'
+            severity: '{{ .CommonLabels.severity }}'
+```
+
+### 6.2 OpsGenie Integration (Alternative)
+
+```yaml
+receivers:
+  - name: 'enrims-opsgenie'
+    opsgenie_configs:
+      - api_key: '<OPSGENIE_API_KEY>'
+        message: '{{ .CommonAnnotations.summary }}'
+        description: '{{ .CommonAnnotations.description }}'
+        priority: '{{ if eq .CommonLabels.severity "critical" }}P1{{ else if eq .CommonLabels.severity "warning" }}P2{{ else }}P3{{ end }}'
+        tags: 'enrims,{{ .CommonLabels.severity }}'
+        responders:
+          - type: team
+            name: 'ENRIMS-SRE'
+```
+
+### 6.3 Escalation Policy Example
+
+```
+Level 1 (0 min):    On-call SRE engineer           → SMS + Push + Email
+Level 2 (15 min):   SRE Team Lead                   → SMS + Push + Email
+Level 3 (30 min):   Engineering Manager + CISO       → Phone call + SMS
+Level 4 (60 min):   CTO + Compliance Head            → Phone call
+
+Schedule: 24/7 rotation, 1-week shifts
+On-call team: 4 SRE engineers rotating
+Handoff: Monday 09:00 IST
 ```
 
 ---
 
 ## 7. Redis
 
-### 7.1 Setup for Rate Limiting and Session Management
+### 7.1 Installation and Setup
 
-**AWS ElastiCache:**
+**AWS ElastiCache (Production)**
 
 ```bash
 aws elasticache create-replication-group \
-  --replication-group-id enrims-redis \
-  --replication-group-description "ENRIMS Redis cluster" \
+  --replication-group-id enrims-redis-prod \
+  --replication-group-description "ENRIMS production Redis" \
   --engine redis \
   --engine-version 7.0 \
   --cache-node-type cache.r6g.large \
-  --num-cache-clusters 2 \
+  --num-cache-clusters 3 \
   --automatic-failover-enabled \
   --multi-az-enabled \
+  --cache-subnet-group-name enrims-private-subnets \
+  --security-group-ids sg-0redis123 \
   --at-rest-encryption-enabled \
   --transit-encryption-enabled \
-  --auth-token "$(vault kv get -field=redis_password secret/enrims/prod)" \
-  --cache-subnet-group-name enrims-private-subnets \
-  --security-group-ids sg-0abc123def456 \
+  --auth-token "$(vault kv get -field=redis_auth secret/enrims/prod)" \
   --snapshot-retention-limit 7 \
   --region ap-south-1
 ```
 
-### 7.2 Rate Limiting with Redis
+**Docker (Development/Staging)**
 
-Add to `requirements.txt`:
-
+```bash
+docker run -d --name enrims-redis \
+  -p 6379:6379 \
+  --restart unless-stopped \
+  redis:7-alpine \
+  redis-server --requirepass "$(vault kv get -field=redis_auth secret/enrims/staging)" \
+  --maxmemory 512mb \
+  --maxmemory-policy allkeys-lru
 ```
-redis==5.0.1
-slowapi==0.1.9
+
+### 7.2 Application Connection Config
+
+```python
+# backend/app/config.py -- add Redis settings
+REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_PASSWORD: str = os.getenv("REDIS_PASSWORD", "")
 ```
 
 ```python
-# backend/app/middleware/rate_limit.py
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
+# backend/app/redis_client.py
 import redis
+from app.config import settings
 
-# Redis-backed rate limiter
-limiter = Limiter(
-    key_func=get_remote_address,
-    storage_uri="redis://redis-service:6379/1",
-    strategy="fixed-window-elastic-expiry",
+redis_client = redis.Redis.from_url(
+    settings.REDIS_URL,
+    password=settings.REDIS_PASSWORD or None,
+    decode_responses=True,
+    socket_timeout=5,
+    socket_connect_timeout=5,
+    retry_on_timeout=True,
+    health_check_interval=30,
 )
 
 
-def setup_rate_limiting(app):
-    """Configure rate limiting middleware on the FastAPI app."""
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    app.add_middleware(SlowAPIMiddleware)
+def get_redis() -> redis.Redis:
+    return redis_client
 ```
 
+### 7.3 Rate Limiting with Redis
+
 ```python
-# Usage in API routes
-from app.middleware.rate_limit import limiter
+# backend/app/middleware/rate_limit.py
+import time
+from fastapi import Request, HTTPException
+from app.redis_client import get_redis
 
-@router.post("/login")
-@limiter.limit("5/minute")
-def login(request: Request, ...):
-    ...
 
-@router.post("/transactions")
-@limiter.limit("10/minute")
-def create_transaction(request: Request, ...):
-    ...
+async def rate_limit_middleware(request: Request, call_next):
+    """Redis-backed sliding window rate limiter."""
+    redis = get_redis()
+    client_ip = request.client.host
+    path = request.url.path
+    user_id = getattr(request.state, "user_id", "anonymous")
+
+    # Different limits for different endpoints
+    if "/auth/login" in path:
+        key = f"rate:login:{client_ip}"
+        limit = 5
+        window = 60  # 5 per minute
+    else:
+        key = f"rate:api:{user_id}:{client_ip}"
+        limit = 100
+        window = 60  # 100 per minute
+
+    now = time.time()
+    pipe = redis.pipeline()
+    pipe.zremrangebyscore(key, 0, now - window)  # Remove expired entries
+    pipe.zadd(key, {str(now): now})              # Add current request
+    pipe.zcard(key)                               # Count requests in window
+    pipe.expire(key, window)                      # Set TTL
+    results = pipe.execute()
+    request_count = results[2]
+
+    if request_count > limit:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Max {limit} requests per {window}s.",
+            headers={"Retry-After": str(window)},
+        )
+
+    response = await call_next(request)
+    response.headers["X-RateLimit-Limit"] = str(limit)
+    response.headers["X-RateLimit-Remaining"] = str(max(0, limit - request_count))
+    response.headers["X-RateLimit-Reset"] = str(int(now + window))
+    return response
 ```
 
-### 7.3 Session Management with Redis
+### 7.4 Session Store with Redis
 
 ```python
-# backend/app/services/session_service.py
-import redis
+# backend/app/services/session_store.py
 import json
 from datetime import datetime
-from app.config import settings
-
-r = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
-
-SESSION_PREFIX = "session:"
-TOKEN_BLACKLIST_PREFIX = "blacklist:"
+from app.redis_client import get_redis
 
 
-def create_session(user_id: str, token_jti: str, ip_address: str, user_agent: str):
-    """Track active session in Redis."""
-    session_key = f"{SESSION_PREFIX}{user_id}"
-    session_data = {
-        "jti": token_jti,
-        "ip": ip_address,
-        "user_agent": user_agent,
-        "created_at": datetime.utcnow().isoformat(),
-    }
+class SessionStore:
+    PREFIX = "session:"
+    TTL = 1800  # 30 minutes
 
-    # Check concurrent session limit
-    existing = r.lrange(session_key, 0, -1)
-    if len(existing) >= settings.MAX_CONCURRENT_SESSIONS:
-        # Remove oldest session and blacklist its token
-        oldest = json.loads(r.lpop(session_key))
-        blacklist_token(oldest["jti"], ttl=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+    @staticmethod
+    def create_session(user_id: str, token_jti: str, metadata: dict) -> None:
+        redis = get_redis()
+        key = f"{SessionStore.PREFIX}{user_id}:{token_jti}"
+        redis.setex(key, SessionStore.TTL, json.dumps({
+            "user_id": user_id,
+            "jti": token_jti,
+            "created_at": datetime.utcnow().isoformat(),
+            "ip_address": metadata.get("ip"),
+            "user_agent": metadata.get("user_agent"),
+        }))
 
-    r.rpush(session_key, json.dumps(session_data))
-    r.expire(session_key, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+    @staticmethod
+    def revoke_session(user_id: str, token_jti: str) -> None:
+        redis = get_redis()
+        redis.delete(f"{SessionStore.PREFIX}{user_id}:{token_jti}")
 
+    @staticmethod
+    def revoke_all_sessions(user_id: str) -> int:
+        redis = get_redis()
+        keys = redis.keys(f"{SessionStore.PREFIX}{user_id}:*")
+        if keys:
+            return redis.delete(*keys)
+        return 0
 
-def blacklist_token(jti: str, ttl: int = 1800):
-    """Add a token to the blacklist (for logout or forced session termination)."""
-    r.setex(f"{TOKEN_BLACKLIST_PREFIX}{jti}", ttl, "1")
+    @staticmethod
+    def is_valid_session(user_id: str, token_jti: str) -> bool:
+        redis = get_redis()
+        return redis.exists(f"{SessionStore.PREFIX}{user_id}:{token_jti}") > 0
 
+    @staticmethod
+    def get_active_sessions(user_id: str) -> list[dict]:
+        redis = get_redis()
+        keys = redis.keys(f"{SessionStore.PREFIX}{user_id}:*")
+        sessions = []
+        for key in keys:
+            data = redis.get(key)
+            if data:
+                sessions.append(json.loads(data))
+        return sessions
 
-def is_token_blacklisted(jti: str) -> bool:
-    """Check if a token has been blacklisted."""
-    return r.exists(f"{TOKEN_BLACKLIST_PREFIX}{jti}") > 0
-
-
-def destroy_all_sessions(user_id: str):
-    """Destroy all sessions for a user (e.g., on password change)."""
-    session_key = f"{SESSION_PREFIX}{user_id}"
-    sessions = r.lrange(session_key, 0, -1)
-    for s in sessions:
-        data = json.loads(s)
-        blacklist_token(data["jti"])
-    r.delete(session_key)
+    @staticmethod
+    def enforce_max_sessions(user_id: str, max_sessions: int = 3) -> None:
+        """Remove oldest sessions if user exceeds max concurrent sessions."""
+        sessions = SessionStore.get_active_sessions(user_id)
+        if len(sessions) >= max_sessions:
+            sessions.sort(key=lambda s: s.get("created_at", ""))
+            for session in sessions[:len(sessions) - max_sessions + 1]:
+                SessionStore.revoke_session(user_id, session["jti"])
 ```
 
 ---
@@ -1385,15 +1390,15 @@ def destroy_all_sessions(user_id: str):
 ### 8.1 AWS WAF Configuration
 
 ```bash
-# Create WAF Web ACL with OWASP Top 10 rules
+# Create WAF Web ACL with OWASP Top 10 protection
 aws wafv2 create-web-acl \
   --name enrims-waf \
   --scope REGIONAL \
-  --default-action Allow={} \
+  --default-action '{"Allow": {}}' \
   --region ap-south-1 \
   --rules '[
     {
-      "Name": "AWSManagedRulesCommonRuleSet",
+      "Name": "AWS-AWSManagedRulesCommonRuleSet",
       "Priority": 1,
       "Statement": {
         "ManagedRuleGroupStatement": {
@@ -1401,7 +1406,7 @@ aws wafv2 create-web-acl \
           "Name": "AWSManagedRulesCommonRuleSet"
         }
       },
-      "OverrideAction": {"None": {}},
+      "Action": {"Block": {}},
       "VisibilityConfig": {
         "SampledRequestsEnabled": true,
         "CloudWatchMetricsEnabled": true,
@@ -1409,7 +1414,7 @@ aws wafv2 create-web-acl \
       }
     },
     {
-      "Name": "AWSManagedRulesSQLiRuleSet",
+      "Name": "AWS-AWSManagedRulesSQLiRuleSet",
       "Priority": 2,
       "Statement": {
         "ManagedRuleGroupStatement": {
@@ -1417,7 +1422,7 @@ aws wafv2 create-web-acl \
           "Name": "AWSManagedRulesSQLiRuleSet"
         }
       },
-      "OverrideAction": {"None": {}},
+      "Action": {"Block": {}},
       "VisibilityConfig": {
         "SampledRequestsEnabled": true,
         "CloudWatchMetricsEnabled": true,
@@ -1425,7 +1430,7 @@ aws wafv2 create-web-acl \
       }
     },
     {
-      "Name": "AWSManagedRulesKnownBadInputsRuleSet",
+      "Name": "AWS-AWSManagedRulesKnownBadInputsRuleSet",
       "Priority": 3,
       "Statement": {
         "ManagedRuleGroupStatement": {
@@ -1433,7 +1438,7 @@ aws wafv2 create-web-acl \
           "Name": "AWSManagedRulesKnownBadInputsRuleSet"
         }
       },
-      "OverrideAction": {"None": {}},
+      "Action": {"Block": {}},
       "VisibilityConfig": {
         "SampledRequestsEnabled": true,
         "CloudWatchMetricsEnabled": true,
@@ -1457,7 +1462,7 @@ aws wafv2 create-web-acl \
       }
     },
     {
-      "Name": "GeoRestriction",
+      "Name": "GeoBlockOutsideIndia",
       "Priority": 5,
       "Statement": {
         "NotStatement": {
@@ -1476,51 +1481,92 @@ aws wafv2 create-web-acl \
       }
     }
   ]' \
-  --visibility-config SampledRequestsEnabled=true,CloudWatchMetricsEnabled=true,MetricName=enrims-waf
+  --visibility-config '{"SampledRequestsEnabled": true, "CloudWatchMetricsEnabled": true, "MetricName": "enrims-waf"}'
 
-# Associate with ALB
+# Associate WAF with ALB
 aws wafv2 associate-web-acl \
-  --web-acl-arn arn:aws:wafv2:ap-south-1:123456789:regional/webacl/enrims-waf/xxx \
-  --resource-arn arn:aws:elasticloadbalancing:ap-south-1:123456789:loadbalancer/app/enrims-alb/xxx \
+  --web-acl-arn arn:aws:wafv2:ap-south-1:123456789012:regional/webacl/enrims-waf/xxxx \
+  --resource-arn arn:aws:elasticloadbalancing:ap-south-1:123456789012:loadbalancer/app/enrims-alb/xxxx \
   --region ap-south-1
 ```
 
-### 8.2 Cloudflare WAF (Alternative)
+### 8.2 Cloudflare WAF Rules (Alternative)
+
+If using Cloudflare as CDN/WAF in front of the application:
 
 ```bash
-# Using Cloudflare API to configure WAF rules
-# Enable OWASP ModSecurity Core Rule Set
-curl -X PATCH "https://api.cloudflare.com/client/v4/zones/<zone-id>/firewall/waf/packages/<owasp-package-id>" \
-  -H "Authorization: Bearer <api-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"sensitivity": "high", "action_mode": "challenge"}'
+# Using Cloudflare API to create WAF rules
 
-# Custom rule: Block non-India IPs
-curl -X POST "https://api.cloudflare.com/client/v4/zones/<zone-id>/firewall/rules" \
-  -H "Authorization: Bearer <api-token>" \
+# Rule 1: Block SQL injection patterns
+curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/firewall/rules" \
+  -H "Authorization: Bearer ${CF_API_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '[{
-    "filter": {
-      "expression": "not ip.geoip.country eq \"IN\"",
-      "description": "Block non-India traffic (RBI data localization)"
-    },
-    "action": "block",
-    "description": "Geo-restrict to India only"
-  }]'
+  --data '[
+    {
+      "filter": {
+        "expression": "(http.request.uri.query contains \"SELECT\" and http.request.uri.query contains \"FROM\") or http.request.uri.query contains \"UNION SELECT\" or http.request.uri.query contains \"DROP TABLE\"",
+        "paused": false
+      },
+      "action": "block",
+      "description": "Block SQL injection attempts"
+    }
+  ]'
 
-# Rate limiting rule
-curl -X POST "https://api.cloudflare.com/client/v4/zones/<zone-id>/rate_limits" \
-  -H "Authorization: Bearer <api-token>" \
+# Rule 2: Block XSS patterns
+curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/firewall/rules" \
+  -H "Authorization: Bearer ${CF_API_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{
-    "threshold": 100,
-    "period": 60,
+  --data '[
+    {
+      "filter": {
+        "expression": "http.request.uri.query contains \"<script\" or http.request.body.raw contains \"<script\" or http.request.uri.query contains \"javascript:\"",
+        "paused": false
+      },
+      "action": "block",
+      "description": "Block XSS attempts"
+    }
+  ]'
+
+# Rule 3: Rate limit login endpoint
+curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/rate_limits" \
+  -H "Authorization: Bearer ${CF_API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data '{
     "match": {
-      "request": {"url_pattern": "api.enrims.yourbank.co.in/api/*"}
+      "request": {
+        "url_pattern": "*api.enrims.finsurge.in/api/v1/auth/login*",
+        "methods": ["POST"]
+      }
     },
-    "action": {"mode": "ban", "timeout": 300},
-    "description": "API rate limit"
+    "threshold": 5,
+    "period": 60,
+    "action": {
+      "mode": "ban",
+      "timeout": 300
+    },
+    "description": "Rate limit login: 5 attempts per minute, ban for 5 min"
   }'
+
+# Rule 4: Geo-block traffic from outside India (RBI data localization)
+curl -X POST "https://api.cloudflare.com/client/v4/zones/{zone_id}/firewall/rules" \
+  -H "Authorization: Bearer ${CF_API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data '[
+    {
+      "filter": {
+        "expression": "not ip.geoip.country in {\"IN\"}",
+        "paused": false
+      },
+      "action": "block",
+      "description": "Block non-India traffic (RBI data localization)"
+    }
+  ]'
+
+# Enable Cloudflare managed OWASP ruleset
+curl -X PUT "https://api.cloudflare.com/client/v4/zones/{zone_id}/firewall/waf/packages/{owasp_package_id}" \
+  -H "Authorization: Bearer ${CF_API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data '{"sensitivity": "high", "action_mode": "block"}'
 ```
 
 ---
@@ -1530,8 +1576,10 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/<zone-id>/rate_limits" 
 ### 9.1 Vault Server Setup
 
 ```bash
-# Install Vault via Helm on Kubernetes
+# Install Vault via Helm in Kubernetes
 helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+
 helm install vault hashicorp/vault \
   --namespace vault \
   --create-namespace \
@@ -1539,44 +1587,47 @@ helm install vault hashicorp/vault \
   --set server.ha.replicas=3 \
   --set server.ha.raft.enabled=true \
   --set server.dataStorage.size=10Gi \
+  --set server.dataStorage.storageClass=gp3 \
+  --set server.auditStorage.enabled=true \
+  --set server.auditStorage.size=10Gi \
   --set ui.enabled=true
 
 # Initialize Vault
 kubectl exec -n vault vault-0 -- vault operator init \
   -key-shares=5 \
-  -key-threshold=3 \
-  -format=json > vault-init.json
+  -key-threshold=3
 
-# CRITICAL: Store vault-init.json securely offline (bank vault, HSM)
-# It contains unseal keys and root token
-
-# Unseal (must be done on each pod, with 3 of 5 keys)
+# Unseal (with 3 of 5 keys)
 kubectl exec -n vault vault-0 -- vault operator unseal <key1>
 kubectl exec -n vault vault-0 -- vault operator unseal <key2>
 kubectl exec -n vault vault-0 -- vault operator unseal <key3>
 ```
 
-### 9.2 Store ENRIMS Secrets
+### 9.2 Store Application Secrets
 
 ```bash
-# Login with root token (or admin policy token)
-export VAULT_ADDR=https://vault.yourbank.co.in
-vault login <root-token>
+# Login to Vault
+export VAULT_ADDR=https://vault.enrims.internal:8200
+vault login <root_token>
 
 # Enable KV secrets engine
 vault secrets enable -path=secret kv-v2
 
-# Store ENRIMS production secrets
+# Store all ENRIMS secrets
 vault kv put secret/enrims/prod \
   db_password="<strong-generated-password>" \
   secret_key="$(openssl rand -hex 32)" \
   pii_encryption_key="$(openssl rand -hex 32)" \
-  redis_password="<strong-generated-password>" \
-  grafana_password="<strong-generated-password>"
+  redis_auth="$(openssl rand -hex 16)" \
+  grafana_password="$(openssl rand -base64 24)"
 
-# Store MFA encryption key separately (higher access control)
-vault kv put secret/enrims/mfa \
-  totp_encryption_key="$(openssl rand -hex 32)"
+# Store database connection string
+vault kv put secret/enrims/prod/database \
+  url="postgresql://enrims_admin:<password>@finsurge-enrims-prod.xxxx.rds.amazonaws.com:5432/enrims_prod?sslmode=require"
+
+# Store Redis connection
+vault kv put secret/enrims/prod/redis \
+  url="rediss://default:<password>@enrims-redis-prod.xxxx.cache.amazonaws.com:6379/0"
 
 # Verify
 vault kv get secret/enrims/prod
@@ -1585,41 +1636,76 @@ vault kv get secret/enrims/prod
 ### 9.3 Vault Policy for ENRIMS
 
 ```hcl
-# vault/enrims-policy.hcl
-
-# Application read-only access to its secrets
+# vault-policy-enrims.hcl
 path "secret/data/enrims/prod" {
   capabilities = ["read"]
 }
 
-path "secret/data/enrims/mfa" {
+path "secret/data/enrims/prod/*" {
   capabilities = ["read"]
 }
 
-# Deny list and delete
-path "secret/metadata/enrims/*" {
+# Deny access to other environments
+path "secret/data/enrims/staging" {
   capabilities = ["deny"]
 }
 ```
 
 ```bash
-# Create policy
-vault policy write enrims-app vault/enrims-policy.hcl
+# Create the policy
+vault policy write enrims-prod vault-policy-enrims.hcl
 
-# Create Kubernetes auth for pod identity
+# Enable Kubernetes auth
 vault auth enable kubernetes
 
+# Configure Kubernetes auth to talk to the cluster
 vault write auth/kubernetes/config \
-  kubernetes_host="https://$KUBERNETES_PORT_443_TCP_ADDR:443"
+  kubernetes_host="https://kubernetes.default.svc:443"
 
+# Bind the ENRIMS service account to the policy
 vault write auth/kubernetes/role/enrims-backend \
   bound_service_account_names=enrims-backend \
-  bound_service_account_namespaces=enrims \
-  policies=enrims-app \
+  bound_service_account_namespaces=enrims-prod \
+  policies=enrims-prod \
   ttl=1h
 ```
 
-### 9.4 Vault CSI Provider (inject secrets into pods)
+### 9.4 Vault Agent Sidecar for Kubernetes
+
+```yaml
+# k8s/backend-deployment.yaml -- add Vault annotations for agent injection
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enrims-backend
+  namespace: enrims-prod
+spec:
+  template:
+    metadata:
+      annotations:
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "enrims-backend"
+        vault.hashicorp.com/agent-inject-secret-config: "secret/data/enrims/prod"
+        vault.hashicorp.com/agent-inject-template-config: |
+          {{- with secret "secret/data/enrims/prod" -}}
+          export DATABASE_URL="{{ .Data.data.db_url }}"
+          export SECRET_KEY="{{ .Data.data.secret_key }}"
+          export PII_ENCRYPTION_KEY="{{ .Data.data.pii_encryption_key }}"
+          export REDIS_URL="{{ .Data.data.redis_url }}"
+          {{- end }}
+    spec:
+      serviceAccountName: enrims-backend
+      containers:
+        - name: backend
+          image: 123456789012.dkr.ecr.ap-south-1.amazonaws.com/enrims-backend:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - "source /vault/secrets/config && python main.py"
+          ports:
+            - containerPort: 8000
+```
+
+Alternatively, use the Vault CSI Provider to mount secrets as files:
 
 ```yaml
 # k8s/vault-secret-provider.yaml
@@ -1627,107 +1713,102 @@ apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
   name: enrims-vault-secrets
-  namespace: enrims
+  namespace: enrims-prod
 spec:
   provider: vault
   parameters:
-    vaultAddress: "https://vault.yourbank.co.in"
     roleName: "enrims-backend"
+    vaultAddress: "https://vault.enrims.internal:8200"
     objects: |
-      - objectName: "db_password"
+      - objectName: "db-password"
         secretPath: "secret/data/enrims/prod"
         secretKey: "db_password"
-      - objectName: "secret_key"
+      - objectName: "secret-key"
         secretPath: "secret/data/enrims/prod"
         secretKey: "secret_key"
-      - objectName: "pii_encryption_key"
+      - objectName: "pii-key"
         secretPath: "secret/data/enrims/prod"
         secretKey: "pii_encryption_key"
-      - objectName: "redis_password"
-        secretPath: "secret/data/enrims/prod"
-        secretKey: "redis_password"
-  secretObjects:
-    - secretName: enrims-secrets
-      type: Opaque
-      data:
-        - objectName: db_password
-          key: DATABASE_PASSWORD
-        - objectName: secret_key
-          key: SECRET_KEY
-        - objectName: pii_encryption_key
-          key: PII_ENCRYPTION_KEY
-        - objectName: redis_password
-          key: REDIS_PASSWORD
-```
-
-Update the backend deployment to mount Vault secrets:
-
-```yaml
-# Add to k8s/backend-deployment.yaml (under spec.template.spec)
-volumes:
-  - name: secrets-store
-    csi:
-      driver: secrets-store.csi.k8s.io
-      readOnly: true
-      volumeAttributes:
-        secretProviderClass: enrims-vault-secrets
-
-# Add to containers[0].volumeMounts
-volumeMounts:
-  - name: secrets-store
-    mountPath: "/mnt/secrets"
-    readOnly: true
 ```
 
 ### 9.5 Secret Rotation
 
 ```bash
-# Rotate database password
-NEW_PASS=$(openssl rand -base64 24)
+# Rotate the JWT secret key (quarterly)
+NEW_KEY=$(openssl rand -hex 32)
+vault kv put secret/enrims/prod secret_key="$NEW_KEY" \
+  db_password="$(vault kv get -field=db_password secret/enrims/prod)" \
+  pii_encryption_key="$(vault kv get -field=pii_encryption_key secret/enrims/prod)" \
+  redis_auth="$(vault kv get -field=redis_auth secret/enrims/prod)"
 
-# 1. Update in Vault
+# Rolling restart of backend pods to pick up new secret
+kubectl rollout restart deployment/enrims-backend -n enrims-prod
+
+# Verify new pods are running
+kubectl rollout status deployment/enrims-backend -n enrims-prod
+
+# Rotate database password (coordinate with RDS)
+NEW_DB_PASS=$(openssl rand -base64 32)
+aws rds modify-db-instance \
+  --db-instance-identifier finsurge-enrims-prod \
+  --master-user-password "$NEW_DB_PASS" \
+  --apply-immediately
+
 vault kv put secret/enrims/prod \
-  db_password="$NEW_PASS" \
+  db_password="$NEW_DB_PASS" \
   secret_key="$(vault kv get -field=secret_key secret/enrims/prod)" \
   pii_encryption_key="$(vault kv get -field=pii_encryption_key secret/enrims/prod)" \
-  redis_password="$(vault kv get -field=redis_password secret/enrims/prod)"
+  redis_auth="$(vault kv get -field=redis_auth secret/enrims/prod)"
 
-# 2. Update in PostgreSQL
-psql -h finsurge-enrims-prod.xxxxx.rds.amazonaws.com -U enrims_admin -c \
-  "ALTER USER enrims_app PASSWORD '$NEW_PASS';"
-
-# 3. Rolling restart of backend pods (picks up new secret)
-kubectl rollout restart deployment/enrims-backend -n enrims
-
-# Rotation schedule:
-# - Database passwords: Every 90 days
-# - SECRET_KEY: Every 90 days (invalidates all JWTs -- schedule during maintenance window)
-# - PII_ENCRYPTION_KEY: NEVER rotate without data re-encryption migration
-# - Redis password: Every 90 days
+# Restart to pick up new DB password
+kubectl rollout restart deployment/enrims-backend -n enrims-prod
 ```
+
+---
+
+## Quick Reference: Environment Variables
+
+All environment variables the application needs, sourced from Vault in production:
+
+| Variable | Source | Description |
+|----------|--------|-------------|
+| `DATABASE_URL` | Vault `secret/enrims/prod` | PostgreSQL connection string with sslmode=require |
+| `SECRET_KEY` | Vault `secret/enrims/prod` | JWT signing key (256-bit hex) |
+| `PII_ENCRYPTION_KEY` | Vault `secret/enrims/prod` | AES-256 key for PAN/Aadhaar encryption |
+| `REDIS_URL` | Vault `secret/enrims/prod` | Redis connection string |
+| `DEBUG` | Hardcoded `false` | Never true in production |
+| `CORS_ORIGINS` | ConfigMap | `https://enrims.finsurge.in` |
+| `SEED_ON_STARTUP` | Hardcoded `false` | Never seed in production |
+| `TOKEN_EXPIRE_MINUTES` | ConfigMap | `30` |
+| `REFRESH_TOKEN_EXPIRE_MINUTES` | ConfigMap | `1440` |
 
 ---
 
 ## Deployment Checklist
 
-Before going live, verify each infrastructure component:
+Before going live, verify each item:
 
-| # | Component | Check | Command |
-|---|-----------|-------|---------|
-| 1 | PostgreSQL | Connection, TLS, backup | `psql "sslmode=require" -c "SELECT version();"` |
-| 2 | TLS | Certificate valid, A+ rating | `curl -I https://enrims.yourbank.co.in` |
-| 3 | MFA | TOTP setup/verify works | Test with Google Authenticator |
-| 4 | Kubernetes | Pods running, HPA active | `kubectl get pods,hpa -n enrims` |
-| 5 | Prometheus | Metrics scraping | `curl http://backend:8000/metrics` |
-| 6 | Grafana | Dashboard loads | Open Grafana UI, verify panels |
-| 7 | Alerting | Test alert fires | Trigger a test alert, verify PagerDuty |
-| 8 | Redis | Connection, persistence | `redis-cli -h redis-service ping` |
-| 9 | WAF | Rules active, geo-block works | Test from non-India IP (should be blocked) |
-| 10 | Vault | Secrets accessible | `vault kv get secret/enrims/prod` |
-| 11 | Backups | Restore test passes | Restore to a test instance, verify data |
-| 12 | DNS | Points to correct endpoints | `dig enrims.yourbank.co.in` |
+- [ ] PostgreSQL RDS instance running in ap-south-1 with encryption at rest
+- [ ] PgBouncer connection pooling configured and tested
+- [ ] Daily backup CRON active, backup restore tested
+- [ ] TLS certificates issued and Nginx SSL config active
+- [ ] HSTS header present in all responses
+- [ ] MFA/TOTP enrollment working for admin and compliance roles
+- [ ] Kubernetes deployments running with 3+ backend replicas
+- [ ] HPA configured and scaling tested under load
+- [ ] Prometheus scraping metrics from backend pods
+- [ ] Grafana dashboard imported and showing live data
+- [ ] PagerDuty/OpsGenie alerting tested (fire test alert)
+- [ ] Redis cluster running with TLS and auth
+- [ ] Rate limiting active on login (5/min) and API (100/min)
+- [ ] WAF rules active: SQLi, XSS, rate limit, geo-block
+- [ ] Vault secrets stored and agent sidecar injecting into pods
+- [ ] No hardcoded secrets in code or environment
+- [ ] DEBUG=false, SEED_ON_STARTUP=false in production
+- [ ] Swagger/OpenAPI docs blocked in production Nginx config
+- [ ] CORS whitelist set to production domain only
+- [ ] Data localization: all infrastructure in India region confirmed
 
 ---
 
-*This guide should be executed by the DevOps/SRE team with approval from the CISO for security-related configurations.*
-*All passwords, tokens, and API keys must be generated fresh for production -- never reuse values from this document.*
+*This document is classified as Confidential. It contains infrastructure credentials references and security configurations. Distribution is limited to the DevOps/SRE team, CISO, and authorized infrastructure personnel.*

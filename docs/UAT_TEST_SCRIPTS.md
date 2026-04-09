@@ -3,7 +3,8 @@
 **Prepared for**: Bank QA Team
 **Date**: 08-Apr-2026
 **Version**: 1.0
-**Classification**: Internal
+**Application URL**: `http://localhost:5173` (Frontend) | `http://localhost:8000` (Backend API)
+**Classification**: Internal -- QA Use Only
 
 ---
 
@@ -12,18 +13,37 @@
 - Execute each test case in the order listed within each module.
 - Record the actual result and mark Status as PASS, FAIL, or BLOCKED.
 - For FAIL results, note the defect ID in the Remarks column.
-- Test environment: Frontend at http://localhost:5173, Backend at http://localhost:8000
-- Test data: Pre-seeded demo data (49 customers, 4000+ transactions, 150 alerts, 25 cases)
+- Test environment: Frontend at `http://localhost:5173`, Backend API at `http://localhost:8000`
+- API base path: `/api/v1`
+- Test data: Pre-seeded demo data (49 customers, 4000+ transactions, 150 alerts, 25 cases, 26 rules)
 
 ### Test Credentials
 
-| Username | Role | Password |
-|----------|------|----------|
-| admin | System Administrator | Demo@2026 |
-| sunita.krishnan | Compliance Officer | Demo@2026 |
-| deepa.venkatesh | Risk Analyst | Demo@2026 |
-| pradeep.mohan | Fraud Investigator | Demo@2026 |
-| lakshmi.iyer | Internal Auditor | Demo@2026 |
+| Username | Full Name | Role | Password |
+|----------|-----------|------|----------|
+| admin | System Admin | System Administrator | Demo@2026 |
+| sunita.krishnan | Sunita Krishnan | Compliance Officer | Demo@2026 |
+| deepa.venkatesh | Deepa Venkatesh | Risk Analyst | Demo@2026 |
+| pradeep.mohan | Pradeep Mohan | Fraud Investigator | Demo@2026 |
+| lakshmi.iyer | Lakshmi Iyer | Internal Auditor | Demo@2026 |
+
+### Key Demo Scenarios (for reference during testing)
+
+| Scenario | Customer | CIF | Pattern |
+|----------|----------|-----|---------|
+| Structuring Detection | Rajesh Mehta | CIF-1001 | Multiple cash deposits just below INR 10,00,000 |
+| Layering Pattern | Hassan Trading LLC | CIF-1003 | Rapid high-value RTGS/SWIFT transfers through connected entities |
+| Card Fraud | Ananya Sharma | CIF-1010 | Card used in multiple cities within hours |
+| PEP Monitoring | K. Dhanabalan | CIF-1015 | Former minister with enhanced monitoring |
+
+### Status Legend
+
+| Status | Meaning |
+|--------|---------|
+| PASS | All expected results met |
+| FAIL | One or more expected results not met -- attach defect ID |
+| BLOCKED | Cannot execute due to dependency or environment issue |
+| N/A | Not applicable in current build |
 
 ---
 
@@ -36,672 +56,1300 @@
 | **ID** | TC-001 |
 | **Title** | Successful login with valid credentials |
 | **Precondition** | Application is running. User is on the login page. No active session. |
-| **Steps** | 1. Navigate to http://localhost:5173 |
-|  | 2. Enter username: `admin` |
-|  | 3. Enter password: `Demo@2026` |
-|  | 4. Click the "Sign In" button |
-| **Expected Result** | User is redirected to the Executive Dashboard. The top navigation shows the user's name ("Administrator") and role. The dashboard displays KPI cards (Alerts Today, Open Cases, High-Risk Customers, Suspicious Transactions). |
+
+**Steps:**
+
+1. Open browser and navigate to `http://localhost:5173`.
+2. Verify the login page is displayed with username and password fields.
+3. Enter username: `admin`.
+4. Enter password: `Demo@2026`.
+5. Click the **Sign In** button.
+
+**Expected Result:**
+
+- API call `POST /api/v1/auth/login` returns HTTP 200.
+- Response contains `access_token` (JWT) and `user` object.
+- `user` object includes: `id`, `username` = "admin", `full_name`, `department`, `is_active` = true, `roles` array containing "system_administrator", `last_login_at` (updated to current timestamp).
+- User is redirected to the Executive Dashboard.
+- Top navigation bar displays the user's name and role.
+- Dashboard KPI cards load: Alerts Today, Open Cases, High-Risk Customers, Suspicious Transactions.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
+
+---
 
 ### TC-002: Login Failure with Invalid Password
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-002 |
-| **Title** | Login failure with incorrect password |
+| **Title** | Login rejected with incorrect password |
 | **Precondition** | Application is running. User is on the login page. |
-| **Steps** | 1. Navigate to http://localhost:5173 |
-|  | 2. Enter username: `admin` |
-|  | 3. Enter password: `WrongPassword123` |
-|  | 4. Click the "Sign In" button |
-| **Expected Result** | An error message "Invalid credentials" is displayed. User remains on the login page. No JWT token is stored in browser storage. |
+
+**Steps:**
+
+1. Navigate to the login page.
+2. Enter username: `admin`.
+3. Enter password: `WrongPassword123!`.
+4. Click the **Sign In** button.
+5. Attempt with username: `nonexistent_user` and password: `Demo@2026`.
+
+**Expected Result:**
+
+- Step 4: API returns HTTP 401 with body `{"detail": "Invalid credentials"}`.
+- Error message is displayed on the login form.
+- No JWT token is issued or stored.
+- User remains on the login page.
+- Step 5: Same 401 response -- system does not reveal whether the username exists.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-003: Login Failure with Non-Existent Username
+---
+
+### TC-003: Token Expiry and Re-authentication
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-003 |
-| **Title** | Login failure with non-existent username |
-| **Precondition** | Application is running. User is on the login page. |
-| **Steps** | 1. Navigate to http://localhost:5173 |
-|  | 2. Enter username: `nonexistent_user` |
-|  | 3. Enter password: `Demo@2026` |
-|  | 4. Click the "Sign In" button |
-| **Expected Result** | An error message "Invalid credentials" is displayed (same message as TC-002 -- no user enumeration). User remains on the login page. |
+| **Title** | Expired JWT token forces re-login |
+| **Precondition** | User is logged in. Token expiry configured at 30 minutes (`ACCESS_TOKEN_EXPIRE_MINUTES=30`). |
+
+**Steps:**
+
+1. Log in as `deepa.venkatesh` with password `Demo@2026`.
+2. Confirm the dashboard loads successfully.
+3. Open browser Developer Tools > Application > Local Storage.
+4. Manually modify or delete the stored JWT token value.
+5. Navigate to the Transactions page (click sidebar link).
+
+**Expected Result:**
+
+- The API call to `/api/v1/transactions` returns HTTP 401 (Unauthorized).
+- The application detects the invalid token and redirects to the login page.
+- A session expired or authentication required message is displayed.
+- After re-login, the application resumes normally.
+- Verify that `ACCESS_TOKEN_EXPIRE_MINUTES` is set to 30 in the backend config.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-004: Access Protected Page Without Authentication
+---
+
+### TC-004: Role-Based Access Control
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-004 |
-| **Title** | Redirect to login when accessing protected route without token |
-| **Precondition** | No active session (clear browser storage if needed). |
-| **Steps** | 1. Open browser and navigate directly to http://localhost:5173/dashboard |
-|  | 2. Observe the behavior |
-|  | 3. Try navigating to http://localhost:5173/alerts |
-|  | 4. Observe the behavior |
-| **Expected Result** | User is redirected to the login page for both URLs. No dashboard or alert data is visible before authentication. |
+| **Title** | Menu items and page access vary by user role |
+| **Precondition** | All 5 demo users are active in the database. |
+
+**Steps:**
+
+1. Log in as `admin` (System Administrator). Record all visible sidebar menu items.
+2. Navigate to Administration > Users page. Verify access.
+3. Navigate to Administration > Audit Log. Verify access.
+4. Log out.
+5. Log in as `pradeep.mohan` (Fraud Investigator). Record all visible sidebar menu items.
+6. Attempt to access the Administration pages (direct URL or API call to `GET /api/v1/admin/users`).
+7. Log out.
+8. Log in as `lakshmi.iyer` (Internal Auditor). Record visible menu items.
+9. Attempt to toggle a rule via `POST /api/v1/rules/{rule_id}/toggle`.
+
+**Expected Result:**
+
+- **System Administrator** (`admin`): Full access to all modules -- Dashboard, Transactions, Alerts, Cases, Customers, KYC, Rules Engine, Network, Reports, Administration (Users, Roles, Audit Log, System Config, Health).
+- **Fraud Investigator** (`pradeep.mohan`): Access to Dashboard, Transactions, Alerts, Cases, Customers, Network. Limited or no access to Administration and Rules management.
+- **Internal Auditor** (`lakshmi.iyer`): Read-only access to Audit Log, Reports, Dashboard. No write access to alerts, cases, or rule toggles.
+- Unauthorized API calls return HTTP 403 Forbidden.
+- Navigation menu items are filtered based on the user's role permissions.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-005: Role-Based Navigation Visibility
+---
+
+### TC-005: Password Policy Enforcement
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-005 |
-| **Title** | Verify navigation items match user role |
-| **Precondition** | User is logged out. |
-| **Steps** | 1. Login as `pradeep.mohan` (Fraud Investigator) with password `Demo@2026` |
-|  | 2. Note all navigation menu items visible in the sidebar |
-|  | 3. Logout |
-|  | 4. Login as `sunita.krishnan` (Compliance Officer) with password `Demo@2026` |
-|  | 5. Note all navigation menu items visible in the sidebar |
-|  | 6. Verify that compliance-specific options (Rules management, Reports) are accessible |
-| **Expected Result** | Both users see the core navigation (Dashboard, Transactions, Alerts, Cases, Customers). Compliance Officer additionally has access to Rules configuration, Regulatory Reports, and Admin functions as appropriate for their role. |
+| **Title** | Password complexity policy is enforced |
+| **Precondition** | Password policy configured: `PASSWORD_MIN_LENGTH=12`, `PASSWORD_REQUIRE_UPPERCASE=True`, `PASSWORD_REQUIRE_LOWERCASE=True`, `PASSWORD_REQUIRE_DIGIT=True`, `PASSWORD_REQUIRE_SPECIAL=True`, `PASSWORD_MAX_AGE_DAYS=90`. |
+
+**Steps:**
+
+1. Access the change password or user creation functionality.
+2. Attempt password: `short` (5 chars -- too short, no complexity).
+3. Attempt password: `abcdefghijkl` (12 chars -- no uppercase, digit, or special).
+4. Attempt password: `Abcdefgh1234` (12 chars -- no special character).
+5. Attempt password: `ABCDEFGH12!@` (12 chars -- no lowercase).
+6. Attempt password: `SecurePass@2026` (15 chars -- meets all requirements).
+
+**Expected Result:**
+
+- Steps 2-5: Each password is rejected with a specific error message indicating which policy requirement failed (e.g., "Password must be at least 12 characters", "Password must contain a special character").
+- Step 6: Password `SecurePass@2026` is accepted (15 chars, uppercase S/P, lowercase ecurease, digits 2026, special @).
+- Password policy values match backend config: min 12 chars, require upper + lower + digit + special, 90-day rotation.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
 ---
 
 ## Module 2: Transaction Monitoring (TC-006 to TC-010)
 
-### TC-006: View Transaction List with Filters
+### TC-006: Transaction List View
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-006 |
-| **Title** | View and filter the transaction list |
-| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). |
-| **Steps** | 1. Navigate to the Transactions page from the sidebar |
-|  | 2. Verify the transaction list loads with paginated results (20 per page) |
-|  | 3. Apply channel filter: select "SWIFT" |
-|  | 4. Verify results are filtered to show only SWIFT transactions |
-|  | 5. Clear the channel filter |
-|  | 6. Apply amount filter: set minimum amount to INR 5,00,000 (50000000 paise) |
-|  | 7. Verify all displayed transactions have amount >= INR 5,00,000 |
-| **Expected Result** | Transaction list displays with correct pagination. Channel filter shows only SWIFT transactions. Amount filter shows only high-value transactions. Each transaction row shows: reference, customer name, amount, channel, method, risk score, flagged status, and date. |
+| **Title** | View paginated transaction list |
+| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). Seed data has 4000+ transactions. |
+
+**Steps:**
+
+1. Click **Transactions** in the sidebar menu.
+2. Observe the transaction list loads with default pagination.
+3. Verify the columns displayed in the table.
+4. Note the total transaction count in the pagination area.
+5. Click **Next Page** to navigate to page 2.
+6. Click a transaction row to open the detail view.
+
+**Expected Result:**
+
+- Transaction list displays 20 items per page (default `page_size=20`).
+- Total count shows 4000+ transactions from seed data.
+- Columns visible: Transaction Ref (TXN...), Date, Customer Name, Account Number, Type (credit/debit), Method (cash, cheque, rtgs, neft, swift, card, upi), Channel (branch, atm, internet_banking, mobile_banking, pos, swift), Amount (INR), Risk Score (0-100), Flagged indicator.
+- Transactions are sorted by date descending (most recent first).
+- Page 2 shows a different set of 20 transactions.
+- Clicking a row opens full transaction detail with counterparty info, location, processing status.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-007: View Flagged Transactions
+---
+
+### TC-007: Transaction Filters
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-007 |
-| **Title** | Filter and review flagged (suspicious) transactions |
-| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). |
-| **Steps** | 1. Navigate to the Transactions page |
-|  | 2. Apply the "Flagged" filter (is_flagged = true) |
-|  | 3. Verify only flagged transactions are displayed |
-|  | 4. Click on the first flagged transaction to view details |
-|  | 5. Verify the detail view shows: transaction reference, amount, channel, risk score, flag reason, counterparty details, and location |
-| **Expected Result** | Filtered list shows only flagged transactions (red flag indicator visible). Transaction detail view displays all fields including the flag_reason explaining why the rules engine flagged this transaction. Risk score is between 0 and 100. |
+| **Title** | Filter transactions by channel, amount, date, flagged status, and search |
+| **Precondition** | Logged in as `deepa.venkatesh`. On the Transactions page. |
+
+**Steps:**
+
+1. Apply filter: **Channel** = `swift`. Note the result count.
+2. Clear filter. Apply: **Min Amount** = `500000`, **Max Amount** = `10000000`. Note results.
+3. Clear filters. Apply: **Date From** = `2026-01-01`, **Date To** = `2026-03-31`. Note results.
+4. Clear filters. Apply: **Flagged** = `true`. Note count of flagged transactions.
+5. Clear filters. Enter **Search** = `Mehta` in the search box. Note results.
+6. Apply combined filters: **Channel** = `branch`, **Flagged** = `true`, **Min Amount** = `800000`.
+
+**Expected Result:**
+
+- Step 1: Only SWIFT channel transactions are displayed. Total is less than unfiltered total.
+- Step 2: Only transactions within the amount range (5 lakh to 1 crore paise) are shown.
+- Step 3: Only Q1 2026 transactions are displayed.
+- Step 4: Only flagged transactions shown. Each has `is_flagged = true` and a non-empty `flag_reason`.
+- Step 5: Search returns transactions where reference, description, or counterparty name contains "Mehta".
+- Step 6: Combined filters apply AND logic -- only flagged branch transactions above 8 lakh paise.
+- All filters correspond to query params: `channel`, `min_amount`, `max_amount`, `date_from`, `date_to`, `is_flagged`, `search`.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-008: Transaction Search by Reference and Counterparty
+---
+
+### TC-008: Flagged Transaction Detail
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-008 |
-| **Title** | Search transactions by reference number and counterparty name |
-| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). |
-| **Steps** | 1. Navigate to the Transactions page |
-|  | 2. In the search box, type the first few characters of a known transaction reference (e.g., "TXN") |
-|  | 3. Verify search results contain matching transactions |
-|  | 4. Clear the search |
-|  | 5. Search for a counterparty name from the seed data |
-|  | 6. Verify results show transactions involving that counterparty |
-| **Expected Result** | Search works on transaction_ref, description, and counterparty_name fields (case-insensitive partial match). Results update as the user types or submits the search. |
+| **Title** | View full details of a flagged transaction |
+| **Precondition** | Logged in as `deepa.venkatesh`. Flagged transactions exist in seed data. |
+
+**Steps:**
+
+1. Navigate to Transactions and filter by **Flagged** = `true`.
+2. Click on the first flagged transaction to open its detail view.
+3. Review all data fields displayed.
+4. Note the `flag_reason` text.
+5. Call `GET /api/v1/transactions/{transaction_id}` to verify API response matches UI.
+
+**Expected Result:**
+
+- Transaction detail displays all fields:
+  - `id`, `transaction_ref` (TXN...), `account_id`, `customer_id`, `customer_name`, `account_number`.
+  - `transaction_type` (credit or debit), `transaction_method`, `channel`.
+  - `amount` (in paise), `currency` (INR), `balance_after`.
+  - `counterparty_name`, `counterparty_account`, `counterparty_bank`.
+  - `description`, `location_city`, `location_country`.
+  - `risk_score` (> 0 for flagged), `is_flagged` = true, `flag_reason` (non-empty).
+  - `transaction_date`, `processing_status` (completed), `created_at`.
+- `flag_reason` contains a meaningful rule-based description (e.g., "Structuring detection: multiple cash deposits below reporting threshold").
+- All fields in the API response match the UI display.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-009: Transaction Statistics Dashboard
+---
+
+### TC-009: Create Transaction and Trigger Rules Engine
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-009 |
-| **Title** | View transaction statistics summary |
-| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). |
-| **Steps** | 1. Navigate to the Dashboard (Executive Dashboard) |
-|  | 2. Locate the channel analytics section |
-|  | 3. Verify it shows transaction counts by channel (Branch, ATM, Internet Banking, Mobile Banking, POS, SWIFT) |
-|  | 4. Verify the Suspicious Transactions KPI card shows a count > 0 |
-| **Expected Result** | Dashboard displays channel analytics chart with breakdown across all 6 channels. Suspicious Transactions count matches the number of flagged transactions in the database. All numbers are non-negative integers. |
+| **Title** | Create a new transaction that triggers a detection rule and generates an alert |
+| **Precondition** | Logged in as `admin`. Customer CIF-1001 (Rajesh Mehta) exists. His savings account ID is known. Structuring detection rule is enabled. |
+
+**Steps:**
+
+1. Identify Rajesh Mehta's customer ID and savings account ID from `GET /api/v1/customers?search=Rajesh`.
+2. Create a transaction via `POST /api/v1/transactions` with payload:
+   ```json
+   {
+     "account_id": "<savings_account_id>",
+     "customer_id": "<customer_id>",
+     "transaction_type": "credit",
+     "transaction_method": "cash",
+     "channel": "branch",
+     "amount": 950000,
+     "description": "Cash deposit - UAT test",
+     "location_city": "Mumbai",
+     "location_country": "India"
+   }
+   ```
+3. Examine the full API response, particularly the `rules_engine` section.
+4. Navigate to Alerts and check for any newly generated alert.
+5. Navigate to the customer's 360 view and confirm the new transaction appears.
+
+**Expected Result:**
+
+- Transaction created successfully. Response contains:
+  - `transaction`: Object with new `transaction_ref`, populated fields, `processing_status` = "completed".
+  - `rules_engine`: Evaluation result showing rules tested and any matches.
+- If the structuring rule triggers (amount 9,50,000 just below INR 10,00,000 CTR threshold, combined with Rajesh Mehta's existing cash deposit pattern):
+  - `rules_engine.alert_ids` contains the new alert ID.
+  - `is_flagged` may be set to true.
+  - `risk_score` is populated.
+- New alert appears in the Alerts list with alert_type = "aml", title referencing structuring, customer = Rajesh Mehta.
+- Account balance is updated (increased by 950000 for credit).
+- Transaction appears in the customer's 360 view recent transactions.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-010: Create New Transaction and Trigger Rules Engine
+---
+
+### TC-010: CSV Export of Transactions
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-010 |
-| **Title** | Submit a new transaction and verify rules engine evaluation |
-| **Precondition** | Logged in as `admin` (System Administrator). Know a valid customer_id and account_id from seed data (e.g., CIF-1001, their savings account). API access available via browser dev tools or Postman. |
-| **Steps** | 1. Send a POST request to `/api/v1/transactions` with a valid JSON body: customer_id, account_id, transaction_type: "debit", transaction_method: "cash_withdrawal", channel: "branch", amount: 900000000 (INR 9,00,000 -- just below CTR threshold) |
-|  | 2. Verify the response contains a `transaction` object and a `rules_engine` object |
-|  | 3. Check the `rules_engine.rules_evaluated` count (should be > 0) |
-|  | 4. Check if `rules_engine.is_flagged` is true |
-|  | 5. Navigate to Alerts page and check if a new alert was created for this transaction |
-| **Expected Result** | Transaction is created successfully with a transaction_ref. Rules engine evaluates all enabled rules. For a cash transaction of INR 9,00,000, structuring detection rules should match (amount close to INR 10,00,000 threshold). A new alert is generated and visible in the Alerts list. |
+| **Title** | Export filtered transactions as CSV |
+| **Precondition** | Logged in as any user. Transactions exist in the database. |
+
+**Steps:**
+
+1. Call `GET /api/v1/export/transactions` (no filters -- full export).
+2. Verify the response is a CSV file download.
+3. Call `GET /api/v1/export/transactions?channel=branch&is_flagged=true`.
+4. Open the downloaded CSV and verify its contents.
+5. Call `GET /api/v1/export/alerts` to verify alert export also works.
+6. Call `GET /api/v1/export/customers` to verify customer export with PII masking.
+
+**Expected Result:**
+
+- Step 1-2: CSV file downloaded with filename `transactions_YYYYMMDD.csv`. Content-Type is `text/csv`.
+- Step 3-4: Filtered CSV contains only branch + flagged transactions. CSV header: `Ref, Date, Customer ID, Account ID, Type, Method, Channel, Amount (INR), Risk Score, Flagged, Flag Reason, City, Country`. Amounts are in INR (divided by 100 from paise).
+- Step 5: Alert CSV exports with header: `Alert #, Created, Type, Priority, Status, Customer ID, Title, Risk Score, Assigned To, SLA Due, Overdue`.
+- Step 6: Customer CSV exports with PII masking -- PAN shows as `XXXXX1234X`, phone as `+91XXXXX3210`, email masked. Header: `Customer #, Name, Type, PAN (masked), Phone (masked), Email (masked), City, Risk Category, Risk Score, KYC Status, PEP`.
+- Max 10,000 transactions / 5,000 alerts per export. Files open correctly in Excel.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
 ---
 
 ## Module 3: Alert Management (TC-011 to TC-015)
 
-### TC-011: View Alert List and Statistics
+### TC-011: Alert List View with Statistics
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-011 |
-| **Title** | View alert list with statistics summary |
-| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). |
-| **Steps** | 1. Navigate to the Alerts page from the sidebar |
-|  | 2. Verify the alert list loads with paginated results |
-|  | 3. Verify alert statistics are displayed: total, new, assigned, under_review, escalated, closed, overdue counts |
-|  | 4. Verify each alert row shows: alert number, title, type, priority, status, customer name, risk score, SLA due date |
-| **Expected Result** | Alert list shows ~150 seeded alerts. Statistics bar shows counts by status. Priority badges are color-coded (critical=red, high=orange, medium=yellow, low=green). Overdue alerts are visually indicated. |
+| **Title** | View paginated alert list and alert statistics |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). Seed data has ~150 alerts. |
+
+**Steps:**
+
+1. Click **Alerts** in the sidebar menu.
+2. Observe the alert list and statistics summary.
+3. Call `GET /api/v1/alerts/stats` to get the stats independently.
+4. Verify the displayed stats match the API response.
+5. Scroll through the alert list and verify column content.
+
+**Expected Result:**
+
+- Alert statistics show: `total` (~150), `new` count, `assigned` count, `under_review` count, `escalated` count, `closed` count, `overdue` count.
+- Stats also include `by_priority` (critical, high, medium, low) and `by_type` (aml, fraud, kyc, compliance) breakdowns.
+- Alert list columns: Alert # (ALT-...), Created date, Title, Alert Type, Priority (with visual indicator), Status, Customer Name, Risk Score, Assignee Name, SLA Due, Overdue flag.
+- Default sort: `created_at` descending (newest first).
+- Pagination: 20 per page, with total pages calculated.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-012: Filter Alerts by Priority and Status
+---
+
+### TC-012: Filter Alerts by Status and Priority
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-012 |
-| **Title** | Filter alerts by priority and status |
-| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). On the Alerts page. |
-| **Steps** | 1. Select priority filter: "critical" |
-|  | 2. Verify only critical-priority alerts are displayed |
-|  | 3. Additionally select status filter: "new" |
-|  | 4. Verify results show only critical + new alerts |
-|  | 5. Clear all filters |
-|  | 6. Select "My Alerts" (assigned_to = me) |
-|  | 7. Verify only alerts assigned to deepa.venkatesh are shown |
-| **Expected Result** | Filters work independently and in combination. "My Alerts" filter correctly shows only alerts assigned to the logged-in user. Alert count updates to reflect filtered results. |
+| **Title** | Filter alerts by status, priority, type, assignee, and overdue |
+| **Precondition** | Logged in as `sunita.krishnan`. On the Alerts page. |
+
+**Steps:**
+
+1. Filter: **Status** = `new`. Verify all displayed alerts have status "new".
+2. Clear. Filter: **Priority** = `critical`. Verify all shown have priority "critical".
+3. Clear. Filter: **Alert Type** = `aml`. Verify only AML alerts shown.
+4. Clear. Filter: **Assigned To** = `me`. Verify only alerts assigned to Sunita Krishnan appear.
+5. Clear. Filter: **Is Overdue** = `true`. Verify only overdue alerts (past SLA) appear.
+6. Combined: **Status** = `escalated`, **Priority** = `high`. Verify AND logic applied.
+7. Filter: **Status** = `closed`. Verify it shows all closed dispositions (closed_true_positive, closed_false_positive, closed_inconclusive).
+
+**Expected Result:**
+
+- Each filter correctly restricts the displayed alerts.
+- Counts update to reflect filtered totals.
+- "me" in assigned_to resolves to the current user's ID server-side.
+- Status = "closed" maps to all three closure statuses (true_positive, false_positive, inconclusive).
+- Combined filters use AND logic.
+- Search by title (`search` param) also works with other filters.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
+
+---
 
 ### TC-013: Assign Alert to Analyst
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-013 |
-| **Title** | Assign an unassigned alert to an analyst |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). There is at least one alert with status "new" (unassigned). |
-| **Steps** | 1. Navigate to Alerts page |
-|  | 2. Filter by status: "new" |
-|  | 3. Click on a "new" alert to open the detail view |
-|  | 4. Click the "Assign" button |
-|  | 5. Select analyst: `deepa.venkatesh` from the dropdown |
-|  | 6. Confirm the assignment |
-|  | 7. Verify the alert status changes to "assigned" |
-|  | 8. Verify the assignee name shows "Deepa Venkatesh" |
-| **Expected Result** | Alert is assigned to the selected analyst. Status changes from "new" to "assigned". Assigned_at timestamp is set. The alert now appears in Deepa's "My Alerts" filter. |
+| **Title** | Assign an unassigned alert to a fraud investigator |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). At least one alert with status "new" and no assignee. |
+
+**Steps:**
+
+1. Filter alerts by **Status** = `new`.
+2. Select an unassigned alert (assigned_to is null). Note the alert ID.
+3. Open the alert detail view. Confirm status = "new" and assignee is empty.
+4. Click **Assign**. Select `pradeep.mohan` (Fraud Investigator) from the user list.
+5. Confirm the assignment.
+6. Verify the alert detail updates.
+
+**Expected Result:**
+
+- API call: `POST /api/v1/alerts/{alert_id}/assign` with body `{"assigned_to": "<pradeep_mohan_user_id>"}`.
+- Response shows updated alert with:
+  - `status` changed from "new" to "assigned".
+  - `assigned_to` set to Pradeep Mohan's user ID.
+  - `assigned_at` populated with current timestamp.
+  - `assignee_name` = "Pradeep Mohan".
+- Alert list reflects the updated status and assignee.
+- Pradeep Mohan can now see this alert when filtering by "Assigned To = me".
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-014: Add Investigation Note to Alert
+---
+
+### TC-014: Escalate Alert
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-014 |
-| **Title** | Add an investigation note to an alert |
-| **Precondition** | Logged in as `pradeep.mohan` (Fraud Investigator). An alert is assigned to this user or user has access. |
-| **Steps** | 1. Navigate to Alerts page and open an alert in "assigned" or "under_review" status |
-|  | 2. Scroll to the Notes section |
-|  | 3. Enter note text: "Reviewed transaction pattern. Customer has 5 cash deposits below threshold in 7 days. Consistent with structuring. Recommending escalation." |
-|  | 4. Click "Add Note" |
-|  | 5. Verify the note appears in the notes list with the investigator's name and timestamp |
-| **Expected Result** | Note is saved and displayed in the alert's notes section. The note shows: text, author name ("Pradeep Mohan"), and creation timestamp. Notes are in reverse chronological order (newest first). |
+| **Title** | Escalate an assigned alert to higher priority handling |
+| **Precondition** | Logged in as `pradeep.mohan` (Fraud Investigator). An alert is assigned to this user with status "assigned". |
+
+**Steps:**
+
+1. Filter alerts by **Assigned To** = `me`, **Status** = `assigned`.
+2. Select an assigned alert. Open the detail view.
+3. Click the **Escalate** button.
+4. Confirm the escalation.
+5. Verify the alert status updates.
+
+**Expected Result:**
+
+- API call: `POST /api/v1/alerts/{alert_id}/escalate` returns HTTP 200.
+- Alert status changes from "assigned" to "escalated".
+- The alert now appears when filtering by status = "escalated".
+- Alert detail view reflects the escalated status.
+- The alert remains assigned to the same user (assignment is not cleared on escalation).
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
+
+---
 
 ### TC-015: Close Alert with Disposition
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-015 |
-| **Title** | Close an alert with true positive disposition |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). There is an alert in "assigned" or "under_review" status with investigation notes. |
-| **Steps** | 1. Open the alert from TC-014 (or any investigated alert) |
-|  | 2. Click the "Close" button |
-|  | 3. Select disposition: "True Positive" |
-|  | 4. Enter reason: "Confirmed structuring pattern. Customer depositing amounts just below INR 10L threshold across multiple branches. STR to be filed." |
-|  | 5. Submit the closure |
-|  | 6. Verify the alert status changes to "closed_true_positive" |
-|  | 7. Verify the alert no longer appears in open alerts statistics |
-| **Expected Result** | Alert status is set to "closed_true_positive". Closure reason is recorded. Closed_at timestamp is set. Closed_by records the compliance officer's ID. Alert is excluded from open/active counts in the statistics. |
+| **Title** | Close an alert with true_positive disposition and closure reason |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). An alert in "assigned" or "under_review" status exists. |
+
+**Steps:**
+
+1. Select an open alert (status: assigned, under_review, or escalated).
+2. Open the alert detail view.
+3. Click the **Close** button.
+4. Select disposition: `true_positive`.
+5. Enter reason: `"Confirmed structuring pattern. Customer Rajesh Mehta made 5 cash deposits totaling INR 47,50,000 across 5 business days, each just below INR 10,00,000 CTR threshold. Recommending case escalation and SAR filing."`.
+6. Submit the closure.
+7. Try closing with dispositions `false_positive` and `inconclusive` on other alerts.
+
+**Expected Result:**
+
+- API call: `POST /api/v1/alerts/{alert_id}/close` with body:
+  ```json
+  {"disposition": "true_positive", "reason": "<reason text>"}
+  ```
+- Alert status changes to "closed_true_positive".
+- `closure_reason` field populated with the entered text.
+- `closed_by` set to Sunita Krishnan's user ID.
+- `closed_at` populated with current timestamp.
+- Disposition "false_positive" sets status to "closed_false_positive".
+- Disposition "inconclusive" sets status to "closed_inconclusive".
+- Closed alerts no longer appear in "open" filters but appear under status = "closed".
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
 ---
 
 ## Module 4: Case Management (TC-016 to TC-020)
 
-### TC-016: Promote Alert to Investigation Case
+### TC-016: Case List View with Statistics
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-016 |
-| **Title** | Promote a confirmed alert to an investigation case |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). There is an open/assigned alert that has not yet been linked to a case. |
-| **Steps** | 1. Navigate to Alerts page |
-|  | 2. Open an alert that is in "assigned" or "under_review" status |
-|  | 3. Click the "Promote to Case" button |
-|  | 4. Verify a new case is created |
-|  | 5. Note the case number (format: CSE-YYYYMMDD-XXXX) |
-|  | 6. Navigate to Cases page and verify the new case appears in the list |
-|  | 7. Open the case and verify the alert is linked to it |
-| **Expected Result** | A new case is created with: auto-generated case_number, title prefixed with "Investigation:", same customer_id and priority as the alert. The alert's case_id is updated. The alert status changes to "under_review". The case appears in the Cases list and shows alert_count = 1. |
+| **Title** | View paginated case list and case statistics |
+| **Precondition** | Logged in as `pradeep.mohan` (Fraud Investigator). Seed data has 25 investigation cases. |
+
+**Steps:**
+
+1. Click **Cases** in the sidebar menu.
+2. Observe the case list loads with pagination.
+3. Call `GET /api/v1/cases/stats` to get statistics.
+4. Verify columns: Case # (CSE-...), Title, Case Type, Priority, Status, Customer Name, Assignee, SLA Due, Overdue, Alert Count, Evidence Count.
+5. Filter by **Status** = `open`. Filter by **Assigned To** = `me`.
+6. Filter by **Priority** = `critical`. Filter by **Case Type** = `aml_investigation`.
+
+**Expected Result:**
+
+- Case list displays 25 cases from seed data.
+- Statistics: `total` = 25, `open`, `under_investigation`, `escalated`, `pending_regulatory`, `closed`, `overdue` counts. Also `by_type` and `by_priority` breakdowns.
+- Each case row shows: case number, title, case_type (e.g., aml_investigation, fraud_investigation, kyc_investigation), priority, status, customer name, assignee name, SLA due date, overdue flag, alert count (linked alerts), evidence count.
+- Filters narrow results correctly. "me" resolves to Pradeep Mohan.
+- Cases sorted by `created_at` descending.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-017: View Case Details and Timeline
+---
+
+### TC-017: Create Case from Alert (Promote Alert to Case)
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-017 |
-| **Title** | View case detail page with timeline and linked alerts |
-| **Precondition** | Logged in as `pradeep.mohan` (Fraud Investigator). At least one case exists (from seed data or TC-016). |
-| **Steps** | 1. Navigate to Cases page |
-|  | 2. Click on a case to open the detail view |
-|  | 3. Verify the case header shows: case_number, title, type, priority, status, customer name, assignee, SLA due date |
-|  | 4. Navigate to the "Timeline" tab |
-|  | 5. Verify timeline entries are displayed with activity type, description, user name, and timestamp |
-|  | 6. Navigate to the "Alerts" tab |
-|  | 7. Verify linked alerts are displayed with their details |
-| **Expected Result** | Case detail page shows all metadata. Timeline shows chronological activities (created, assigned, escalated, etc.) with user attribution. Alerts tab lists all alerts linked to this case with alert_number, title, priority, and status. |
+| **Title** | Promote a high-priority alert to an investigation case |
+| **Precondition** | Logged in as `sunita.krishnan`. A high-priority alert exists with `case_id` = null (not yet linked to a case). |
+
+**Steps:**
+
+1. Navigate to Alerts. Find a high-priority alert where `case_id` is null.
+2. Open the alert detail view.
+3. Click the **Promote to Case** button.
+4. Confirm the promotion.
+5. Note the returned `case_id` and `case_number`.
+6. Navigate to Cases and locate the newly created case.
+7. Open the case and verify its details.
+
+**Expected Result:**
+
+- API call: `POST /api/v1/alerts/{alert_id}/promote-to-case` returns:
+  ```json
+  {"case_id": "<uuid>", "case_number": "CSE-YYYYMMDD-XXXX"}
+  ```
+- New case created with:
+  - `case_number` format: `CSE-YYYYMMDD-XXXX` (date + 4 random hex chars).
+  - `title`: "Investigation: " + alert title.
+  - `description`: copied from alert description.
+  - `case_type`: derived from alert type (e.g., `aml_investigation`).
+  - `priority`: matches alert priority.
+  - `customer_id`: matches alert customer.
+  - `assigned_to`: matches alert assignee (if any).
+- Alert updated: `case_id` set to new case ID, `status` changed to "under_review".
+- Link created in `case_alerts` junction table.
+- Case appears in the Cases list.
+- Case has `alert_count` >= 1.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-018: Assign and Escalate Case
+---
+
+### TC-018: Case Timeline
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-018 |
-| **Title** | Assign a case to an investigator and then escalate |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). An open/unassigned case exists. |
-| **Steps** | 1. Open an unassigned case from the Cases page |
-|  | 2. Click "Assign" and select `pradeep.mohan` (Fraud Investigator) |
-|  | 3. Verify the case status changes to "assigned" and assignee is shown |
-|  | 4. Logout and login as `pradeep.mohan` |
-|  | 5. Open the same case |
-|  | 6. Click "Escalate" |
-|  | 7. Enter escalation reason: "High-value structuring pattern detected. Requires Compliance Head review for potential STR filing." |
-|  | 8. Select escalation target: `sunita.krishnan` |
-|  | 9. Submit the escalation |
-|  | 10. Verify case status changes to "escalated" |
-| **Expected Result** | Case assignment works correctly with status change and timestamp. Escalation updates status to "escalated", records escalation_reason, escalated_to, and escalated_at. Timeline shows both "assigned" and "escalated" entries. |
+| **Title** | View investigation case activity timeline |
+| **Precondition** | Logged in as `pradeep.mohan`. A case exists with activities (e.g., the case created in TC-017 or a seed data case). |
+
+**Steps:**
+
+1. Navigate to Cases and open a case.
+2. Click on the **Timeline** tab or section.
+3. Review the list of activities.
+4. Call `GET /api/v1/cases/{case_id}/timeline` and compare with UI.
+5. Also call `GET /api/v1/cases/{case_id}/alerts` to see linked alerts.
+
+**Expected Result:**
+
+- Timeline displays a chronological list of case activities (most recent first).
+- Each activity includes:
+  - `id`: unique activity ID.
+  - `activity_type`: one of "created", "assigned", "escalated", "disposition_set", "note_added", "evidence_added", "status_change".
+  - `description`: human-readable text (e.g., "Case created: Investigation of structuring").
+  - `user_name`: name of the user who performed the action, or "System" for automated.
+  - `old_value` / `new_value`: for state transitions (e.g., old assignee to new assignee).
+  - `created_at`: ISO timestamp.
+- At minimum, the "created" activity exists for any case.
+- Linked alerts endpoint returns array of alert summaries with id, alert_number, title, type, priority, status, risk_score, customer_name.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-019: Set Case Disposition and Close
+---
+
+### TC-019: Add Evidence to Case
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-019 |
-| **Title** | Close a case with true positive disposition |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). An investigated case with evidence and notes exists. |
-| **Steps** | 1. Open an escalated or under_investigation case |
-|  | 2. Click "Set Disposition" |
-|  | 3. Select disposition: "True Positive" |
-|  | 4. Enter notes: "Investigation confirmed money laundering pattern through structuring. INR 45,00,000 deposited in 6 transactions over 5 days, all below INR 10L threshold. Customer CIF-1001 (Rajesh Mehta). STR filed with FIU-IND." |
-|  | 5. Submit the disposition |
-|  | 6. Verify the case status changes to "closed_true_positive" |
-|  | 7. Check the timeline for the disposition entry |
-| **Expected Result** | Case is closed with disposition "true_positive". Status is "closed_true_positive". Disposition notes are recorded. Closed_by and closed_at are set. Timeline shows a "disposition_set" activity. Case is excluded from open case counts on the dashboard. |
+| **Title** | Add evidence to an investigation case |
+| **Precondition** | Logged in as `pradeep.mohan`. A case assigned to this user exists. |
+
+**Steps:**
+
+1. Navigate to Cases and open a case assigned to Pradeep Mohan.
+2. Note the current `evidence_count` shown in the case detail.
+3. Locate the **Evidence** section in the case view.
+4. Add evidence via the available mechanism (upload/form/API).
+5. Refresh the case detail and check if `evidence_count` incremented.
+
+**Expected Result:**
+
+- The case detail displays the current evidence count (from `CaseEvidence` model).
+- Evidence can be attached to the case via the case_id.
+- After adding evidence, the `evidence_count` increments.
+- The `CaseEvidence` record links to the case via `case_id`.
+- Note: If the evidence upload UI is not yet implemented, verify the model exists and the count is accurate by checking the API response.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-020: Case Statistics and Filtering
+---
+
+### TC-020: Set Case Disposition and Close
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-020 |
-| **Title** | Verify case statistics and list filters |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). Multiple cases in various statuses exist. |
-| **Steps** | 1. Navigate to Cases page |
-|  | 2. Verify case statistics bar shows counts: total, open, under_investigation, escalated, pending_regulatory, closed |
-|  | 3. Filter by status: "escalated" |
-|  | 4. Verify only escalated cases are shown |
-|  | 5. Filter by priority: "critical" |
-|  | 6. Verify results show only critical-priority cases |
-|  | 7. Filter by case_type: select any available type |
-|  | 8. Verify results match the selected type |
-|  | 9. Clear all filters and verify the full list returns |
-| **Expected Result** | Statistics accurately reflect case counts by status. Filters (status, priority, case_type, assigned_to, customer_id, search) work individually and in combination. The overdue count matches cases past their SLA. |
+| **Title** | Set final disposition on a case and close it |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). An open or under-investigation case exists. |
+
+**Steps:**
+
+1. Navigate to Cases and open a case with status "open" or "under_investigation".
+2. Click **Set Disposition**.
+3. Select disposition: `true_positive`.
+4. Enter notes: `"Investigation confirmed layering pattern through three connected entities. Total suspicious amount INR 45,00,000 over 30-day period. Recommend SAR filing with FIU-IND. Case evidence includes transaction trails, network analysis, and customer statements."`.
+5. Submit the disposition.
+6. Verify the case is closed.
+7. Check the case timeline for the disposition activity.
+
+**Expected Result:**
+
+- API call: `POST /api/v1/cases/{case_id}/disposition` with body:
+  ```json
+  {
+    "disposition": "true_positive",
+    "notes": "<disposition notes>"
+  }
+  ```
+- Case updated:
+  - `status` = "closed_true_positive".
+  - `disposition` = "true_positive".
+  - `disposition_notes` = entered text.
+  - `closed_by` = Sunita Krishnan's user ID.
+  - `closed_at` = current timestamp.
+- New timeline activity created: `activity_type` = "disposition_set", `description` = "Disposition: true_positive", `new_value` = "true_positive".
+- Case stats update: closed count +1, open count -1.
+- Case no longer appears in "open" filters, appears in "closed" filters.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
 ---
 
 ## Module 5: KYC / Customer Due Diligence (TC-021 to TC-025)
 
-### TC-021: View KYC Review Queue
+### TC-021: KYC Review List
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-021 |
-| **Title** | View the KYC review queue with filters |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. Navigate to the KYC page from the sidebar |
-|  | 2. Verify the KYC review list loads with paginated results |
-|  | 3. Verify each row shows: customer name, customer number, review type, risk assessment, status, reviewer, due date |
-|  | 4. Filter by status: "pending" |
-|  | 5. Verify only pending reviews are shown |
-|  | 6. Filter by review_type: "periodic" |
-|  | 7. Verify only periodic reviews are shown |
-| **Expected Result** | KYC review list displays all reviews from seed data. Filters work correctly. Review types include: initial, periodic, event_triggered. Risk assessments include: low, medium, high, very_high. Statuses include: pending, in_progress, approved, rejected. |
+| **Title** | View paginated KYC review list with filters |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). KYC reviews exist for customers in seed data. |
+
+**Steps:**
+
+1. Click **KYC** in the sidebar menu.
+2. Observe the KYC review list loads with pagination.
+3. Verify columns: Customer Name, Customer Number, Review Type, Risk Assessment, Status, Reviewer, Due Date, Completed Date, EDD Required.
+4. Apply filter: **Status** = `pending`.
+5. Apply filter: **Review Type** = `periodic`.
+6. Apply filter: **Risk Assessment** = `high`.
+7. Combine: **Status** = `pending`, **Risk Assessment** = `very_high`.
+
+**Expected Result:**
+
+- KYC review list displays reviews with pagination (20 per page).
+- Each review shows: `customer_name`, `customer_number` (CIF-...), `review_type` (periodic/event_triggered/onboarding), `risk_assessment` (low/medium/high/very_high), `status` (pending/in_progress/approved/rejected), `reviewer_name`, `due_date`, `completed_date`, `findings`, `edd_required` flag, `next_review_date`.
+- Filters narrow results correctly:
+  - Status "pending" shows only pending reviews.
+  - Review type "periodic" shows only periodic reviews (per RBI KYC Direction Section 38).
+  - Risk assessment "high" shows only high-risk reviews.
+- Combined filters apply AND logic.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-022: View KYC Review Detail with Documents and Screenings
+---
+
+### TC-022: Approve KYC Review
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-022 |
-| **Title** | View KYC review detail including documents and screening results |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). A KYC review exists for a customer with documents and screening results. |
-| **Steps** | 1. From the KYC review list, click on a review to open the detail view |
-|  | 2. Verify review metadata: customer name, review type, risk assessment, status, EDD required flag |
-|  | 3. Verify the Documents section shows identity documents (PAN, Aadhaar, Passport) with verification status and expiry dates |
-|  | 4. Verify the Screenings section shows screening results with: type (PEP, sanctions, adverse_media), source, match status, match score |
-| **Expected Result** | Review detail page shows complete KYC information. Documents list shows document_type, document_number, verified status (true/false), expiry_date. Screenings show match_found (true/false), match_score (0-100), matched_name (if found), and status. |
+| **Title** | Approve a pending KYC review |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). A pending KYC review exists. |
+
+**Steps:**
+
+1. Filter KYC reviews by **Status** = `pending`.
+2. Select a pending review for a low- or medium-risk customer.
+3. Open the review detail: `GET /api/v1/kyc/reviews/{review_id}`.
+4. Examine the detail sections: review info, customer info, documents (type, number, verified, expiry), screening results (type, source, match_found, score).
+5. Click **Approve**.
+6. Confirm the approval.
+7. Check the customer profile to verify `kyc_status` changed.
+
+**Expected Result:**
+
+- Review detail returns: `review` object, `customer` object (id, name, customer_number, risk_category, pep_status), `documents` array (document_type, document_number, verified status, expiry_date), `screenings` array (screening_type, source, match_found, match_score, matched_name, status).
+- API call: `POST /api/v1/kyc/reviews/{review_id}/approve` returns `{"status": "approved"}`.
+- Review updated: `status` = "approved", `reviewer_id` = Sunita Krishnan's ID, `completed_date` = today.
+- Customer's `kyc_status` updated to "approved".
+- Review no longer appears in "pending" filters.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-023: Approve a KYC Review
+---
+
+### TC-023: Reject KYC Review
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-023 |
-| **Title** | Approve a pending KYC review |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). A KYC review in "pending" or "in_progress" status exists for a low-risk customer with no adverse screenings. |
-| **Steps** | 1. Open a pending KYC review for a low-risk customer |
-|  | 2. Review the documents and screening results |
-|  | 3. Click "Approve" |
-|  | 4. Verify the review status changes to "approved" |
-|  | 5. Verify reviewer_name shows "Sunita Krishnan" |
-|  | 6. Verify completed_date is set to today |
-|  | 7. Navigate to the customer's profile and verify kyc_status is "approved" |
-| **Expected Result** | KYC review is approved. The review record is updated with: status=approved, reviewer_id, completed_date. The linked customer's kyc_status is updated to "approved". |
+| **Title** | Reject a KYC review for a non-compliant customer |
+| **Precondition** | Logged in as `sunita.krishnan`. A pending KYC review for a high-risk customer exists. |
+
+**Steps:**
+
+1. Filter KYC reviews by **Status** = `pending`, **Risk Assessment** = `high` or `very_high`.
+2. Select a high-risk customer's review.
+3. Open the review detail and examine documents and screening results.
+4. Click **Reject**.
+5. Confirm the rejection.
+6. Navigate to the customer's profile and verify `kyc_status` = "rejected".
+
+**Expected Result:**
+
+- API call: `POST /api/v1/kyc/reviews/{review_id}/reject` returns `{"status": "rejected"}`.
+- Review updated: `status` = "rejected", `reviewer_id` = Sunita Krishnan's ID, `completed_date` = today.
+- Customer's `kyc_status` updated to "rejected".
+- Review visible when filtering by status = "rejected".
+- A rejected KYC should trigger enhanced monitoring or account restrictions per bank policy.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-024: Reject a KYC Review
+---
+
+### TC-024: Watchlist and Sanctions Screening Results
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-024 |
-| **Title** | Reject a KYC review for a high-risk customer |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). A KYC review exists for a customer with adverse screening matches or document issues. |
-| **Steps** | 1. Open a KYC review for a high-risk customer (e.g., one with PEP match or sanctions hit) |
-|  | 2. Review the screening results showing match_found = true |
-|  | 3. Click "Reject" |
-|  | 4. Verify the review status changes to "rejected" |
-|  | 5. Verify reviewer_name and completed_date are set |
-|  | 6. Navigate to the customer's profile and verify kyc_status is "rejected" |
-| **Expected Result** | KYC review is rejected. Status updates to "rejected". Customer kyc_status updated to "rejected". This customer should be flagged for enhanced monitoring or account restrictions. |
+| **Title** | View screening results for a PEP customer |
+| **Precondition** | Logged in as `sunita.krishnan`. Customer CIF-1015 (K. Dhanabalan) is a PEP with screening results in seed data. |
+
+**Steps:**
+
+1. Look up customer CIF-1015 (K. Dhanabalan) via `GET /api/v1/customers?search=Dhanabalan`.
+2. Note the customer ID.
+3. Call `GET /api/v1/kyc/screening/{customer_id}`.
+4. Review all screening results.
+5. Also open the KYC review detail for this customer and check the screenings section.
+
+**Expected Result:**
+
+- Screening results for CIF-1015 display a list of entries, each with:
+  - `screening_type`: "pep", "sanctions", "adverse_media", or similar.
+  - `source`: e.g., "UN_Sanctions", "OFAC", "RBI_Watchlist", "Internal_PEP_List".
+  - `match_found`: boolean. At least one should be `true` for PEP customer.
+  - `match_score`: fuzzy match score (0-100). PEP match should have high score.
+  - `matched_name`: the name matched against in the watchlist database.
+  - `status`: "confirmed", "pending_review", or "cleared".
+  - `created_at`: timestamp of when screening was performed.
+- K. Dhanabalan (former minister) should show PEP match with `match_found = true`.
+- Results sorted by `created_at` descending.
+- This validates PMLA Section 33 and RBI KYC Direction Section 33 compliance.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-025: Watchlist / Sanctions Screening Search
+---
+
+### TC-025: Expired KYC Detection
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-025 |
-| **Title** | Search the watchlist for a customer name match |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). Watchlist has seeded entries (200 entries). |
-| **Steps** | 1. Navigate to the Watchlists page |
-|  | 2. Verify the watchlist entries are listed with: name, source (OFAC, UN, RBI, Interpol), type, nationality, reason |
-|  | 3. Use the watchlist search function to search for a name |
-|  | 4. Set threshold to 75% |
-|  | 5. Submit the search |
-|  | 6. Verify results show matches with match_score percentage |
-|  | 7. Verify results include alias matches if applicable |
-| **Expected Result** | Watchlist search uses fuzzy matching (SequenceMatcher) with configurable threshold. Results are sorted by match_score descending. Each result shows: full_name, matched_alias (if matched via alias), list_source, match_score, nationality, reason. Maximum 20 results returned. |
+| **Title** | Identify customers with expired KYC documents needing renewal |
+| **Precondition** | Logged in as `sunita.krishnan`. Some customers have `kyc_expiry_date` in the past or KYC reviews with overdue `due_date`. |
+
+**Steps:**
+
+1. Navigate to the Customers page.
+2. Browse the customer list and look for customers with KYC status indicating review needed.
+3. Call `GET /api/v1/customers?kyc_status=pending` to find customers pending KYC.
+4. Navigate to the KYC reviews page.
+5. Look for reviews where `due_date` is before today (2026-04-08).
+6. Cross-reference: find customers where `kyc_expiry_date` < 2026-04-08.
+
+**Expected Result:**
+
+- Customers with expired KYC are identifiable through:
+  - `kyc_status` filter on customers list (e.g., "pending", "expired").
+  - KYC reviews with `due_date` < today.
+  - Customer records with `kyc_expiry_date` in the past.
+- High-risk customers require annual KYC review per RBI KYC Direction Section 38:
+  - High risk: annual review.
+  - Medium risk: biennial review.
+  - Low risk: once in 10 years.
+- System tracks both `kyc_expiry_date` (document expiry) and `next_review_date` (next periodic review).
+- Expired KYC customers should be prioritized in the pending review queue.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
 ---
 
 ## Module 6: Rules Engine (TC-026 to TC-030)
 
-### TC-026: View All Detection Rules
+### TC-026: Rules List View
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-026 |
-| **Title** | View the complete list of detection rules |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. Navigate to the Rules page from the sidebar |
-|  | 2. Verify the rules list loads showing all 26 pre-built rules |
-|  | 3. Verify each rule shows: name, description, category, subcategory, severity, enabled status, priority, detection count |
-|  | 4. Verify rule categories include: AML, Fraud, KYC, Compliance |
-|  | 5. Filter by category: "AML" |
-|  | 6. Verify only AML rules are displayed |
-|  | 7. Filter by severity: "critical" |
-|  | 8. Verify only critical-severity rules are displayed |
-| **Expected Result** | 26 rules displayed with correct metadata. Rules are ordered by priority then name. Category filter and severity filter work correctly. Detection count shows how many times each rule has triggered. |
+| **Title** | View all 26 detection rules with configuration details |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). 26 rules loaded in seed data across AML, Fraud, KYC, Compliance categories. |
+
+**Steps:**
+
+1. Click **Rules Engine** in the sidebar menu.
+2. Observe the rule list loads (default page_size = 50, showing all 26 rules).
+3. Verify columns: Name, Description, Category, Subcategory, Severity, Enabled, Priority, Version, Time Window, Threshold Amount, Threshold Count, Detection Count, Last Triggered.
+4. Click on any rule to see its full detail including `conditions` JSON and `actions` array.
+5. Note the total rule count = 26.
+
+**Expected Result:**
+
+- Rule list displays all 26 rules sorted by priority then name.
+- Each rule shows:
+  - `name`, `description`: human-readable rule identification.
+  - `category`: aml, fraud, kyc, or compliance.
+  - `subcategory`: specific type (structuring, layering, card_fraud, etc.).
+  - `severity`: critical, high, medium, or low.
+  - `is_enabled`: boolean toggle indicator.
+  - `priority`: numeric order for evaluation.
+  - `version`: rule version number.
+  - `time_window`: aggregation window (e.g., "24h", "7d", "30d").
+  - `threshold_amount`: monetary threshold in paise.
+  - `threshold_count`: transaction count threshold.
+  - `detection_count`: how many times this rule has fired.
+  - `last_triggered_at`: timestamp of most recent trigger.
+- Rule detail shows `conditions` as a structured JSON object (with AND/OR logic, field operators, aggregate functions) and `actions` array.
+
 | **Status** | |
-| **Remarks** | |
-
-### TC-027: View Rule Detail with Conditions
-
-| Field | Value |
-|-------|-------|
-| **ID** | TC-027 |
-| **Title** | View detailed rule configuration including conditions and actions |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. From the Rules list, click on a structuring detection rule (e.g., "Cash Structuring Detection") |
-|  | 2. Verify the rule detail shows: name, description, category, subcategory, severity, enabled status |
-|  | 3. Verify the conditions object shows: logic (AND/OR), nested conditions with field, operator, and value |
-|  | 4. Verify the actions array shows: action type (create_alert), parameters (priority, alert_type) |
-|  | 5. Verify time_window is displayed (e.g., "7d") |
-|  | 6. Verify threshold_amount and threshold_count if applicable |
-| **Expected Result** | Rule detail page shows the complete rule configuration. Conditions are displayed in a readable format showing the AND/OR logic tree. Fields reference transaction, customer, account, or aggregate attributes. Operators include: equals, greater_than, less_than, between, in, contains, etc. |
-| **Status** | |
-| **Remarks** | |
-
-### TC-028: Toggle Rule Enable/Disable
-
-| Field | Value |
-|-------|-------|
-| **ID** | TC-028 |
-| **Title** | Enable and disable a detection rule |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. Navigate to the Rules page |
-|  | 2. Find an enabled rule and note its name |
-|  | 3. Click the "Toggle" button to disable the rule |
-|  | 4. Verify the rule's is_enabled status changes to false |
-|  | 5. Click "Toggle" again to re-enable the rule |
-|  | 6. Verify the rule's is_enabled status changes back to true |
-|  | 7. Filter by is_enabled: false to see all disabled rules |
-| **Expected Result** | Rule toggle switches the is_enabled flag. Disabled rules are not evaluated by the rules engine (verify by checking that new transactions do not trigger disabled rules). The toggle is reflected immediately in the UI. |
-| **Status** | |
-| **Remarks** | |
-
-### TC-029: View Rule Categories and Counts
-
-| Field | Value |
-|-------|-------|
-| **ID** | TC-029 |
-| **Title** | View rule categories with subcategory breakdown |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. Navigate to the Rules page |
-|  | 2. Access the rule categories view (API: GET /api/v1/rules/categories) |
-|  | 3. Verify categories are returned: AML, Fraud, KYC, Compliance |
-|  | 4. Verify each category shows subcategories with counts |
-|  | 5. Verify total rule count across all categories equals 26 |
-| **Expected Result** | Categories API returns a structured object with category names, total counts, and subcategory breakdowns. AML subcategories may include: structuring, layering, round_tripping, geographic_anomaly. Fraud subcategories may include: card_fraud, identity_fraud, account_takeover, wire_fraud. |
-| **Status** | |
-| **Remarks** | |
-
-### TC-030: View Rule Scenarios
-
-| Field | Value |
-|-------|-------|
-| **ID** | TC-030 |
-| **Title** | View detection scenarios (groups of related rules) |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. Navigate to the Scenarios section of the Rules page |
-|  | 2. Verify the scenarios list shows: name, description, category, associated rule IDs, enabled status, detection count |
-|  | 3. Click on a scenario to see its linked rules |
-|  | 4. Verify the rule_ids array contains valid rule IDs |
-| **Expected Result** | Scenarios group related rules into detection workflows (e.g., "Structuring Detection Scenario" groups cash threshold rules with velocity rules). Each scenario shows its component rules and aggregate detection count. Scenarios can be individually enabled/disabled. |
-| **Status** | |
+|------------|---|
 | **Remarks** | |
 
 ---
 
-## Module 7: Customer 360 and Reporting (TC-031 to TC-035)
+### TC-027: Toggle Rule Enable/Disable
 
-### TC-031: View Customer 360 Profile
+| Field | Value |
+|-------|-------|
+| **ID** | TC-027 |
+| **Title** | Toggle a detection rule on and off |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
+
+**Steps:**
+
+1. On the Rules Engine page, identify an enabled rule (e.g., a medium-severity rule). Note its `is_enabled = true`.
+2. Click the toggle switch on that rule.
+3. Verify the rule is now disabled (`is_enabled = false`).
+4. Click the toggle switch again.
+5. Verify the rule is re-enabled (`is_enabled = true`).
+6. Filter by **Enabled** = `false` to see disabled rules.
+
+**Expected Result:**
+
+- Step 2: API call `POST /api/v1/rules/{rule_id}/toggle` returns `{"id": "<rule_id>", "is_enabled": false}`.
+- Step 3: Rule shows as disabled in the UI. Toggle indicator is off.
+- Step 4: API call `POST /api/v1/rules/{rule_id}/toggle` returns `{"id": "<rule_id>", "is_enabled": true}`.
+- Step 5: Rule shows as enabled again.
+- Step 6: Filtering by `is_enabled=false` shows only disabled rules.
+- Disabled rules are skipped during transaction evaluation by the rules engine.
+- Each toggle call flips the current state (no explicit on/off -- it toggles).
+
+| **Status** | |
+|------------|---|
+| **Remarks** | |
+
+---
+
+### TC-028: Filter Rules by Category
+
+| Field | Value |
+|-------|-------|
+| **ID** | TC-028 |
+| **Title** | Filter rules by category, severity, and view category breakdown |
+| **Precondition** | Logged in as `sunita.krishnan`. 26 rules across 4 categories. |
+
+**Steps:**
+
+1. Filter: **Category** = `aml`. Count the AML rules.
+2. Clear. Filter: **Category** = `fraud`. Count the Fraud rules.
+3. Clear. Filter: **Category** = `kyc`. Count KYC rules.
+4. Clear. Filter: **Category** = `compliance`. Count compliance rules.
+5. Clear. Filter: **Severity** = `critical`. Note rules across all categories.
+6. Call `GET /api/v1/rules/categories` for the structured category breakdown.
+7. Combine: **Category** = `aml`, **Severity** = `critical`.
+
+**Expected Result:**
+
+- Steps 1-4: Each category filter shows only rules of that category. Counts across all categories sum to 26.
+- Step 5: Critical severity rules from all categories are displayed.
+- Step 6: Categories endpoint returns:
+  ```json
+  {
+    "aml": {"total": N, "subcategories": {"structuring": X, "layering": Y, ...}},
+    "fraud": {"total": N, "subcategories": {"card_fraud": X, "identity_fraud": Y, ...}},
+    "kyc": {"total": N, "subcategories": {...}},
+    "compliance": {"total": N, "subcategories": {...}}
+  }
+  ```
+  Totals across all categories sum to 26.
+- Step 7: Combined filter shows only AML rules with critical severity (AND logic).
+
+| **Status** | |
+|------------|---|
+| **Remarks** | |
+
+---
+
+### TC-029: Structuring Detection Demonstration
+
+| Field | Value |
+|-------|-------|
+| **ID** | TC-029 |
+| **Title** | Demonstrate end-to-end structuring detection using seed data |
+| **Precondition** | Logged in as `admin`. Customer CIF-1001 (Rajesh Mehta) has structuring pattern in seed data. Structuring detection rule is enabled. |
+
+**Steps:**
+
+1. Navigate to **Customers** and search for `Rajesh Mehta` or `CIF-1001`.
+2. Open **Customer 360 View** (`GET /api/v1/customers/{customer_id}/360`).
+3. In Recent Transactions, identify the structuring pattern: multiple cash deposits just below INR 10,00,000 (amounts like 9,50,000; 9,75,000; 9,80,000 paise).
+4. Navigate to **Alerts** and filter by `customer_id` = CIF-1001's customer ID.
+5. Find structuring-related alerts for this customer.
+6. Open the alert and review the rule that triggered it.
+7. Navigate to **Rules Engine** and find the structuring detection rule. Check its `detection_count`.
+
+**Expected Result:**
+
+- Customer 360 for Rajesh Mehta reveals:
+  - Multiple cash credit transactions just below INR 10,00,000 (CTR reporting threshold).
+  - Transactions clustered within short time windows (days).
+  - This is a textbook structuring/smurfing pattern per PMLA Rule 3(1)(D).
+- Alerts exist for CIF-1001 with:
+  - `alert_type` = "aml".
+  - Title/description references structuring detection.
+  - `rule_name` matches the structuring detection rule.
+  - `risk_score` elevated.
+- The structuring detection rule has `detection_count > 0` and a populated `last_triggered_at`.
+- The rule's conditions include: amount below 10,00,000 threshold, cash method, time window aggregation, minimum transaction count.
+- This demonstrates compliance with PMLA Section 12(1)(a) for monitoring and detecting integrally connected transactions.
+
+| **Status** | |
+|------------|---|
+| **Remarks** | |
+
+---
+
+### TC-030: Rule Simulation Mode
+
+| Field | Value |
+|-------|-------|
+| **ID** | TC-030 |
+| **Title** | Simulate transaction evaluation without creating real data |
+| **Precondition** | Logged in as `sunita.krishnan`. Recent transactions and enabled rules exist. |
+
+**Steps:**
+
+1. Call `POST /api/v1/transactions/simulate` (no filter -- test all rules against recent 50 transactions).
+2. Review the simulation response.
+3. Identify a specific rule ID from step 2 results.
+4. Call `POST /api/v1/transactions/simulate?rule_id={specific_rule_id}` to test one rule only.
+5. Verify no new alerts, transactions, or cases were created by the simulation.
+
+**Expected Result:**
+
+- Step 2 response:
+  ```json
+  {
+    "simulation_mode": true,
+    "transactions_tested": 50,
+    "rules_tested": 26,
+    "matches_found": N,
+    "results": [
+      {
+        "transaction_ref": "TXN...",
+        "customer_name": "...",
+        "amount": ...,
+        "channel": "...",
+        "method": "...",
+        "date": "...",
+        "rules_matched": M,
+        "matched_rules": [
+          {"rule_name": "...", "severity": "...", "category": "..."}
+        ]
+      }
+    ]
+  }
+  ```
+- `simulation_mode = true` confirms no real data created.
+- `transactions_tested` up to 50 (recent transactions replayed).
+- `rules_tested` = number of enabled rules (all or specific).
+- Step 4: `rules_tested = 1` when filtering by specific rule ID.
+- Step 5: Alert count, transaction count, and case count remain unchanged after simulation.
+- Results capped at 25 entries.
+
+| **Status** | |
+|------------|---|
+| **Remarks** | |
+
+---
+
+## Module 7: Customer 360, Network, Reporting, Dashboard, Admin (TC-031 to TC-035)
+
+### TC-031: Customer 360 Unified View
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-031 |
-| **Title** | View the unified Customer 360 profile |
-| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). A high-risk customer with transactions, alerts, and cases exists (e.g., CIF-1001 Rajesh Mehta). |
-| **Steps** | 1. Navigate to the Customers page |
-|  | 2. Search for "Rajesh Mehta" or "CIF-1001" |
-|  | 3. Click on the customer to open their profile |
-|  | 4. Click "360 View" to open the full Customer 360 page |
-|  | 5. Verify the profile section shows: name, customer number, type, PAN, risk category, risk score, PEP status, KYC status, onboarding date |
-|  | 6. Verify the Accounts section lists all accounts with: account number, type, balance, status |
-|  | 7. Verify Recent Transactions shows last 50 transactions with: ref, type, method, channel, amount, risk score, flagged status |
-|  | 8. Verify Alerts section shows customer's alerts with priority and status |
-|  | 9. Verify Cases section shows linked investigation cases |
-|  | 10. Verify Channel Usage shows a breakdown of transaction counts by channel |
-| **Expected Result** | Customer 360 page provides a complete view of the customer. All sections populated with data. Risk score displayed as a number (0-100). Risk category shown with color indicator. PEP status clearly marked if true. Accounts, transactions, alerts, and cases are correctly linked to this customer. |
+| **Title** | View unified Customer 360 profile with all sections |
+| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). Customer CIF-1003 (Hassan Trading LLC) exists with accounts, transactions, alerts, cases, and network relationships. |
+
+**Steps:**
+
+1. Navigate to **Customers** and search for `Hassan Trading` or `CIF-1003`.
+2. Click on Hassan Trading LLC to open the customer profile.
+3. Click **360 View** to load the full profile (`GET /api/v1/customers/{customer_id}/360`).
+4. Review each section: Customer Info, Accounts, Recent Transactions, Alerts, Cases, Channel Usage.
+
+**Expected Result:**
+
+- **Customer Info**: customer_number (CIF-1003), customer_type, full_name, date_of_birth, nationality, PAN, email, phone, city/state/country, occupation, employer, annual_income, source_of_funds, risk_category, risk_score, pep_status, kyc_status, kyc_expiry_date, onboarding_date, is_active, account_count, alert_count, case_count.
+- **Accounts**: Array of accounts with account_number, account_type, balance, status, currency (INR), branch_code, opened_date.
+- **Recent Transactions**: Last 50 transactions with transaction_ref, type, method, channel, amount, risk_score, is_flagged, date, description, counterparty_name. Expect high-value RTGS/SWIFT transfers for Hassan Trading.
+- **Alerts**: Last 20 alerts with alert_number, title, alert_type, priority, status, risk_score, created_at.
+- **Cases**: All linked cases with case_number, title, case_type, priority, status, created_at.
+- **Channel Usage**: Transaction count by channel (branch, atm, internet_banking, mobile_banking, pos, swift). Hassan Trading likely shows heavy SWIFT/RTGS usage.
+- All sections load without errors and data is consistent across sections.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-032: Customer List Filtering and Risk View
+---
+
+### TC-032: Network / Link Analysis
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-032 |
-| **Title** | Filter customer list by risk category and KYC status |
-| **Precondition** | Logged in as `deepa.venkatesh` (Risk Analyst). |
-| **Steps** | 1. Navigate to the Customers page |
-|  | 2. Verify the customer list loads (49 customers) sorted by risk score descending |
-|  | 3. Filter by risk_category: "very_high" |
-|  | 4. Verify only very_high risk customers are displayed |
-|  | 5. Clear and filter by risk_category: "high" |
-|  | 6. Filter by kyc_status: "pending" |
-|  | 7. Verify results show high-risk customers with pending KYC |
-|  | 8. Filter by customer_type: "corporate" |
-|  | 9. Verify only corporate entities are shown |
-| **Expected Result** | Customer list supports all documented filters: search (name, CIF, PAN, phone), risk_category, kyc_status, customer_type. Results are paginated (20 per page). Each customer row shows: customer_number, name, type, risk_category, risk_score, PEP, KYC status, account/alert/case counts. |
+| **Title** | View customer network graph and fund flow analysis |
+| **Precondition** | Logged in as `deepa.venkatesh`. Customer CIF-1003 (Hassan Trading LLC) has network relationships in seed data. |
+
+**Steps:**
+
+1. Navigate to the customer profile for CIF-1003.
+2. Open **Network Analysis** or call `GET /api/v1/network/{customer_id}/graph?depth=1`.
+3. Observe the network graph nodes and edges.
+4. Call again with `depth=2` to expand the network.
+5. Call `GET /api/v1/network/{customer_id}/fund-flow` to view money movement.
+
+**Expected Result:**
+
+- **Network Graph (depth=1)**:
+  - `nodes`: Array of customer nodes. Each has: id, label (full_name), customer_number, risk_category, risk_score, customer_type, pep_status. CIF-1003 is the center node.
+  - `edges`: Array of connections. Each has: source, target, type ("relationship" or "link"), label (relationship_type or link_type), strength/detail.
+  - First-degree connections only.
+- **Network Graph (depth=2)**: Includes second-degree connections (connections of connections). More nodes and edges than depth=1.
+- **Fund Flow**:
+  - `outgoing`: Counterparties receiving funds from CIF-1003. Each entry: name, account, transaction_count, total_amount.
+  - `incoming`: Counterparties sending funds to CIF-1003. Each entry: name, account, transaction_count, total_amount.
+  - Aggregated by counterparty name and account.
+- Network and fund flow data helps identify layering patterns and connected entity relationships.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-033: Executive Dashboard KPIs and Charts
+---
+
+### TC-033: Regulatory Reporting (CTR and SAR)
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-033 |
-| **Title** | Verify all executive dashboard components |
-| **Precondition** | Logged in as `admin` (System Administrator) or `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. Navigate to the Dashboard page (should be the default landing after login) |
-|  | 2. Verify KPI cards: Alerts Today, Open Cases, High-Risk Customers, Suspicious Transactions |
-|  | 3. Verify the Alerts by Priority chart (bar or pie chart) |
-|  | 4. Verify the Alerts by Type chart |
-|  | 5. Verify the 30-Day Alert Trend line chart |
-|  | 6. Verify Cases by Status breakdown |
-|  | 7. Verify Risk Distribution chart (low/medium/high/very_high customer counts) |
-|  | 8. Verify Channel Analytics chart |
-|  | 9. Verify Recent Alerts list (top 10 most recent) |
-|  | 10. Verify Top Risk Customers list (top 10 by risk score) |
-|  | 11. Verify Analyst Workload table (open alerts per analyst) |
-|  | 12. Verify SLA Compliance section (compliant, overdue, compliance rate percentage) |
-|  | 13. Verify Monthly Stats (last 6 months: alerts, cases, transactions) |
-| **Expected Result** | All 13 dashboard components render with data. Charts display correctly with legends. KPIs show non-zero values from seed data. Alert trend shows daily counts over 30 days. SLA compliance rate is calculated correctly. Monthly stats chart shows 6 months of data. |
+| **Title** | View CTR and SAR regulatory reports |
+| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). CTR and SAR reports exist in seed data. |
+
+**Steps:**
+
+1. Navigate to the **Reports** page.
+2. Open **CTR** tab. Call `GET /api/v1/reports/ctr`.
+3. Verify CTR fields: report_number, customer_name, transaction_amount, transaction_date, filing_status, filed_at.
+4. Open **SAR** tab. Call `GET /api/v1/reports/sar`.
+5. Verify SAR fields: report_number, case_id, customer_name, suspicious_activity_type, narrative, total_amount, date_range_start, date_range_end, filing_status, regulatory_reference, filed_at.
+6. Filter CTR by **Filing Status** = `pending`.
+7. Filter SAR by **Filing Status** = `filed`.
+
+**Expected Result:**
+
+- **CTR Reports**:
+  - Cash transactions above INR 10,00,000 (CTR threshold per PMLA Rule 3).
+  - Fields: report_number, customer_id, customer_name, transaction_amount, transaction_date, filing_status (pending/filed/rejected), filed_at, created_at.
+  - Sorted by created_at descending.
+- **SAR Reports**:
+  - Suspicious transaction reports linked to investigation cases.
+  - Fields: report_number, case_id, customer_id, customer_name, suspicious_activity_type, narrative (detailed text), total_amount, date_range_start, date_range_end, filing_status, regulatory_reference, filed_at, created_at.
+- Filing status filter works: "pending" shows unfiled reports, "filed" shows completed filings.
+- CTR reports align with PMLA Rule 3 (cash > 10 lakh INR, filed within 15 days).
+- SAR reports align with PMLA Section 12(1)(b) (filed within 7 days of suspicion confirmation).
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-034: CTR (Cash Transaction Report) List
+---
+
+### TC-034: Executive Dashboard
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-034 |
-| **Title** | View Cash Transaction Reports for regulatory filing |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. Navigate to the Reports page from the sidebar |
-|  | 2. Select the CTR (Cash Transaction Report) section |
-|  | 3. Verify the CTR list loads showing: report number, customer name, transaction amount, transaction date, filing status, filed date |
-|  | 4. Filter by filing_status: "pending" |
-|  | 5. Verify only unfiled CTR reports are shown |
-|  | 6. Filter by filing_status: "filed" |
-|  | 7. Verify only filed reports are shown with filed_at timestamp |
-| **Expected Result** | CTR reports are generated for cash transactions above the INR 10,00,000 threshold (CTR_THRESHOLD_PAISE in config). Each report shows customer details, transaction amount, and filing status. Filing statuses include: pending, filed, rejected, amended. |
+| **Title** | Verify all executive dashboard KPIs, charts, and data accuracy |
+| **Precondition** | Logged in as `admin`. All seed data loaded. |
+
+**Steps:**
+
+1. Navigate to the **Dashboard** (landing page).
+2. Verify KPI cards: Alerts Today, Open Cases, High-Risk Customers, Suspicious Transactions.
+3. Verify charts: Alerts by Priority, Alerts by Type, 30-Day Alert Trend, Cases by Status, Risk Distribution, Channel Analytics.
+4. Verify tables/sections: Recent Alerts (top 10), Top Risk Customers (top 10), Analyst Workload, SLA Compliance, Monthly Stats (6 months).
+5. Call `GET /api/v1/dashboard/executive` and compare JSON with UI.
+6. Call `GET /api/v1/dashboard/risk-heatmap` and verify the matrix data.
+
+**Expected Result:**
+
+- **KPI Cards**: All show non-zero values consistent with seed data.
+  - High-Risk Customers: count of customers with risk_category in ["high", "very_high"].
+  - Suspicious Transactions: count of transactions with is_flagged = true.
+- **Alerts by Priority**: Breakdown (critical, high, medium, low) for open alerts.
+- **Alerts by Type**: Breakdown (aml, fraud, kyc, compliance) for all alerts.
+- **30-Day Alert Trend**: Array of 30 entries, each with date and count.
+- **Cases by Status**: open, under_investigation, escalated, pending_regulatory, closed counts.
+- **Risk Distribution**: low, medium, high, very_high customer counts for active customers.
+- **Channel Analytics**: Transaction counts by channel.
+- **Recent Alerts**: Top 10 with id, alert_number, title, priority, status, alert_type, customer_name, risk_score, created_at.
+- **Top Risk Customers**: Top 10 by risk_score with id, name, customer_number, risk_score, risk_category, pep_status.
+- **Analyst Workload**: Open alert count per analyst name.
+- **SLA Compliance**: compliant count, overdue count, rate percentage.
+- **Monthly Stats**: Last 6 months with alerts, cases, transactions per month.
+- **Risk Heatmap**: 6 channels x 4 risk levels matrix with transaction counts.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
-### TC-035: SAR (Suspicious Activity Report) List
+---
+
+### TC-035: Administration -- Users, Roles, Audit Log, System Health
 
 | Field | Value |
 |-------|-------|
 | **ID** | TC-035 |
-| **Title** | View Suspicious Activity Reports for FIU-IND filing |
-| **Precondition** | Logged in as `sunita.krishnan` (Compliance Officer). |
-| **Steps** | 1. Navigate to the Reports page |
-|  | 2. Select the SAR (Suspicious Activity Report) section |
-|  | 3. Verify the SAR list loads showing: report number, case ID, customer name, suspicious activity type, total amount, date range, filing status, regulatory reference |
-|  | 4. Filter by filing_status: "pending" |
-|  | 5. Verify only unfiled SAR reports are shown |
-|  | 6. Click on a SAR to view the narrative field |
-|  | 7. Verify the narrative provides a description of the suspicious activity |
-| **Expected Result** | SAR reports are linked to investigation cases. Each report shows: report_number, case_id, customer details, suspicious_activity_type, narrative text, total_amount, date_range_start/end, filing_status, regulatory_reference. The narrative field contains a textual description of the suspicious activity suitable for FIU-IND submission. |
+| **Title** | Verify admin functions: users, roles, audit log, config, health |
+| **Precondition** | Logged in as `admin` (System Administrator). |
+
+**Steps:**
+
+1. Navigate to **Administration > Users**. Call `GET /api/v1/admin/users`.
+2. Verify the user list: at least 5 demo users with username, email, full_name, department, is_active, roles array, last_login_at.
+3. Navigate to **Administration > Roles**. Call `GET /api/v1/admin/roles`.
+4. Verify 6 roles with name, description, and permissions JSON array.
+5. Navigate to **Administration > Audit Log**. Call `GET /api/v1/admin/audit-log`.
+6. Verify paginated audit entries. Filter by user_id, action, resource_type.
+7. Call `GET /api/v1/admin/system-health`.
+8. Call `GET /api/v1/admin/config`.
+9. Call `GET /api/v1/admin/notifications`.
+
+**Expected Result:**
+
+- **Users** (Step 2): 5+ users listed. Each with username, email, full_name, department, is_active, roles (array of role name strings), last_login_at.
+- **Roles** (Step 4): 6 roles:
+  - `system_administrator` -- Full system access and configuration.
+  - `compliance_officer` -- KYC reviews, rule management, regulatory reports, alert disposition.
+  - `risk_analyst` -- Transaction monitoring, customer analysis, alert triage.
+  - `fraud_investigator` -- Case investigation, evidence management, alert handling.
+  - `internal_auditor` -- Read-only audit log, reports, dashboards.
+  - `branch_manager` -- Branch-level operations.
+  - Each role has `permissions` JSON array listing allowed actions.
+- **Audit Log** (Step 6): Paginated entries (50 per page). Each: user_name, action, resource_type, resource_id, details, ip_address, created_at. Filterable by user_id, action, resource_type.
+- **System Health** (Step 7):
+  ```json
+  {
+    "status": "healthy",
+    "database": "connected",
+    "counts": {
+      "customers": 49,
+      "transactions": 4000,
+      "alerts": 150,
+      "cases": 25,
+      "users": 5
+    }
+  }
+  ```
+  All counts match seed data (approximate).
+- **Config** (Step 8): Key-value map of system configuration entries with value and description.
+- **Notifications** (Step 9): Up to 50 recent notifications for current user with title, message, notification_type, is_read, link_to, created_at.
+
 | **Status** | |
+|------------|---|
 | **Remarks** | |
 
 ---
 
 ## Test Execution Summary
 
-| Module | Test Cases | Passed | Failed | Blocked | Not Run |
-|--------|-----------|--------|--------|---------|---------|
-| Login & Authentication | TC-001 to TC-005 | | | | |
-| Transaction Monitoring | TC-006 to TC-010 | | | | |
-| Alert Management | TC-011 to TC-015 | | | | |
-| Case Management | TC-016 to TC-020 | | | | |
-| KYC / CDD | TC-021 to TC-025 | | | | |
-| Rules Engine | TC-026 to TC-030 | | | | |
-| Customer 360 / Reporting | TC-031 to TC-035 | | | | |
-| **Total** | **35** | | | | |
+| Module | Test IDs | Total | Pass | Fail | Blocked | N/A |
+|--------|----------|-------|------|------|---------|-----|
+| Login and Authentication | TC-001 to TC-005 | 5 | | | | |
+| Transaction Monitoring | TC-006 to TC-010 | 5 | | | | |
+| Alert Management | TC-011 to TC-015 | 5 | | | | |
+| Case Management | TC-016 to TC-020 | 5 | | | | |
+| KYC / CDD | TC-021 to TC-025 | 5 | | | | |
+| Rules Engine | TC-026 to TC-030 | 5 | | | | |
+| Customer 360, Network, Reporting, Dashboard, Admin | TC-031 to TC-035 | 5 | | | | |
+| **Total** | **TC-001 to TC-035** | **35** | | | | |
 
 ---
 
 ## Defect Log
 
-| Defect ID | Test Case | Severity | Description | Assigned To | Status |
-|-----------|-----------|----------|-------------|-------------|--------|
-| | | | | | |
-| | | | | | |
-| | | | | | |
+| Defect ID | Test Case | Severity | Summary | Steps to Reproduce | Assigned To | Status |
+|-----------|-----------|----------|---------|---------------------|-------------|--------|
+| | | | | | | |
+| | | | | | | |
+| | | | | | | |
 
 ---
 
-## Sign-Off
+## Sign-off
 
 | Role | Name | Signature | Date |
 |------|------|-----------|------|
 | QA Lead | | | |
-| Business Analyst | | | |
 | Compliance Officer | | | |
 | Project Manager | | | |
+| Business Owner | | | |
 
 ---
 
-*This document is to be completed by the QA team during the User Acceptance Testing phase.*
-*Any FAIL results must be logged as defects and resolved before production go-live.*
+*This document references the actual API endpoints, data models, and seed data of FinsurgeENRIMS. All test cases are based on the implemented backend routes at `/api/v1/` and the React frontend at `http://localhost:5173`.*
