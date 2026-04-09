@@ -102,6 +102,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "Internal server error" if not settings.DEBUG else str(exc)},
     )
 
+# Prometheus auto-instrumentation (request latency, count, size)
+from prometheus_fastapi_instrumentator import Instrumentator
+Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    excluded_handlers=["/health", "/metrics", "/docs", "/redoc", "/openapi.json"],
+).instrument(app)
+
 app.include_router(api_router)
 
 
