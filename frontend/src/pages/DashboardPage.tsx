@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, Legend, ComposedChart, Line
@@ -30,11 +30,16 @@ interface StatCardProps {
   iconColor: string
   iconBg: string
   pulse?: boolean
+  href?: string
 }
 
-function StatCard({ label, value, subtitle, icon: Icon, iconColor, iconBg, pulse }: StatCardProps) {
+function StatCard({ label, value, subtitle, icon: Icon, iconColor, iconBg, pulse, href }: StatCardProps) {
+  const navigate = useNavigate()
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+    <div
+      className={`bg-white rounded-xl shadow-sm border border-slate-200 p-4 transition-all ${href ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''}`}
+      onClick={() => href && navigate(href)}
+    >
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{label}</p>
@@ -51,15 +56,20 @@ function StatCard({ label, value, subtitle, icon: Icon, iconColor, iconBg, pulse
           )}
         </div>
       </div>
+      {href && <p className="text-[10px] text-blue-500 mt-1.5 font-medium">Click to view details &rarr;</p>}
     </div>
   )
 }
 
-function SmallStatCard({ label, value, icon: Icon, iconColor }: {
-  label: string; value: string; icon: React.ElementType; iconColor: string
+function SmallStatCard({ label, value, icon: Icon, iconColor, href }: {
+  label: string; value: string; icon: React.ElementType; iconColor: string; href?: string
 }) {
+  const navigate = useNavigate()
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 flex items-center gap-3">
+    <div
+      className={`bg-white rounded-xl shadow-sm border border-slate-200 p-3 flex items-center gap-3 transition-all ${href ? 'cursor-pointer hover:shadow-md hover:border-blue-300' : ''}`}
+      onClick={() => href && navigate(href)}
+    >
       <Icon className={iconColor} size={16} />
       <div className="min-w-0">
         <p className="text-xs text-slate-500">{label}</p>
@@ -164,6 +174,7 @@ export default function DashboardPage() {
           icon={ShieldAlert}
           iconColor="text-red-600"
           iconBg="bg-red-50"
+          href="/fraud-detection"
         />
         <StatCard
           label="Recovered Amount"
@@ -171,6 +182,7 @@ export default function DashboardPage() {
           icon={ArrowUpRight}
           iconColor="text-green-600"
           iconBg="bg-green-50"
+          href="/cases?status=closed_true_positive"
         />
         <StatCard
           label="Recovery Rate"
@@ -178,6 +190,7 @@ export default function DashboardPage() {
           icon={CheckCircle2}
           iconColor="text-green-600"
           iconBg="bg-green-50"
+          href="/mis-reports"
         />
         <StatCard
           label="True Positive Rate"
@@ -185,6 +198,7 @@ export default function DashboardPage() {
           icon={Target}
           iconColor="text-blue-600"
           iconBg="bg-blue-50"
+          href="/alerts?status=closed"
         />
         <StatCard
           label="SLA Compliance"
@@ -192,6 +206,7 @@ export default function DashboardPage() {
           icon={Timer}
           iconColor={slaColor ? 'text-green-600' : 'text-red-600'}
           iconBg={slaColor ? 'bg-green-50' : 'bg-red-50'}
+          href="/alerts"
         />
         <StatCard
           label="Live Txn Rate"
@@ -200,6 +215,7 @@ export default function DashboardPage() {
           iconColor="text-blue-600"
           iconBg="bg-blue-50"
           pulse
+          href="/transactions"
         />
       </div>
 
@@ -210,30 +226,35 @@ export default function DashboardPage() {
           value={`${operational.avg_resolution_days ?? '-'} days`}
           icon={Clock}
           iconColor="text-slate-500"
+          href="/mis-reports"
         />
         <SmallStatCard
           label="Open Cases"
           value={formatNumber(executive?.open_cases ?? 0)}
           icon={Briefcase}
           iconColor="text-amber-500"
+          href="/cases?status=open"
         />
         <SmallStatCard
           label="Alerts Today"
           value={formatNumber(executive?.total_alerts_today ?? 0)}
           icon={Bell}
           iconColor="text-blue-500"
+          href="/alerts?status=new"
         />
         <SmallStatCard
           label="Escalation Rate"
           value={`${operational.escalation_rate ?? 0}%`}
           icon={TrendingUp}
           iconColor="text-orange-500"
+          href="/alerts?status=escalated"
         />
         <SmallStatCard
           label="SLA Breach Rate"
           value={`${operational.sla_breach_rate ?? 0}%`}
           icon={AlertTriangle}
           iconColor="text-red-500"
+          href="/alerts"
         />
       </div>
 
@@ -290,9 +311,10 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* RIGHT: Risk Distribution Pie */}
+        {/* RIGHT: Risk Distribution Pie (clickable drill-down) */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Risk Distribution</h3>
+          <h3 className="text-sm font-semibold text-slate-700 mb-1">Risk Distribution</h3>
+          <p className="text-[10px] text-blue-500 mb-3 font-medium">Click any segment to view customers</p>
           {riskDistribution.length > 0 ? (
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
@@ -308,6 +330,13 @@ export default function DashboardPage() {
                     `${props.name || ''} ${((props.percent ?? 0) * 100).toFixed(0)}%`
                   }
                   labelLine={{ strokeWidth: 1 }}
+                  cursor="pointer"
+                  onClick={(data: any) => {
+                    if (data && data.name) {
+                      const riskKey = data.name.replace(/ /g, '_')
+                      window.location.href = `/customers?risk_category=${riskKey}`
+                    }
+                  }}
                 >
                   {riskDistribution.map((entry, i) => {
                     const color =

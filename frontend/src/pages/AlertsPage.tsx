@@ -178,20 +178,17 @@ export default function AlertsPage() {
           <div className="p-12 text-center text-red-500">{error}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
               <thead>
                 <tr className="bg-slate-50">
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Alert#</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Priority</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Type</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Customer</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[130px]">Alert#</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[80px]">Priority</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[120px]">Customer</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Title</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Risk</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">SLA</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Assignee</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Age</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600"></th>
+                  <th className="text-center py-2.5 px-3 font-medium text-slate-600 w-[60px]">Risk</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[120px]">SLA</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[110px]">Status</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[90px]"></th>
                 </tr>
               </thead>
               <tbody>
@@ -205,12 +202,9 @@ export default function AlertsPage() {
                     <td className="py-2.5 px-3">
                       <Badge text={a.priority || '-'} colors={priorityColors[a.priority] || 'bg-gray-100 text-gray-800'} />
                     </td>
-                    <td className="py-2.5 px-3 text-slate-600 capitalize text-xs">
-                      {(a.alert_type || a.type || '-').replace(/_/g, ' ')}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-700 text-xs">{a.customer_name || a.customer_id || '-'}</td>
-                    <td className="py-2.5 px-3 text-slate-700 truncate max-w-[200px] text-xs">{a.title || '-'}</td>
-                    <td className="py-2.5 px-3">
+                    <td className="py-2.5 px-3 text-slate-700 text-xs truncate">{a.customer_name || '-'}</td>
+                    <td className="py-2.5 px-3 text-slate-700 text-xs truncate">{a.title || '-'}</td>
+                    <td className="py-2.5 px-3 text-center">
                       <RiskScoreBadge score={a.risk_score} />
                     </td>
                     <td className="py-2.5 px-3">
@@ -218,10 +212,6 @@ export default function AlertsPage() {
                     </td>
                     <td className="py-2.5 px-3">
                       <Badge text={a.status || '-'} colors={statusColors[a.status] || 'bg-gray-100 text-gray-800'} />
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-600 text-xs">{a.assigned_to_name || a.assigned_to || '-'}</td>
-                    <td className="py-2.5 px-3 text-slate-500 text-xs whitespace-nowrap">
-                      {a.created_at ? timeAgo(a.created_at) : '-'}
                     </td>
                     <td className="py-2.5 px-3">
                       <button
@@ -235,7 +225,7 @@ export default function AlertsPage() {
                 ))}
                 {alerts.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400">
+                    <td colSpan={8} className="py-12 text-center text-slate-400">
                       No alerts found
                     </td>
                   </tr>
