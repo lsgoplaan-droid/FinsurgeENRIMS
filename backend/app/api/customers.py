@@ -72,7 +72,16 @@ def list_customers(
             )
         )
     if risk_category:
-        query = query.filter(Customer.risk_category == risk_category)
+        # Support comma-separated values for risk_category
+        # Also map "high" to include both "high" and "very_high"
+        if "," in risk_category:
+            categories = [c.strip() for c in risk_category.split(",") if c.strip()]
+            query = query.filter(Customer.risk_category.in_(categories))
+        elif risk_category == "high":
+            # Dashboard uses "high" to mean both high and very_high
+            query = query.filter(Customer.risk_category.in_(["high", "very_high"]))
+        else:
+            query = query.filter(Customer.risk_category == risk_category)
     if kyc_status:
         query = query.filter(Customer.kyc_status == kyc_status)
     if customer_type:

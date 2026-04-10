@@ -49,7 +49,7 @@ def check_and_escalate(db: Session) -> dict:
 
     # ── Cases SLA check ─────────────────────────────────────────────────
     open_cases = db.query(Case).filter(
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]),
+        Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"]),
         Case.sla_due_at.isnot(None),
     ).all()
 

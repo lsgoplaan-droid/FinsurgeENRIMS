@@ -65,10 +65,10 @@ def list_cases(
 
     if status:
         if status == "closed":
-            query = query.filter(Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+            query = query.filter(Case.status.in_(["closed_true_positive", "closed_false_positive"]))
         elif status == "open":
             # All non-closed statuses — matches the dashboard "open" count semantics
-            query = query.filter(~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+            query = query.filter(Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"]))
         elif "," in status:
             statuses = [s.strip() for s in status.split(",") if s.strip()]
             query = query.filter(Case.status.in_(statuses))
@@ -141,7 +141,7 @@ def get_case_stats(db: Session = Depends(get_db), current_user: User = Depends(g
     investigating = db.query(func.count(Case.id)).filter(Case.status == "under_investigation").scalar() or 0
     escalated = db.query(func.count(Case.id)).filter(Case.status == "escalated").scalar() or 0
     pending_reg = db.query(func.count(Case.id)).filter(Case.status == "pending_regulatory").scalar() or 0
-    closed = db.query(func.count(Case.id)).filter(Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])).scalar() or 0
+    closed = db.query(func.count(Case.id)).filter(Case.status.in_(["closed_true_positive", "closed_false_positive"])).scalar() or 0
     overdue = db.query(func.count(Case.id)).filter(Case.is_overdue == True).scalar() or 0
 
     by_type = dict(db.query(Case.case_type, func.count(Case.id)).group_by(Case.case_type).all())

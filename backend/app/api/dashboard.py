@@ -87,8 +87,9 @@ def executive_dashboard(db: Session = Depends(get_db), current_user: User = Depe
 
     # KPIs
     alerts_today = db.query(func.count(Alert.id)).filter(Alert.created_at >= today_start).scalar() or 0
+    # Open cases: exclude only closed statuses
     open_cases = db.query(func.count(Case.id)).filter(
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+        Case.status.in_(["new", "assigned", "under_investigation", "escalated", "open", "pending_regulatory"])
     ).scalar() or 0
     high_risk = db.query(func.count(Customer.id)).filter(Customer.risk_category.in_(["high", "very_high"])).scalar() or 0
     suspicious_txn = db.query(func.count(Transaction.id)).filter(Transaction.is_flagged == True).scalar() or 0
@@ -333,7 +334,7 @@ def risk_appetite(db: Session = Depends(get_db), current_user: User = Depends(ge
     ).scalar() or 0
     overdue_alerts = db.query(func.count(Alert.id)).filter(Alert.is_overdue == True).scalar() or 0
     open_cases = db.query(func.count(Case.id)).filter(
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+        Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"])
     ).scalar() or 0
 
     # Flagged transaction volume (last 30 days)
