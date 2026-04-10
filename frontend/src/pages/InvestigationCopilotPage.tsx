@@ -544,7 +544,10 @@ export default function InvestigationCopilotPage() {
               )}
 
               {/* AI Chat Panel */}
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative">
+                <div className="absolute top-3 right-3 px-2 py-1 bg-amber-100 text-amber-800 text-[9px] font-medium rounded">
+                  🚧 Beta
+                </div>
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles size={14} className="text-purple-600" />
                   <h4 className="text-sm font-semibold text-slate-700">Ask the Copilot</h4>

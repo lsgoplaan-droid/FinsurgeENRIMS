@@ -151,6 +151,78 @@ Shows other alerts on same customer:
 
 ---
 
+## 🎯 NEW: Interactive Features
+
+### Score Calculation Tooltip
+Click the **Investigation Score** number (top right) to see the breakdown:
+```
+Score Calculation
+┌─────────────────────────┐
+│ Base Alert Risk:   45   │
+│ Risk Factors (3):  +15  │
+│ PEP Factor:        +10  │
+├─────────────────────────┤
+│ Total Score:       70   │
+└─────────────────────────┘
+🔴 CRITICAL - Immediate escalation required
+```
+
+Understand exactly why the score is what it is.
+
+### AI Chat with Copilot (🚧 Under Construction)
+Below the action buttons, use the **"Ask the Copilot"** panel:
+- **Ask about the score:** "Why is the score so high?"
+- **Ask about risk:** "What are the main risk factors?"
+- **Ask for next steps:** "What should I do with this alert?"
+- **Ask about recommendations:** "Why do you recommend escalating?"
+
+**Current Status:** The chat interface is ready and responding with AI-generated answers based on the case context. In production, this will integrate with a real LLM backend for more nuanced investigation guidance.
+
+The copilot responds with context-specific answers based on:
+- The current alert and its risk factors
+- Customer profile and PEP status
+- Related alerts on this customer
+- Recommendations for this specific case
+
+Example conversation (simulated):
+```
+You: "Is this customer a repeat offender?"
+Copilot: "The customer profile shows 5 other alerts on this customer, 
+and 2 previous cases. This pattern strongly suggests ongoing suspicious activity 
+requiring immediate escalation."
+```
+
+### Previous Cases
+If this customer has open or closed cases, you'll see them listed:
+- **Case number** (clickable → opens full case detail)
+- **Title/Description** of the case
+- **Status badge** (open/closed/escalated)
+
+Quick assessment: "Has this customer been investigated before?"
+
+### Recent Activity Timeline
+See what happened with other alerts on this customer:
+- 🔔 **Alert Created** — when alert was first triggered
+- ⬆️ **Alert Escalated** — when escalated to senior analyst
+- ✓ **Alert Closed** — when closed with disposition
+
+Shows: who took the action, when, and the reason (if applicable).
+
+Example:
+```
+🔔 Alert Created
+by System • 3 days ago
+
+⬆️ Alert Escalated
+by rajesh@bank.com • 2 days ago
+
+✓ Alert Closed
+by rajesh@bank.com • 1 day ago
+Reason: true positive - filed STR
+```
+
+---
+
 ## 💡 Common Investigation Scenarios
 
 ### Scenario 1: Alert is TRUE POSITIVE (Confirmed Fraud)
@@ -313,11 +385,14 @@ mask suspicious activity. Counterparties show no clear business relationship."
 ## 📱 Tips & Tricks
 
 1. **Search feature** — Use to quickly find alerts (e.g., "ALT-20260409" or "Hassan")
-2. **Related Alerts** — Always review if there's a pattern (3+ related = likely real)
-3. **Customer 360** — Click the link to see transactions, network, accounts
-4. **Audit Trail** — Every action (escalate, close, note) is logged automatically
-5. **Justification required** — Always enter reason when closing alert (why fraud? why false?)
-6. **Note early** — Add investigation notes as you go, not at the end
+2. **Score tooltip** — Click the score to understand the calculation (new!)
+3. **Ask the Copilot** — Use chat to ask specific questions about this case (new!)
+4. **Check Previous Cases** — Review if customer has history of cases/escalations (new!)
+5. **Related Alerts** — Always review if there's a pattern (3+ related = likely real)
+6. **Customer 360** — Click the link to see transactions, network, accounts
+7. **Audit Trail** — Every action (escalate, close, note) is logged automatically
+8. **Justification required** — Always enter reason when closing alert (why fraud? why false?)
+9. **Note early** — Add investigation notes as you go, not at the end
 
 ---
 
