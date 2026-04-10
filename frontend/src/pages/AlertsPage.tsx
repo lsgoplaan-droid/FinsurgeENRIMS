@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Bell, ChevronLeft, ChevronRight, Search, Clock, AlertTriangle } from 'lucide-react'
 import api from '../config/api'
 import { formatDate, formatINR, timeAgo, priorityColors, statusColors } from '../utils/formatters'
@@ -77,16 +77,19 @@ function SlaCountdown({ slaDueAt }: { slaDueAt: string | null | undefined }) {
 
 export default function AlertsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const initialStatus = searchParams.get('status') || ''
+  const initialPriority = searchParams.get('priority') || ''
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState('')
+  const [tab, setTab] = useState(initialStatus)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [priorityCounts, setPriorityCounts] = useState<Record<string, number>>({})
-  const [priorityFilter, setPriorityFilter] = useState('')
+  const [priorityFilter, setPriorityFilter] = useState(initialPriority)
   const [showClose, setShowClose] = useState<string | null>(null)
   const [closeDisposition, setCloseDisposition] = useState('closed_false_positive')
   const [closeJustification, setCloseJustification] = useState('')

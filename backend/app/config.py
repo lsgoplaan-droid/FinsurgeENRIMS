@@ -27,7 +27,7 @@ _aws_secrets = _load_aws_secrets()
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "FinsurgeENRIMS"
+    APP_NAME: str = "FinsurgeFRIMS"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")

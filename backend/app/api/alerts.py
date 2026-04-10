@@ -67,6 +67,9 @@ def list_alerts(
     if status:
         if status == "closed":
             query = query.filter(Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+        elif "," in status:
+            statuses = [s.strip() for s in status.split(",") if s.strip()]
+            query = query.filter(Alert.status.in_(statuses))
         else:
             query = query.filter(Alert.status == status)
     if priority:

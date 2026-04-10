@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Search, ChevronLeft, ChevronRight, Filter, Shield, Eye, UserX, Clock } from 'lucide-react'
 import api from '../config/api'
 import { formatDate, riskColors, statusColors } from '../utils/formatters'
@@ -63,13 +63,18 @@ function RiskScoreDisplay({ score }: { score: number | null | undefined }) {
 }
 
 export default function CustomersPage() {
+  const [searchParams] = useSearchParams()
+  const initialState = searchParams.get('state') || ''
+  const initialRisk = searchParams.get('risk_category') || ''
+  const initialSearch = searchParams.get('search') || ''
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
-  const [riskCategory, setRiskCategory] = useState('')
+  const [search, setSearch] = useState(initialSearch)
+  const [riskCategory, setRiskCategory] = useState(initialRisk)
   const [kycStatus, setKycStatus] = useState('')
   const [customerType, setCustomerType] = useState('')
+  const [stateFilter, setStateFilter] = useState(initialState)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -81,6 +86,7 @@ export default function CustomersPage() {
     if (riskCategory) params.risk_category = riskCategory
     if (kycStatus) params.kyc_status = kycStatus
     if (customerType) params.customer_type = customerType
+    if (stateFilter) params.state = stateFilter
 
     api.get('/customers', { params })
       .then(res => {
@@ -91,7 +97,7 @@ export default function CustomersPage() {
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load customers'))
       .finally(() => setLoading(false))
-  }, [page, search, riskCategory, kycStatus, customerType])
+  }, [page, search, riskCategory, kycStatus, customerType, stateFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -144,6 +150,13 @@ export default function CustomersPage() {
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
+
+          {stateFilter && (
+            <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+              <span>State: <strong>{stateFilter}</strong></span>
+              <button onClick={() => setStateFilter('')} className="ml-1 hover:text-blue-900">&times;</button>
+            </div>
+          )}
         </div>
       </div>
 

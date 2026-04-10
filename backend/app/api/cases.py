@@ -63,6 +63,9 @@ def list_cases(
     if status:
         if status == "closed":
             query = query.filter(Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+        elif "," in status:
+            statuses = [s.strip() for s in status.split(",") if s.strip()]
+            query = query.filter(Case.status.in_(statuses))
         else:
             query = query.filter(Case.status == status)
     if priority:

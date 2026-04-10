@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Search, Plus, Briefcase,
   AlertTriangle, FileText, Clock, LayoutGrid, List
@@ -105,10 +105,12 @@ function CaseCard({ caseItem }: { caseItem: any }) {
 
 export default function CasesPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const initialStatus = searchParams.get('status') || ''
   const [cases, setCases] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState('')
+  const [tab, setTab] = useState(initialStatus)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
