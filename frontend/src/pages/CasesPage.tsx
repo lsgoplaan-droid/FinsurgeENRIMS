@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Search, Plus, Briefcase,
-  AlertTriangle, FileText, Clock
+  AlertTriangle, FileText, Clock, LayoutGrid, List
 } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDate, priorityColors, statusColors } from '../utils/formatters'
@@ -118,6 +118,7 @@ export default function CasesPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [custSearch, setCustSearch] = useState('')
   const [creating, setCreating] = useState(false)
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -172,17 +173,23 @@ export default function CasesPage() {
         ))}
       </div>
 
-      {/* Search */}
+      {/* Search + View toggle */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="relative max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-            placeholder="Search cases by number, customer, or type..."
-            className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-700"
-          />
+        <div className="flex items-center gap-3">
+          <div className="flex-1 relative max-w-md">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1) }}
+              placeholder="Search cases by number, customer, or type..."
+              className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-700"
+            />
+          </div>
+          <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
+            <button onClick={() => setViewMode('card')} className={`p-2 ${viewMode === 'card' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}><LayoutGrid size={16} /></button>
+            <button onClick={() => setViewMode('list')} className={`p-2 ${viewMode === 'list' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}><List size={16} /></button>
+          </div>
         </div>
       </div>
 
@@ -204,11 +211,44 @@ export default function CasesPage() {
           <Briefcase className="text-slate-300 mx-auto mb-2" size={32} />
           <p className="text-sm text-slate-400">No cases found</p>
         </div>
-      ) : (
+      ) : viewMode === 'card' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {cases.map(c => (
             <CaseCard key={c.id} caseItem={c} />
           ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50">
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Case#</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Title</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Priority</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Customer</th>
+                  <th className="text-right py-2.5 px-3 font-medium text-slate-600">Amount</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Assigned To</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cases.map(c => (
+                  <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => navigate(`/cases/${c.id}`)}>
+                    <td className="py-2.5 px-3"><Link to={`/cases/${c.id}`} className="text-blue-600 hover:underline font-mono text-xs">{c.case_number || c.id}</Link></td>
+                    <td className="py-2.5 px-3 text-slate-700 text-xs truncate max-w-[200px]">{c.title || '-'}</td>
+                    <td className="py-2.5 px-3"><Badge text={c.priority || '-'} colors={priorityColors[c.priority] || 'bg-gray-100 text-gray-800'} /></td>
+                    <td className="py-2.5 px-3"><Badge text={c.status || '-'} colors={statusColors[c.status] || 'bg-gray-100 text-gray-800'} /></td>
+                    <td className="py-2.5 px-3 text-xs text-slate-600">{c.customer_name || '-'}</td>
+                    <td className="py-2.5 px-3 text-right text-xs font-mono text-slate-700">{(c.total_suspicious_amount ?? 0) > 0 ? formatINR(c.total_suspicious_amount) : '-'}</td>
+                    <td className="py-2.5 px-3 text-xs text-slate-600">{c.assignee_name || c.investigator_name || '-'}</td>
+                    <td className="py-2.5 px-3 text-xs text-slate-500">{formatDate(c.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

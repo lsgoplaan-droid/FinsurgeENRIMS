@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Gauge, AlertTriangle, Shield, TrendingUp, Users, Timer, CheckCircle2, Edit3, Save, RotateCcw, X } from 'lucide-react'
+import { Gauge, AlertTriangle, Shield, TrendingUp, Users, Timer, CheckCircle2, Edit3, Save, RotateCcw, X, ChevronRight } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import api from '../config/api'
 import { formatNumber } from '../utils/formatters'
@@ -198,14 +199,14 @@ export default function RiskAppetitePage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
         {[
-          { label: 'Total Customers', value: formatNumber(summary.total_customers), icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'High Risk', value: formatNumber(summary.high_risk_customers), icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
-          { label: 'PEP Customers', value: formatNumber(summary.pep_count), icon: Shield, color: 'text-purple-600', bg: 'bg-purple-50' },
-          { label: 'Open Alerts', value: formatNumber(summary.open_alerts), icon: TrendingUp, color: 'text-amber-600', bg: 'bg-amber-50' },
-          { label: 'Overdue Alerts', value: formatNumber(summary.overdue_alerts), icon: Timer, color: 'text-red-600', bg: 'bg-red-50' },
-          { label: 'Open Cases', value: formatNumber(summary.open_cases), icon: Gauge, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'Total Customers', value: formatNumber(summary.total_customers), icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', href: '/customers' },
+          { label: 'High Risk', value: formatNumber(summary.high_risk_customers), icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', href: '/customers?risk_category=high' },
+          { label: 'PEP Customers', value: formatNumber(summary.pep_count), icon: Shield, color: 'text-purple-600', bg: 'bg-purple-50', href: '/customers?search=PEP' },
+          { label: 'Open Alerts', value: formatNumber(summary.open_alerts), icon: TrendingUp, color: 'text-amber-600', bg: 'bg-amber-50', href: '/alerts?status=new' },
+          { label: 'Overdue Alerts', value: formatNumber(summary.overdue_alerts), icon: Timer, color: 'text-red-600', bg: 'bg-red-50', href: '/sla-burndown' },
+          { label: 'Open Cases', value: formatNumber(summary.open_cases), icon: Gauge, color: 'text-blue-600', bg: 'bg-blue-50', href: '/cases?status=under_investigation' },
         ].map(s => (
-          <div key={s.label} className="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
+          <Link key={s.label} to={s.href} className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 hover:shadow-md hover:border-blue-300 transition-all">
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 ${s.bg} rounded-lg flex items-center justify-center`}>
                 <s.icon className={s.color} size={14} />
@@ -215,7 +216,7 @@ export default function RiskAppetitePage() {
                 <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
               </div>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 

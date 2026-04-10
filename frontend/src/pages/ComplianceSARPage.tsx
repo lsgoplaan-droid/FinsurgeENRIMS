@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { FileText, AlertTriangle, Users, Clock, Shield, CheckCircle } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import api from '../config/api'
 import { formatNumber, formatINR, formatDate } from '../utils/formatters'
 
@@ -45,15 +46,15 @@ export default function ComplianceSARPage() {
   const recentFilings = data?.recent_filings || data?.filings || []
 
   const filingCards = [
-    { label: 'CTR Pending', value: filingStatus.ctr_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock },
-    { label: 'CTR Filed', value: filingStatus.ctr_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle },
-    { label: 'SAR Pending', value: filingStatus.sar_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock },
-    { label: 'SAR Filed', value: filingStatus.sar_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle },
+    { label: 'CTR Pending', value: filingStatus.ctr_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines' },
+    { label: 'CTR Filed', value: filingStatus.ctr_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines' },
+    { label: 'SAR Pending', value: filingStatus.sar_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines' },
+    { label: 'SAR Filed', value: filingStatus.sar_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines' },
   ]
 
   const complianceCards = [
-    { label: 'PEP Customers', value: metrics.pep_customers ?? 0, color: 'text-purple-600', bg: 'bg-purple-50', icon: Users },
-    { label: 'Open Investigations', value: metrics.open_investigations ?? 0, color: 'text-blue-600', bg: 'bg-blue-50', icon: Shield },
+    { label: 'PEP Customers', value: metrics.pep_customers ?? 0, color: 'text-purple-600', bg: 'bg-purple-50', icon: Users, href: '/customers?search=PEP' },
+    { label: 'Open Investigations', value: metrics.open_investigations ?? 0, color: 'text-blue-600', bg: 'bg-blue-50', icon: Shield, href: '/cases?status=under_investigation' },
   ]
 
   return (
@@ -63,7 +64,7 @@ export default function ComplianceSARPage() {
         <h3 className="text-sm font-semibold text-slate-700 mb-3">Filing Status</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {filingCards.map(card => (
-            <div key={card.label} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <Link key={card.label} to={card.href} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">{card.label}</p>
@@ -73,7 +74,8 @@ export default function ComplianceSARPage() {
                   <card.icon className={card.color} size={22} />
                 </div>
               </div>
-            </div>
+              <p className="text-[10px] text-blue-500 mt-1 font-medium">View details &rarr;</p>
+            </Link>
           ))}
         </div>
       </div>
@@ -83,7 +85,7 @@ export default function ComplianceSARPage() {
         <h3 className="text-sm font-semibold text-slate-700 mb-3">Compliance Metrics</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {complianceCards.map(card => (
-            <div key={card.label} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <Link key={card.label} to={card.href} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500">{card.label}</p>
@@ -93,7 +95,8 @@ export default function ComplianceSARPage() {
                   <card.icon className={card.color} size={22} />
                 </div>
               </div>
-            </div>
+              <p className="text-[10px] text-blue-500 mt-1 font-medium">View details &rarr;</p>
+            </Link>
           ))}
         </div>
       </div>
