@@ -63,7 +63,7 @@ function RiskGauge({ score, customer }: { score: number; customer?: any }) {
       </div>
 
       {showTooltip && (
-        <div className="absolute bottom-36 left-1/2 -translate-x-1/2 w-72 bg-white border border-slate-200 rounded-lg shadow-lg p-4 z-50">
+        <div className="absolute -bottom-2 -left-32 w-80 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-50 transform translate-y-full">
           {/* Header */}
           <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-200">
             <h4 className="text-sm font-semibold text-slate-800">Risk Score Breakdown</h4>
@@ -166,10 +166,9 @@ export default function Customer360Page() {
   // Fetch audit trail when audit tab is selected
   const fetchAuditTrail = () => {
     setAuditLoading(true)
-    api.get('/audit-trail/entries', { params: { resource_type: 'customer', per_page: 100 } })
+    api.get('/audit-trail/entries', { params: { resource_type: 'customer', resource_id: id, per_page: 100 } })
       .then(res => {
-        const entries = (res.data.entries || []).filter((e: any) => e.resource_id === id)
-        setAuditEntries(entries)
+        setAuditEntries(res.data.entries || [])
       })
       .catch(() => setAuditEntries([]))
       .finally(() => setAuditLoading(false))

@@ -34,6 +34,7 @@ def audit_entries(
     user_id: str = Query(None),
     action: str = Query(None),
     resource_type: str = Query(None),
+    resource_id: str = Query(None),
     date_from: str = Query(None),
     date_to: str = Query(None),
 ):
@@ -46,6 +47,8 @@ def audit_entries(
         query = query.filter(AuditLog.action.ilike(f"%{action}%"))
     if resource_type:
         query = query.filter(AuditLog.resource_type == resource_type)
+    if resource_id:
+        query = query.filter(AuditLog.resource_id == resource_id)
     if date_from:
         query = query.filter(AuditLog.created_at >= datetime.fromisoformat(date_from))
     if date_to:
