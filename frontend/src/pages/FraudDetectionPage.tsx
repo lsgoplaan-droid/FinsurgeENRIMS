@@ -32,23 +32,28 @@ export default function FraudDetectionPage() {
   const [drillDown, setDrillDown] = useState<{ title: string; data: any[] } | null>(null)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    Promise.all([
+  const fetchData = () => {
+    setLoading(true)
+    Promise.allSettled([
       api.get('/fraud-detection/dashboard'),
       api.get('/fraud-detection/rules'),
       api.get('/fraud-detection/live-feed?page_size=15'),
-    ])
-      .then(([dashRes, rulesRes, feedRes]) => {
-        setDashboard(dashRes.data)
-        setRules(rulesRes.data)
-        setLiveFeed(feedRes.data.items || [])
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [])
+    ]).then(([dashRes, rulesRes, feedRes]) => {
+      if (dashRes.status === 'fulfilled') setDashboard(dashRes.value.data)
+      if (rulesRes.status === 'fulfilled') setRules(rulesRes.value.data)
+      if (feedRes.status === 'fulfilled') setLiveFeed(feedRes.value.data.items || [])
+    }).finally(() => setLoading(false))
+  }
+
+  useEffect(() => { fetchData() }, [])
 
   if (loading) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
-  if (!dashboard) return <div className="flex items-center justify-center h-full text-red-500">Failed to load fraud detection data</div>
+  if (!dashboard) return (
+    <div className="flex flex-col items-center justify-center h-full gap-3">
+      <p className="text-red-500">Failed to load fraud detection data</p>
+      <button onClick={fetchData} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">Retry</button>
+    </div>
+  )
 
   const channelData = Object.entries(dashboard.fraud_by_channel || {}).map(([name, value]) => ({ name: name.replace(/_/g, ' '), value }))
   const methodData = Object.entries(dashboard.fraud_by_method || {}).map(([name, value]) => ({ name: name.replace(/_/g, ' '), value }))
