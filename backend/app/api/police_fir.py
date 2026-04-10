@@ -95,7 +95,7 @@ def _gen_fir_number():
     return f"FIR-{d}-{uuid.uuid4().hex[:4].upper()}"
 
 
-@router.get("/{fir_id}/download", response_class=PlainTextResponse)
+@router.get("/download/{fir_id}", response_class=PlainTextResponse)
 def download_fir(
     fir_id: str,
     db: Session = Depends(get_db),

@@ -88,7 +88,20 @@
       "Bash(grep -o '\\(\"...-[0-9]\\\\{3\\\\}\"' backend/app/seed/seed_all.py)",
       "Bash(grep -B1 'None, None, None\\)$')",
       "Bash(SEED_ON_STARTUP=true timeout 30 python main.py)",
-      "Bash(awk '{print $2}')"
+      "Bash(awk '{print $2}')",
+      "Bash(python3 create_ppt_professional.py)",
+      "Bash(grep -n \"@router.*scenario\" backend/app/api/*.py -i)",
+      "Bash(python3 -m py_compile backend/app/api/rules_management.py)",
+      "Bash(ls -lh \"/d/Claude Projects/EnterpriseRiskSystem\"/*.pptx)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(python3 -m py_compile backend/app/api/police_fir.py)",
+      "Bash(cat)",
+      "Bash(python3 /tmp/fix_routes.py)",
+      "Bash(find tests:*)",
+      "Bash(timeout 30 python backend/main.py)",
+      "Bash(curl -s -H \"Authorization: Bearer test-token\" http://localhost:8000/api/v1/police-fir/list)",
+      "Bash(pkill -f \"python backend/main.py\")",
+      "Bash(pkill -9 -f \"python.*main.py\")"
     ]
   }
 }

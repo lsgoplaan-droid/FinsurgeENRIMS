@@ -154,7 +154,7 @@ export default function PoliceFIRPage() {
 
   const downloadFIR = (firId: string, firNumber: string) => {
     setDownloading(firId)
-    api.get(`/police-fir/${firId}/download`, { responseType: 'arraybuffer' })
+    api.get(`/police-fir/download/${firId}`, { responseType: 'arraybuffer' })
       .then(res => {
         const blob = new Blob([res.data], { type: 'text/plain;charset=utf-8' })
         const url = window.URL.createObjectURL(blob)
