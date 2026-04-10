@@ -314,6 +314,56 @@ def geographic_risk(db: Session = Depends(get_db), current_user: User = Depends(
     }
 
 
+@router.get("/geo-risk/{state}/customers")
+def geo_risk_state_customers(
+    state: str,
+    risk_category: str = None,
+    page: int = 1,
+    page_size: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Drill-down endpoint: Get customers in a specific state, optionally filtered by risk category.
+    This ensures consistency between the heatmap count and the customer list count."""
+
+    query = db.query(Customer).filter(
+        Customer.is_active == True,
+        Customer.state == state
+    )
+
+    # Apply risk category filter if provided
+    if risk_category:
+        if risk_category == "high":
+            # Map "high" to both high and very_high
+            query = query.filter(Customer.risk_category.in_(["high", "very_high"]))
+        else:
+            query = query.filter(Customer.risk_category == risk_category)
+
+    total = query.count()
+    customers = query.order_by(Customer.risk_score.desc()).offset((page - 1) * page_size).limit(page_size).all()
+
+    return {
+        "state": state,
+        "risk_category": risk_category,
+        "items": [
+            {
+                "id": c.id,
+                "customer_number": c.customer_number,
+                "full_name": c.full_name,
+                "risk_category": c.risk_category,
+                "risk_score": c.risk_score or 0,
+                "pep_status": c.pep_status,
+                "kyc_status": c.kyc_status,
+            }
+            for c in customers
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size,
+    }
+
+
 @router.get("/risk-appetite")
 def risk_appetite(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Risk appetite dashboard — portfolio risk vs CRO-set thresholds."""

@@ -65,7 +65,8 @@ export default function RiskHeatmapPage() {
     if (state) {
       setCasesLoading(true)
       // Fetch ALL customers in this state (server-side filter, not name-search), then their cases
-      api.get('/customers', { params: { state: state.state, page_size: 100 } })
+      // Use dedicated drill-down endpoint for data consistency with heatmap counts
+      api.get(`/dashboard/geo-risk/${encodeURIComponent(state.state)}/customers`, { params: { page_size: 100 } })
         .then(res => {
           const stateCustomers = res.data?.items || []
           const customerIds = stateCustomers.map((c: any) => c.id)

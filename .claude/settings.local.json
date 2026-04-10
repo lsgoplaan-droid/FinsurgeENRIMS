@@ -22,7 +22,9 @@
       "Bash(python generate_pptx_v2.py)",
       "Bash(python3 -c \"from pptx import Presentation; prs = Presentation\\('FinsurgeENRIMS_Features_v2.pptx'\\); print\\(f'Slides: {len\\(prs.slides\\)}'\\); print\\(f'Slide 1 title: {prs.slides[0].shapes[1].text_frame.text if len\\(prs.slides[0].shapes\\) > 1 else \\\\\"N/A\\\\\"}'\\)\")",
       "Bash(ls -lh FinsurgeENRIMS_Features*.pptx)",
-      "Bash(python generate_docx.py)"
+      "Bash(python generate_docx.py)",
+      "Bash(xargs grep:*)",
+      "Bash(xargs cat:*)"
     ]
   }
 }
