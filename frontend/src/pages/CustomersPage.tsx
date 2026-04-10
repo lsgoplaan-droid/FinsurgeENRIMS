@@ -135,7 +135,6 @@ export default function CustomersPage() {
             className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white"
           >
             <option value="">All Risk</option>
-            <option value="high,very_high">High Risk (high + very high)</option>
             {RISK_CATEGORIES.filter(Boolean).map(c => (
               <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
             ))}
