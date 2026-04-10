@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FileText, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { FileText, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDate, statusColors } from '../utils/formatters'
 
@@ -18,6 +18,29 @@ export default function ReportsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
+  const [downloading, setDownloading] = useState<string | null>(null)
+
+  const downloadReport = (report: any) => {
+    if (!report.id) {
+      alert('This report has no document on file yet')
+      return
+    }
+    setDownloading(report.id)
+    api.get(`/compliance/filings/${tab}/${report.id}/download`, { responseType: 'blob' })
+      .then(res => {
+        const blob = new Blob([res.data], { type: 'text/plain' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${report.report_number || report.id}.txt`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      })
+      .catch(() => alert('Failed to download report'))
+      .finally(() => setDownloading(null))
+  }
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -115,6 +138,7 @@ export default function ReportsPage() {
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Filed Date</th>
                   {tab === 'sar' && <th className="text-left py-2.5 px-3 font-medium text-slate-600">Reason</th>}
                   {tab === 'ctr' && <th className="text-left py-2.5 px-3 font-medium text-slate-600">Transaction Date</th>}
+                  <th className="text-right py-2.5 px-3 font-medium text-slate-600">Document</th>
                 </tr>
               </thead>
               <tbody>
@@ -133,10 +157,21 @@ export default function ReportsPage() {
                     {tab === 'ctr' && (
                       <td className="py-2.5 px-3 text-slate-500 text-xs whitespace-nowrap">{formatDate(r.transaction_date)}</td>
                     )}
+                    <td className="py-2.5 px-3 text-right">
+                      <button
+                        onClick={() => downloadReport(r)}
+                        disabled={downloading === r.id || !r.id}
+                        title={r.id ? 'Download report document' : 'Document not yet available'}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Download size={12} />
+                        {downloading === r.id ? 'Downloading...' : 'Download'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {reports.length === 0 && (
-                  <tr><td colSpan={tab === 'sar' ? 6 : 6} className="py-12 text-center text-slate-400">No reports found</td></tr>
+                  <tr><td colSpan={tab === 'sar' ? 7 : 7} className="py-12 text-center text-slate-400">No reports found</td></tr>
                 )}
               </tbody>
             </table>
