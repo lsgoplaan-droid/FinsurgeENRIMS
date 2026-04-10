@@ -54,13 +54,8 @@ async def lifespan(app: FastAPI):
             from app.seed.seed_all import seed_all
             seed_all(db)
             logger.info("Seeding complete!")
-        elif user_count == 0 and settings.ENVIRONMENT == "development":
-            logger.info("Database empty (dev mode) — seeding demo data...")
-            from app.seed.seed_all import seed_all
-            seed_all(db)
-            logger.info("Seeding complete!")
         elif user_count == 0:
-            logger.warning("Database empty but SEED_ON_STARTUP is not enabled. Set SEED_ON_STARTUP=true or run migrations.")
+            logger.warning("Database empty. Set SEED_ON_STARTUP=true to seed or run migrations.")
         else:
             logger.info(f"Database has {user_count} users — skipping seed.")
     finally:
@@ -82,16 +77,35 @@ app = FastAPI(
 # Middleware (order matters: last added = first executed)
 app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware, login_limit=5, api_limit=100, window=60)
-# In production, CORS_ORIGINS env var must be set to specific domains
-_cors_origins = settings.CORS_ORIGINS if settings.ENVIRONMENT != "development" else ["*"]
+# CORS: use configured origins (must be set explicitly, even in dev)
+# Default dev origins: localhost:5173 (Vite), localhost:3000 (Node)
+_cors_origins = settings.CORS_ORIGINS  # No wildcard fallback—require explicit config
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=False if _cors_origins == ["*"] else True,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# ── HTTPS Enforcement (S5) ──────────────────────────────────────────────────
+# In production (ENVIRONMENT=production), redirect HTTP → HTTPS and add HSTS headers
+# Set env var ENFORCE_HTTPS=true to enable
+if os.getenv("ENFORCE_HTTPS", "false").lower() == "true":
+    @app.middleware("http")
+    async def https_redirect_middleware(request: Request, call_next):
+        # Redirect HTTP to HTTPS
+        if request.url.scheme == "http":
+            https_url = request.url.replace(scheme="https")
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url=https_url, status_code=301)
+
+        response = await call_next(request)
+
+        # Add HSTS header (Strict-Transport-Security)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
 # Global exception handler — no stack traces in production
 @app.exception_handler(Exception)

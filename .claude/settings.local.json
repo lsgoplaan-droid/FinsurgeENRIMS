@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip list:*)",
+      "Bash(alembic init:*)",
+      "Bash(alembic revision:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(timeout 5 python -m pytest tests/test_alerts.py::test_list_alerts -v)",
+      "Bash(python -m pytest tests/test_alerts.py::test_list_alerts -v --tb=short)"
+    ]
+  }
+}
