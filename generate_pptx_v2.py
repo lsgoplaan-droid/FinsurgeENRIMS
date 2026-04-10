@@ -242,8 +242,48 @@ add_content_slide(
     logo_path
 )
 
+# ====== SLIDE 8: RISK SCORE CALCULATION ======
+add_content_slide(
+    "Risk Score Calculation Model",
+    [
+        {
+            'heading': '💹 Transaction Risk Score (0-100)',
+            'content': 'Base: 10pt | Rule Severity: Critical +40, High +25, Medium +15, Low +5 | Channel: SWIFT +10, Branch/ATM +5, Internet/Mobile +3, POS +2 | Customer Category: very_high +35, high +20, medium +10, low 0. Example: 10+25+10+35=80/100'
+        },
+        {
+            'heading': '👥 Customer Risk Score (Weighted Rolling)',
+            'content': 'Previous score + adjustment per matched rule (capped at 100). Critical rule: +5, High: +3, Medium: +1.5, Low: +0.5. Example: Score 70 + two critical rules = min(70+5+5, 100) = 80/100'
+        },
+        {
+            'heading': '🎯 Auto-Assigned Risk Categories',
+            'content': '75-100: very_high (🔴 strict monitoring) | 50-74: high (🟠 enhanced rules) | 25-49: medium (🟡 standard) | 0-24: low (🟢 minimal). Higher scores = stricter alert sensitivity, automatic.'
+        }
+    ],
+    logo_path
+)
+
+# ====== SLIDE 9: RISK APPETITE METRICS ======
+add_content_slide(
+    "Risk Appetite Monitoring — CRO Dashboard",
+    [
+        {
+            'heading': '📊 5 Portfolio-Level Metrics',
+            'content': '1️⃣ High-Risk Customer Exposure: (very_high / total) × 100% [Limit: 15% | Warning: 12%] | 2️⃣ Portfolio Avg Risk: Mean risk_score [Limit: 45 | Warning: 35] | 3️⃣ PEP Exposure: (PEP / total) × 100% [Limit: 5% | Warning: 3%]'
+        },
+        {
+            'heading': '🎯 SLA & Transaction Metrics',
+            'content': '4️⃣ SLA Compliance Rate: (on-time / total) × 100% [Limit: 85% | Warning: 90%] | 5️⃣ Flagged Txn Volume (30d): (flagged amount / total) × 100% [Limit: 2% | Warning: 1.5%]'
+        },
+        {
+            'heading': '⚠️ Status Indicators & CRO Control',
+            'content': '🟢 OK (within warning) | 🟡 WARNING (warning–limit) | 🔴 BREACH (exceeds limit). CRO adjusts thresholds on-the-fly via dashboard—no code changes, instant effect.'
+        }
+    ],
+    logo_path
+)
+
 # Save presentation
 output_path = r"d:\Claude Projects\EnterpriseRiskSystem\FinsurgeENRIMS_Features_v2.pptx"
 prs.save(output_path)
-print(f"✅ Created: {output_path}")
-print(f"📊 7 slides with professional design and Finsurge branding")
+print(f"Created: {output_path}")
+print(f"9 slides with risk score and risk appetite metrics")

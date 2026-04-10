@@ -143,6 +143,101 @@ for point in onboard_points:
 
 doc.add_page_break()
 
+# Section 1b: Risk Score Calculation (TECHNICAL)
+doc.add_heading('Technical Deep Dive: How Risk Scores Are Calculated', level=1)
+doc.add_paragraph('This section explains the mathematical model behind the system\'s risk scoring.')
+
+doc.add_heading('Transaction Risk Score (0–100)', level=2)
+doc.add_paragraph('Calculated when a transaction is evaluated against detection rules:')
+
+table_txn = doc.add_table(rows=6, cols=2)
+table_txn.style = 'Light Grid Accent 1'
+txn_rows = [
+    ('Component', 'Contribution'),
+    ('Base Score', '10 points (all transactions start here)'),
+    ('Rule Severity Score', 'Critical: +40 | High: +25 | Medium: +15 | Low: +5'),
+    ('Channel Risk', 'SWIFT: +10 | Branch/ATM: +5 | Internet/Mobile: +3 | POS: +2'),
+    ('Customer Category Bonus', 'very_high: +35 | high: +20 | medium: +10 | low: 0'),
+    ('Final Score', 'Sum of all factors, capped at 100'),
+]
+for i, (label, desc) in enumerate(txn_rows):
+    cells = table_txn.rows[i].cells
+    cells[0].text = label
+    cells[1].text = desc
+
+doc.add_paragraph('Example: Transaction from very_high risk customer, triggers high-severity rule, via SWIFT')
+doc.add_paragraph('Score = 10 + 25 + 10 + 35 = 80/100', style='List Bullet')
+
+doc.add_heading('Customer Risk Score (0–100)', level=2)
+doc.add_paragraph('Updated dynamically whenever rules match a transaction. Previous score + adjustment (capped at 100).')
+
+table_cust = doc.add_table(rows=5, cols=2)
+table_cust.style = 'Light Grid Accent 1'
+cust_rows = [
+    ('Rule Severity', 'Risk Adjustment per Rule'),
+    ('Critical', '+5 points'),
+    ('High', '+3 points'),
+    ('Medium', '+1.5 points'),
+    ('Low', '+0.5 points'),
+]
+for i, (severity, adj) in enumerate(cust_rows):
+    cells = table_cust.rows[i].cells
+    cells[0].text = severity
+    cells[1].text = adj
+
+doc.add_paragraph('Example: Rajiv Saxena (current score 70) triggers critical rule twice')
+doc.add_paragraph('New Score = min(70 + 5 + 5, 100) = 80/100', style='List Bullet')
+
+doc.add_heading('Risk Category Auto-Assignment', level=2)
+doc.add_paragraph('Categories assigned automatically based on customer risk score:')
+
+table_cat = doc.add_table(rows=5, cols=2)
+table_cat.style = 'Light Grid Accent 1'
+cat_rows = [
+    ('Score Range', 'Category'),
+    ('75 – 100', 'very_high 🔴 (Highest monitoring)'),
+    ('50 – 74', 'high 🟠 (Enhanced rules)'),
+    ('25 – 49', 'medium 🟡 (Standard rules)'),
+    ('0 – 24', 'low 🟢 (Minimal monitoring)'),
+]
+for i, (range_str, cat) in enumerate(cat_rows):
+    cells = table_cat.rows[i].cells
+    cells[0].text = range_str
+    cells[1].text = cat
+
+doc.add_paragraph('Key Insight: Customers with higher risk scores trigger stricter rules automatically, reducing false positives.', style='List Bullet')
+
+doc.add_heading('Risk Appetite Metrics — CRO Dashboard', level=2)
+doc.add_paragraph('The system monitors 5 portfolio-level metrics against CRO-defined thresholds. Status auto-updates in real-time:')
+
+table_appetite = doc.add_table(rows=6, cols=4)
+table_appetite.style = 'Light Grid Accent 1'
+appetite_rows = [
+    ('Metric', 'Calculation', 'Limit', 'Warning'),
+    ('High-Risk Customer Exposure', '(very_high customers / total) × 100%', '15%', '12%'),
+    ('Portfolio Average Risk Score', 'Average of all risk_scores (0–100)', '45', '35'),
+    ('PEP Exposure', '(PEP customers / total) × 100%', '5%', '3%'),
+    ('SLA Compliance Rate', '(on-time alerts / total) × 100%', '85%', '90%'),
+    ('Flagged Transaction Volume (30d)', '(flagged amount / total) × 100%', '2%', '1.5%'),
+]
+for i, row_data in enumerate(appetite_rows):
+    cells = table_appetite.rows[i].cells
+    for j, text in enumerate(row_data):
+        cells[j].text = text
+
+doc.add_heading('Status Indicators', level=3)
+status_items = [
+    '🟢 OK — Within warning threshold',
+    '🟡 WARNING — Between warning and limit',
+    '🔴 BREACH — Exceeds limit threshold',
+]
+for item in status_items:
+    doc.add_paragraph(item, style='List Bullet')
+
+doc.add_paragraph('CRO can adjust all thresholds on-the-fly via dashboard without code changes or system restart.', style='List Bullet')
+
+doc.add_page_break()
+
 # Section 2: Key Advantage Table
 doc.add_heading('Quick Reference — Your Key Advantages', level=1)
 
@@ -271,6 +366,6 @@ footer_run.font.italic = True
 footer_run.font.color.rgb = RGBColor(128, 128, 128)
 
 # Save
-output_path = r"d:\Claude Projects\EnterpriseRiskSystem\FinsurgeENRIMS_BANK_DEMO_QA.docx"
+output_path = r"d:\Claude Projects\EnterpriseRiskSystem\FinsurgeENRIMS_BANK_DEMO_QA_UPDATED.docx"
 doc.save(output_path)
 print(f"Created: {output_path}")

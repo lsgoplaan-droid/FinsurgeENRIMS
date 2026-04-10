@@ -3,13 +3,50 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import Customer, Account, Transaction, Alert, Case, User
+from app.models import Customer, Account, Transaction, Alert, Case, User, CustomerRelationship, CustomerLink
 from app.schemas.customer import CustomerResponse, Customer360Response
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
 
 
 def _customer_to_response(c: Customer, db: Session) -> CustomerResponse:
+    # Check for high-risk related entities (directors/UBOs of other companies)
+    has_high_risk_connections = False
+    relationship_types = ['director', 'ubo', 'promoter', 'shareholder', 'beneficiary']
+
+    # Check CustomerRelationship for high-risk related entities
+    related_by_relationship = db.query(CustomerRelationship).filter(
+        or_(
+            CustomerRelationship.customer_id_1 == c.id,
+            CustomerRelationship.customer_id_2 == c.id
+        )
+    ).all()
+
+    for rel in related_by_relationship:
+        if any(t in (rel.relationship_type or '').lower() for t in relationship_types):
+            other_id = rel.customer_id_2 if rel.customer_id_1 == c.id else rel.customer_id_1
+            other_customer = db.query(Customer).filter(Customer.id == other_id).first()
+            if other_customer and other_customer.risk_category in ['high', 'very_high']:
+                has_high_risk_connections = True
+                break
+
+    # Check CustomerLink if not found yet
+    if not has_high_risk_connections:
+        related_by_link = db.query(CustomerLink).filter(
+            or_(
+                CustomerLink.customer_id_1 == c.id,
+                CustomerLink.customer_id_2 == c.id
+            )
+        ).all()
+
+        for link in related_by_link:
+            if any(t in (link.link_type or '').lower() for t in relationship_types):
+                other_id = link.customer_id_2 if link.customer_id_1 == c.id else link.customer_id_1
+                other_customer = db.query(Customer).filter(Customer.id == other_id).first()
+                if other_customer and other_customer.risk_category in ['high', 'very_high']:
+                    has_high_risk_connections = True
+                    break
+
     return CustomerResponse(
         id=c.id,
         customer_number=c.customer_number,
@@ -42,6 +79,7 @@ def _customer_to_response(c: Customer, db: Session) -> CustomerResponse:
         account_count=db.query(func.count(Account.id)).filter(Account.customer_id == c.id).scalar() or 0,
         alert_count=db.query(func.count(Alert.id)).filter(Alert.customer_id == c.id).scalar() or 0,
         case_count=db.query(func.count(Case.id)).filter(Case.customer_id == c.id).scalar() or 0,
+        has_high_risk_connections=has_high_risk_connections,
         created_at=c.created_at,
     )
 

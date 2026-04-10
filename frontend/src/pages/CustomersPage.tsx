@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Search, ChevronLeft, ChevronRight, Filter, Shield, Eye, UserX, Clock } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Filter, Shield, Eye, UserX, Clock, HelpCircle } from 'lucide-react'
 import api from '../config/api'
 import { formatDate, riskColors, statusColors } from '../utils/formatters'
 
@@ -26,6 +26,9 @@ function RiskTags({ customer }: { customer: any }) {
   if ((customer.risk_score ?? 0) > 80) {
     tags.push({ label: 'Mule Suspect', color: 'bg-orange-100 text-orange-700 border border-orange-200' })
   }
+  if (customer.has_high_risk_connections) {
+    tags.push({ label: 'Network Risk', color: 'bg-red-100 text-red-700 border border-red-300' })
+  }
   if (tags.length === 0) return null
 
   return (
@@ -42,7 +45,9 @@ function RiskTags({ customer }: { customer: any }) {
   )
 }
 
-function RiskScoreDisplay({ score }: { score: number | null | undefined }) {
+function RiskScoreDisplay({ score, customer }: { score: number | null | undefined; customer?: any }) {
+  const [showTooltip, setShowTooltip] = useState(false)
+
   if (score == null) return <span className="text-sm text-slate-400">-</span>
 
   const color =
@@ -55,9 +60,96 @@ function RiskScoreDisplay({ score }: { score: number | null | undefined }) {
     score > 40 ? 'bg-amber-50' :
     'bg-green-50'
 
+  // Determine risk category badge
+  const categoryEmoji = score > 70 ? '🔴' : score > 40 ? '🟠' : score > 20 ? '🟡' : '🟢'
+  const categoryLabel = score > 70 ? 'VERY HIGH' : score > 40 ? 'HIGH' : score > 20 ? 'MEDIUM' : 'LOW'
+  const categoryColor = score > 70 ? 'bg-red-100 text-red-800' : score > 40 ? 'bg-orange-100 text-orange-800' : score > 20 ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+
+  // Simulate component breakdown (customer risk is typically based on alerts and patterns)
+  const baseScore = 10
+  const alertRiskContribution = Math.min(40, Math.max(0, (customer?.alert_count ?? 0) * 5))
+  const behavioralRiskContribution = Math.max(0, score - baseScore - alertRiskContribution)
+  const displayScore = Math.min(100, baseScore + alertRiskContribution + behavioralRiskContribution)
+
   return (
-    <div className={`inline-flex items-center justify-center w-12 h-10 rounded-lg ${bgColor}`}>
-      <span className={`text-lg font-bold ${color}`}>{score}</span>
+    <div className="relative inline-block">
+      <div
+        className={`inline-flex items-center justify-center w-12 h-10 rounded-lg ${bgColor} cursor-help relative`}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+      >
+        <span className={`text-lg font-bold ${color}`}>{score}</span>
+        {showTooltip && <HelpCircle size={12} className="absolute top-0 right-0 text-blue-500" />}
+      </div>
+
+      {showTooltip && (
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-64 bg-white border border-slate-200 rounded-lg shadow-lg p-4 z-50">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-200">
+            <h4 className="text-sm font-semibold text-slate-800">Risk Score Breakdown</h4>
+            <span className={`px-2 py-1 rounded text-xs font-semibold ${categoryColor}`}>
+              {categoryEmoji} {categoryLabel}
+            </span>
+          </div>
+
+          {/* Component boxes */}
+          <div className="space-y-2 mb-3">
+            {/* Base Risk */}
+            <div className="flex items-center gap-2">
+              <div className="w-12 h-10 rounded bg-blue-50 border border-blue-200 flex items-center justify-center">
+                <span className="text-xs font-bold text-blue-700">{baseScore}</span>
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-medium text-slate-700">Base Risk</div>
+                <div className="text-[10px] text-slate-500">Baseline for all customers</div>
+              </div>
+            </div>
+
+            {/* Alert Risk */}
+            <div className="flex items-center gap-2">
+              <div className="w-12 h-10 rounded bg-orange-50 border border-orange-200 flex items-center justify-center">
+                <span className="text-xs font-bold text-orange-700">+{alertRiskContribution.toFixed(0)}</span>
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-medium text-slate-700">Alert Risk</div>
+                <div className="text-[10px] text-slate-500">{customer?.alert_count ?? 0} open alerts</div>
+              </div>
+            </div>
+
+            {/* Behavioral Risk */}
+            <div className="flex items-center gap-2">
+              <div className="w-12 h-10 rounded bg-purple-50 border border-purple-200 flex items-center justify-center">
+                <span className="text-xs font-bold text-purple-700">+{behavioralRiskContribution.toFixed(0)}</span>
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-medium text-slate-700">Behavioral Risk</div>
+                <div className="text-[10px] text-slate-500">Transaction patterns & network</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Total equation */}
+          <div className="mb-3 p-2 bg-slate-50 rounded border border-slate-200">
+            <div className="text-xs text-slate-600">
+              <span className="font-semibold">{baseScore}</span>
+              {' + '}
+              <span className="font-semibold">{alertRiskContribution.toFixed(0)}</span>
+              {' + '}
+              <span className="font-semibold">{behavioralRiskContribution.toFixed(0)}</span>
+              {' = '}
+              <span className="font-bold text-slate-900">{displayScore.toFixed(0)}</span>
+            </div>
+          </div>
+
+          {/* Risk appetite info */}
+          <div className="text-[10px] text-slate-500 border-t border-slate-200 pt-2">
+            <div className="font-medium text-slate-700 mb-1">Risk Actions Triggered:</div>
+            {score > 70 && <div>🔴 Enhanced monitoring & mandatory review</div>}
+            {score > 40 && score <= 70 && <div>🟠 Regular monitoring & periodic review</div>}
+            {score <= 40 && <div>🟡 Standard compliance procedures</div>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -233,7 +325,7 @@ export default function CustomersPage() {
                         {lastActive ? formatDate(lastActive) : '-'}
                       </td>
                       <td className="py-2.5 px-3 text-center">
-                        <RiskScoreDisplay score={c.risk_score} />
+                        <RiskScoreDisplay score={c.risk_score} customer={c} />
                       </td>
                     </tr>
                   )

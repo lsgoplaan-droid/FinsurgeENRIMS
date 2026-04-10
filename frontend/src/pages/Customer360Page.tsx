@@ -1,12 +1,30 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, User, CreditCard, Bell, Shield, MapPin, Phone, Mail, Building } from 'lucide-react'
+import { ArrowLeft, User, CreditCard, Bell, Shield, MapPin, Phone, Mail, Building, AlertCircle } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDate, formatDateTime, timeAgo, priorityColors, statusColors, riskColors } from '../utils/formatters'
 
 const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
 )
+
+// Helper to get high-risk related entities
+function getHighRiskRelations(networkData: any, centerId: string) {
+  if (!networkData || !networkData.edges || !networkData.nodes) return []
+
+  const relationshipTypes = ['director', 'ubo', 'promoter', 'shareholder', 'beneficiary']
+
+  return networkData.edges
+    .filter((edge: any) =>
+      relationshipTypes.some(t => edge.relationship?.toLowerCase().includes(t))
+    )
+    .map((edge: any) => {
+      const relatedId = edge.source === centerId ? edge.target : edge.source
+      const relatedNode = networkData.nodes.find((n: any) => n.id === relatedId)
+      return { ...relatedNode, relationship: edge.relationship, relatedId }
+    })
+    .filter((entity: any) => entity && (entity.risk_category === 'high' || entity.risk_category === 'very_high'))
+}
 
 type Tab = 'overview' | 'transactions' | 'alerts'
 
@@ -37,6 +55,8 @@ export default function Customer360Page() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<Tab>('overview')
+  const [networkData, setNetworkData] = useState<any>(null)
+  const [networkLoading, setNetworkLoading] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -44,6 +64,16 @@ export default function Customer360Page() {
       .then(res => setData(res.data))
       .catch(err => setError(err.response?.data?.detail || 'Failed to load customer'))
       .finally(() => setLoading(false))
+  }, [id])
+
+  // Fetch network data to check for high-risk related entities
+  useEffect(() => {
+    if (!id) return
+    setNetworkLoading(true)
+    api.get(`/network/${id}/graph?depth=1`)
+      .then(res => setNetworkData(res.data))
+      .catch(err => console.error('Failed to load network data:', err))
+      .finally(() => setNetworkLoading(false))
   }, [id])
 
   if (loading) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
@@ -114,7 +144,8 @@ export default function Customer360Page() {
 
       {/* Overview */}
       {tab === 'overview' && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* Personal Details */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
             <h3 className="text-sm font-semibold text-slate-700 mb-3">Personal Details</h3>
@@ -191,9 +222,45 @@ export default function Customer360Page() {
             </div>
           </div>
         </div>
+
+        {/* Network Risk Section - shown in overview tab */}
+          {networkData && (() => {
+            const highRiskRelations = getHighRiskRelations(networkData, id || '')
+            if (highRiskRelations.length > 0) {
+              return (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-red-900 mb-3">⚠️ Network Risk Alert</h3>
+                      <p className="text-sm text-red-800 mb-4">This customer is connected to entities with high risk:</p>
+                      <div className="space-y-2">
+                        {highRiskRelations.map((entity: any) => (
+                          <div key={entity.id} className="flex items-start justify-between p-3 bg-white rounded-lg border border-red-100">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-slate-800">{entity.name || entity.label}</div>
+                              <div className="text-xs text-slate-500 mt-1">
+                                {entity.relationship} of <strong>{entity.customer_type || 'entity'}</strong>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 ml-3 flex-shrink-0">
+                              <Badge text={entity.risk_category || '-'} colors={riskColors[entity.risk_category] || 'bg-gray-100 text-gray-800'} />
+                              <span className="text-sm font-bold text-slate-700">{entity.risk_score || 0}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+            return null
+          })()}
+        </div>
       )}
 
-      {/* Transactions */}
+      {/* Transactions Tab */}
       {tab === 'transactions' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">

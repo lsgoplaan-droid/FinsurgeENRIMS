@@ -13,6 +13,7 @@ from app.models.audit import AuditLog, SystemConfig, Notification
 from app.models.employee_activity import EmployeeActivity
 from app.models.police_fir import PoliceFIR, FIRActivity
 from app.models.notification_rule import NotificationRule, NotificationLog
+from app.models.evidence import Evidence, EvidenceType
 from app.services.maker_checker import PendingAction
 
 
@@ -37,5 +38,6 @@ __all__ = [
     "EmployeeActivity",
     "PoliceFIR", "FIRActivity",
     "NotificationRule", "NotificationLog",
+    "Evidence", "EvidenceType",
     "PendingAction",
 ]

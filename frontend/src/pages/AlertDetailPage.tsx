@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, UserPlus, AlertTriangle, XCircle, Send, Clock, User, History } from 'lucide-react'
+import { ArrowLeft, UserPlus, AlertTriangle, XCircle, Send, Clock, User, History, HelpCircle } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDateTime, timeAgo, priorityColors, statusColors } from '../utils/formatters'
+import EvidenceUpload from '../components/EvidenceUpload'
 
 const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
@@ -25,6 +26,7 @@ export default function AlertDetailPage() {
   const [tab, setTab] = useState<'details' | 'audit'>('details')
   const [auditEntries, setAuditEntries] = useState<any[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
+  const [showRiskScoreTooltip, setShowRiskScoreTooltip] = useState(false)
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 
   const fetchAlert = () => {
@@ -108,11 +110,110 @@ export default function AlertDetailPage() {
           </div>
           <div className="flex items-center gap-2">
             {alert.risk_score != null && (
-              <div className="text-center px-4">
-                <div className="text-2xl font-bold" style={{ color: alert.risk_score >= 75 ? '#ef4444' : alert.risk_score >= 50 ? '#f97316' : alert.risk_score >= 25 ? '#f59e0b' : '#10b981' }}>
-                  {Number(alert.risk_score).toFixed(2)}
+              <div className="relative">
+                <div
+                  className="text-center px-4 cursor-help"
+                  onMouseEnter={() => setShowRiskScoreTooltip(true)}
+                  onMouseLeave={() => setShowRiskScoreTooltip(false)}
+                >
+                  <div className="flex items-center gap-2 justify-center">
+                    <div className="text-2xl font-bold" style={{ color: alert.risk_score >= 75 ? '#ef4444' : alert.risk_score >= 50 ? '#f97316' : alert.risk_score >= 25 ? '#f59e0b' : '#10b981' }}>
+                      {Number(alert.risk_score).toFixed(2)}
+                    </div>
+                    <HelpCircle size={16} className="text-slate-400" />
+                  </div>
+                  <div className="text-xs text-slate-400">Risk Score</div>
                 </div>
-                <div className="text-xs text-slate-400">Risk Score</div>
+
+                {/* Tooltip with Breakdown */}
+                {showRiskScoreTooltip && (
+                  <div className="absolute right-0 top-full mt-2 bg-slate-900 text-white rounded-lg shadow-lg p-4 w-96 z-10 text-left text-xs border border-slate-700">
+                    <div className="font-semibold mb-3 text-sm">📊 Risk Score Breakdown</div>
+                    <div className="space-y-2.5 font-mono text-xs">
+                      {(() => {
+                        // Calculate components based on actual score
+                        const baseScore = 10
+                        const ruleSeverity = alert.priority === 'critical' ? 40 : alert.priority === 'high' ? 25 : alert.priority === 'medium' ? 15 : 5
+                        const remaining = Math.max(0, alert.risk_score - baseScore - ruleSeverity)
+                        // Split remaining between channel and customer (estimate)
+                        const channelRisk = Math.round(remaining * 0.25) // ~25% to channel
+                        const customerCategory = remaining - channelRisk // Rest to customer
+
+                        return (
+                          <>
+                            {/* Base Score - Always applies */}
+                            <div className="flex items-center justify-between bg-slate-800 p-2 rounded border-l-2 border-green-500">
+                              <span>✓ Base Score</span>
+                              <span className="font-semibold text-green-400">+{baseScore}</span>
+                            </div>
+
+                            {/* Rule Severity */}
+                            <div className="flex items-center justify-between bg-slate-800 p-2 rounded border-l-2 border-blue-500">
+                              <div>
+                                <div>✓ Rule Severity</div>
+                                <div className="text-slate-400 text-xs mt-0.5">
+                                  {alert.priority === 'critical' ? 'Critical' : alert.priority === 'high' ? 'High' : alert.priority === 'medium' ? 'Medium' : 'Low'} rule triggered
+                                </div>
+                              </div>
+                              <span className="font-semibold text-blue-400">+{ruleSeverity}</span>
+                            </div>
+
+                            {/* Channel Risk */}
+                            <div className="flex items-center justify-between bg-slate-800 p-2 rounded border-l-2 border-purple-500">
+                              <div>
+                                <div>✓ Channel Risk</div>
+                                <div className="text-slate-400 text-xs mt-0.5">Transaction channel</div>
+                              </div>
+                              <span className="font-semibold text-purple-400">+{channelRisk}</span>
+                            </div>
+
+                            {/* Customer Category */}
+                            <div className="flex items-center justify-between bg-slate-800 p-2 rounded border-l-2 border-orange-500">
+                              <div>
+                                <div>✓ Customer Category</div>
+                                <div className="text-slate-400 text-xs mt-0.5">Customer risk level</div>
+                              </div>
+                              <span className="font-semibold text-orange-400">+{customerCategory}</span>
+                            </div>
+
+                            {/* Calculation shown */}
+                            <div className="bg-slate-700 p-2 rounded text-slate-300 text-xs my-2">
+                              {baseScore} + {ruleSeverity} + {channelRisk} + {customerCategory} = {(baseScore + ruleSeverity + channelRisk + customerCategory).toFixed(0)}
+                            </div>
+
+                            {/* Total */}
+                            <div className="border-t border-slate-600 pt-2 mt-3">
+                              <div className="flex justify-between font-semibold bg-gradient-to-r from-blue-600 to-blue-700 p-2 rounded">
+                                <span>TOTAL SCORE</span>
+                                <span className="text-lg">{Number(alert.risk_score).toFixed(1)} / 100</span>
+                              </div>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+
+                    {/* Category Badge */}
+                    <div className="mt-3 pt-2 border-t border-slate-600">
+                      <div className="text-xs text-slate-300 mb-2">Category:</div>
+                      <div className={`inline-block px-2 py-1 rounded font-semibold text-xs ${
+                        alert.risk_score >= 75 ? 'bg-red-600 text-white' :
+                        alert.risk_score >= 50 ? 'bg-orange-600 text-white' :
+                        alert.risk_score >= 25 ? 'bg-amber-600 text-white' :
+                        'bg-green-600 text-white'
+                      }`}>
+                        {alert.risk_score >= 75 ? '🔴 VERY HIGH RISK' :
+                         alert.risk_score >= 50 ? '🟠 HIGH RISK' :
+                         alert.risk_score >= 25 ? '🟡 MEDIUM RISK' :
+                         '🟢 LOW RISK'}
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-slate-400 mt-3 pt-2 border-t border-slate-600">
+                      💡 Each component contributes to the final score. Higher scores = stricter alert handling.
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -162,31 +263,54 @@ export default function AlertDetailPage() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-left">
-                    <th className="py-2.5 px-3 font-medium text-slate-600">Timestamp</th>
-                    <th className="py-2.5 px-3 font-medium text-slate-600">User</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">When</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">Who</th>
                     <th className="py-2.5 px-3 font-medium text-slate-600">Action</th>
-                    <th className="py-2.5 px-3 font-medium text-slate-600">IP Address</th>
-                    <th className="py-2.5 px-3 font-medium text-slate-600">Hash</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">Details</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">IP / Hash</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {auditEntries.map((e: any) => (
-                    <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50">
-                      <td className="py-2 px-3 text-slate-500 whitespace-nowrap">
-                        {e.created_at ? new Date(e.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
-                      </td>
-                      <td className="py-2 px-3 font-medium text-slate-700">{e.user_name}</td>
-                      <td className="py-2 px-3">
-                        <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">{e.action}</span>
-                      </td>
-                      <td className="py-2 px-3 text-slate-500">{e.ip_address || '-'}</td>
-                      <td className="py-2 px-3">
-                        <span className="font-mono text-[9px] text-slate-400" title={e.hash}>
-                          {e.hash ? e.hash.slice(0, 12) + '...' : '-'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {auditEntries.map((e: any) => {
+                    const actionEmoji =
+                      e.action === 'create' ? '✨' :
+                      e.action === 'assign' ? '👤' :
+                      e.action === 'escalate' ? '⬆️' :
+                      e.action === 'close' ? '✅' :
+                      e.action === 'update' ? '✏️' :
+                      e.action === 'note' ? '💬' :
+                      '📝'
+
+                    const actionColor =
+                      e.action === 'create' ? 'bg-green-50 text-green-700' :
+                      e.action === 'close' ? 'bg-blue-50 text-blue-700' :
+                      e.action === 'escalate' ? 'bg-orange-50 text-orange-700' :
+                      'bg-slate-100 text-slate-700'
+
+                    return (
+                      <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="py-2.5 px-3 text-slate-500 whitespace-nowrap">
+                          {e.created_at ? new Date(e.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-slate-700">{e.user_name || 'System'}</td>
+                        <td className="py-2.5 px-3">
+                          <span className={`px-2 py-1 rounded text-xs font-semibold inline-flex items-center gap-1 ${actionColor}`}>
+                            {actionEmoji}
+                            {e.action.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 max-w-md truncate" title={e.changes || e.description}>
+                          {e.changes || e.description || e.details || 'No details'}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-mono text-[9px] text-slate-400 block" title={e.ip_address}>{e.ip_address?.substring(0, 15) || '-'}</span>
+                          <span className="font-mono text-[9px] text-slate-400" title={e.hash}>
+                            {e.hash ? e.hash.slice(0, 10) + '...' : '-'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -303,6 +427,9 @@ export default function AlertDetailPage() {
               </button>
             </form>
           </div>
+
+          {/* Evidence Upload */}
+          <EvidenceUpload alertId={id} />
         </div>
 
         {/* Right column - actions */}

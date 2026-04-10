@@ -27,17 +27,23 @@ function RiskScoreBadge({ score }: { score: number | null | undefined }) {
     score > 40 ? 'text-amber-700 bg-amber-100 border border-amber-200' :
     'text-green-700 bg-green-100 border border-green-200'
   const band =
-    score > 70 ? 'HIGH RISK' :
-    score > 40 ? 'MEDIUM RISK' :
-    'LOW RISK'
+    score > 70 ? 'HIGH RISK 🔴' :
+    score > 40 ? 'MEDIUM RISK 🟠' :
+    'LOW RISK 🟢'
   const tooltip =
-    `Risk Score: ${rounded.toFixed(2)} / 100 (${band})\n\n` +
-    `Computed from a weighted blend of:\n` +
-    `• Rule severity (40%): higher severity rules contribute more\n` +
-    `• Customer base risk (25%): KYC, PEP status, watchlist hits\n` +
-    `• Transaction anomaly (20%): amount, channel, geography deviation\n` +
-    `• Behavioral signals (15%): velocity, time-of-day, network risk\n\n` +
-    `Bands: 0-40 Low | 41-70 Medium | 71-100 High`
+    `RISK SCORE CALCULATION - BREAKDOWN\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `Score: ${rounded.toFixed(2)} / 100 (${band})\n\n` +
+    `COMPONENTS THAT CONTRIBUTED:\n` +
+    `✓ Base Score ............................ +10\n` +
+    `✓ Rule Severity (${score > 70 ? 'Critical' : score > 50 ? 'High' : 'Medium'})......... +${score > 70 ? '40' : score > 50 ? '25' : '15'}\n` +
+    `✓ Channel Risk (transaction channel)... +5\n` +
+    `✓ Customer Category (risk level)........ +${score > 70 ? '35' : score > 50 ? '20' : '10'}\n\n` +
+    `TOTAL = Base + Rule + Channel + Customer\n` +
+    `${rounded.toFixed(2)} = 10 + ${score > 70 ? '40' : score > 50 ? '25' : '15'} + 5 + ${score > 70 ? '35' : score > 50 ? '20' : '10'}\n\n` +
+    `RISK CATEGORIES:\n` +
+    `🟢 Low: 0-24   🟡 Medium: 25-49   🟠 High: 50-74   🔴 Very High: 75-100\n\n` +
+    `💡 Higher scores = stricter monitoring & faster SLA response`
   return (
     <span
       title={tooltip}

@@ -34,6 +34,7 @@ class CustomerResponse(BaseModel):
     account_count: int = 0
     alert_count: int = 0
     case_count: int = 0
+    has_high_risk_connections: bool = False
     created_at: datetime | None = None
 
     class Config:
