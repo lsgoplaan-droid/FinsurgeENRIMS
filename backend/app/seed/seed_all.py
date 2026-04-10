@@ -406,7 +406,7 @@ def seed_transactions(db: Session, customers: list, acct_map: dict) -> list:
                 counterparty_account=_acct() if counterparty_name else None,
                 counterparty_bank=bank[0] if counterparty_name else None,
                 counterparty_ifsc=f"{bank[1]}0{random.randint(100000, 999999)}" if counterparty_name else None,
-                details=json.dumps({"message": f"{method.upper()}/{c.customer_number}/{dt.strftime('%b%Y').upper()}"}),
+                description=f"{method.upper()}/{c.customer_number}/{dt.strftime('%b%Y').upper()}",
                 location_city=city,
                 location_country=country,
                 risk_score=risk,
@@ -1110,7 +1110,7 @@ def seed_cases(db: Session, customers: list, alerts: list, user_map: dict) -> li
                 id=_uid(),
                 case_number=case_num,
                 title=f"{case_type.replace('_', ' ').title()} - {customer.full_name}",
-                details=json.dumps({"message": f"Investigation into suspicious activities by {customer.customer_number}"}),
+                description=f"Investigation into suspicious activities by {customer.customer_number}",
                 case_type=case_type,
                 priority=priority,
                 status=status,
@@ -1137,7 +1137,7 @@ def seed_cases(db: Session, customers: list, alerts: list, user_map: dict) -> li
             act = CaseActivity(case_id=c.id, user_id=user_map["admin"].id, activity_type="created", description="Case created from alert investigation", created_at=dt)
             db.add(act)
             if assigned_to:
-                act2 = CaseActivity(case_id=c.id, user_id=user_map["admin"].id, activity_type="assigned", details=json.dumps({"message": f"Assigned to investigator"}), created_at=dt + timedelta(hours=2))
+                act2 = CaseActivity(case_id=c.id, user_id=user_map["admin"].id, activity_type="assigned", description="Assigned to investigator", created_at=dt + timedelta(hours=2))
                 db.add(act2)
 
             cases.append(c)
@@ -1588,7 +1588,7 @@ def seed_police_firs(db: Session, cases, user_map):
             ipc_sections=ipc_map.get(offense, "IPC 420"),
             fraud_amount=case.total_suspicious_amount or random.randint(500000, 50000000),
             offense_date=created - timedelta(days=random.randint(1, 10)),
-            offense_details=json.dumps({"message": f"Fraud detected in case {case.case_number}. {offense.replace('_', ' ').title()} involving customer account."}),
+            offense_description=f"Fraud detected in case {case.case_number}. {offense.replace('_', ' ').title()} involving customer account.",
             status=status,
             priority=case.priority,
             filed_by=comp_user.id if status != "draft" else None,
@@ -1614,16 +1614,16 @@ def seed_police_firs(db: Session, cases, user_map):
 
         # Add activity trail
         db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
-                           activity_type="created", details=json.dumps({"message": f"FIR draft created for case {case.case_number}"}), created_at=created))
+                           activity_type="created", description=f"FIR draft created for case {case.case_number}", created_at=created))
         if status != "draft":
             db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
-                               activity_type="filed", details=json.dumps({"message": f"FIR filed at {ps[0]}"}), created_at=created + timedelta(days=1)))
+                               activity_type="filed", description=f"FIR filed at {ps[0]}", created_at=created + timedelta(days=1)))
         if status in ("acknowledged", "under_investigation", "charge_sheet_filed"):
             db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
-                               activity_type="acknowledged", details=json.dumps({"message": f"FIR acknowledged by police"}), created_at=created + timedelta(days=3)))
+                               activity_type="acknowledged", description=f"FIR acknowledged by police", created_at=created + timedelta(days=3)))
         if fir.rbi_fraud_reported:
             db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
-                               activity_type="rbi_reported", details=json.dumps({"message": f"Fraud reported to RBI via FMR-1"}), created_at=created + timedelta(days=2)))
+                               activity_type="rbi_reported", description=f"Fraud reported to RBI via FMR-1", created_at=created + timedelta(days=2)))
 
     db.flush()
     return fir_data
