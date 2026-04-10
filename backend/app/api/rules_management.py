@@ -143,6 +143,22 @@ class RuleUpdate(BaseModel):
     is_enabled: Optional[bool] = None
 
 
+class ScenarioCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    category: str
+    rule_ids: list  # List of rule IDs to include in scenario
+    is_enabled: bool = True
+
+
+class ScenarioUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    rule_ids: Optional[list] = None
+    is_enabled: Optional[bool] = None
+
+
 @router.get("/reference-data")
 def rule_reference_data(current_user: User = Depends(get_current_user)):
     """Reference data for rule builder forms."""
@@ -360,6 +376,133 @@ def list_scenarios(db: Session = Depends(get_db), current_user: User = Depends(g
             } for r in rules],
         })
     return {"scenarios": items}
+
+
+@router.post("/scenarios", status_code=201)
+def create_scenario(
+    body: ScenarioCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new detection scenario."""
+    # Check if scenario with same name already exists
+    existing = db.query(Scenario).filter(Scenario.name == body.name).first()
+    if existing:
+        raise HTTPException(400, f"Scenario '{body.name}' already exists")
+
+    # Verify all rule IDs exist
+    if body.rule_ids:
+        rules = db.query(Rule).filter(Rule.id.in_(body.rule_ids)).all()
+        if len(rules) != len(body.rule_ids):
+            raise HTTPException(400, "One or more rule IDs do not exist")
+
+    scenario = Scenario(
+        id=str(uuid.uuid4()),
+        name=body.name,
+        description=body.description,
+        category=body.category,
+        rule_ids=json.dumps(body.rule_ids),
+        is_enabled=body.is_enabled,
+        detection_count=0,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+
+    rule_ids = json.loads(scenario.rule_ids) if isinstance(scenario.rule_ids, str) else (scenario.rule_ids or [])
+    rules = db.query(Rule).filter(Rule.id.in_(rule_ids)).all() if rule_ids else []
+
+    return {
+        "id": scenario.id,
+        "name": scenario.name,
+        "description": scenario.description,
+        "category": scenario.category,
+        "is_enabled": scenario.is_enabled,
+        "detection_count": scenario.detection_count,
+        "rules": [{
+            "id": r.id,
+            "name": r.name,
+            "severity": r.severity,
+            "is_enabled": r.is_enabled,
+        } for r in rules],
+    }
+
+
+@router.put("/scenarios/{scenario_id}")
+def update_scenario(
+    scenario_id: str,
+    body: ScenarioUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update a detection scenario."""
+    scenario = db.query(Scenario).filter(Scenario.id == scenario_id).first()
+    if not scenario:
+        raise HTTPException(404, "Scenario not found")
+
+    # If updating rule_ids, verify they exist
+    if body.rule_ids is not None:
+        rules = db.query(Rule).filter(Rule.id.in_(body.rule_ids)).all()
+        if len(rules) != len(body.rule_ids):
+            raise HTTPException(400, "One or more rule IDs do not exist")
+        scenario.rule_ids = json.dumps(body.rule_ids)
+
+    if body.name is not None:
+        # Check if new name already exists
+        existing = db.query(Scenario).filter(
+            Scenario.name == body.name,
+            Scenario.id != scenario_id
+        ).first()
+        if existing:
+            raise HTTPException(400, f"Scenario '{body.name}' already exists")
+        scenario.name = body.name
+
+    if body.description is not None:
+        scenario.description = body.description
+    if body.category is not None:
+        scenario.category = body.category
+    if body.is_enabled is not None:
+        scenario.is_enabled = body.is_enabled
+
+    scenario.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(scenario)
+
+    rule_ids = json.loads(scenario.rule_ids) if isinstance(scenario.rule_ids, str) else (scenario.rule_ids or [])
+    rules = db.query(Rule).filter(Rule.id.in_(rule_ids)).all() if rule_ids else []
+
+    return {
+        "id": scenario.id,
+        "name": scenario.name,
+        "description": scenario.description,
+        "category": scenario.category,
+        "is_enabled": scenario.is_enabled,
+        "detection_count": scenario.detection_count,
+        "rules": [{
+            "id": r.id,
+            "name": r.name,
+            "severity": r.severity,
+            "is_enabled": r.is_enabled,
+        } for r in rules],
+    }
+
+
+@router.delete("/scenarios/{scenario_id}", status_code=204)
+def delete_scenario(
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a detection scenario."""
+    scenario = db.query(Scenario).filter(Scenario.id == scenario_id).first()
+    if not scenario:
+        raise HTTPException(404, "Scenario not found")
+
+    db.delete(scenario)
+    db.commit()
+    return None
 
 
 @router.get("/industry-best-practices")

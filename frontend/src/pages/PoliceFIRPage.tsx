@@ -3,7 +3,7 @@ import {
   Shield, FileText, AlertTriangle, Scale, DollarSign, CheckCircle,
   XCircle, Clock, ChevronRight, Plus, Building2, Phone, User,
   Calendar, Gavel, IndianRupee, ArrowUpRight, Filter, ChevronDown,
-  X, Save, ArrowRight, Flag, Globe
+  X, Save, ArrowRight, Flag, Globe, Download
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 import api from '../config/api'
@@ -78,6 +78,7 @@ export default function PoliceFIRPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [selectedFIR, setSelectedFIR] = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [downloading, setDownloading] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showManagePanel, setShowManagePanel] = useState(false)
   const [cases, setCases] = useState<any[]>([])
@@ -149,6 +150,27 @@ export default function PoliceFIRPage() {
       })
       .catch(() => {})
       .finally(() => setDetailLoading(false))
+  }
+
+  const downloadFIR = (firId: string, firNumber: string) => {
+    setDownloading(firId)
+    api.get(`/police-fir/${firId}/download`, { responseType: 'arraybuffer' })
+      .then(res => {
+        const blob = new Blob([res.data], { type: 'text/plain;charset=utf-8' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `FIR-${firNumber}.txt`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      })
+      .catch(err => {
+        console.error('Download error:', err)
+        alert('Failed to download FIR document')
+      })
+      .finally(() => setDownloading(null))
   }
 
   const handleCreate = () => {
@@ -405,6 +427,14 @@ export default function PoliceFIRPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => downloadFIR(selectedFIR.id, selectedFIR.fir_number)}
+                disabled={downloading === selectedFIR.id}
+                className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-100 transition-colors disabled:opacity-50 flex items-center gap-1"
+              >
+                <Download size={14} />
+                Download
+              </button>
               <button onClick={() => setShowManagePanel(!showManagePanel)} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-medium hover:bg-indigo-100 transition-colors">
                 Edit Details
               </button>
@@ -602,32 +632,46 @@ export default function PoliceFIRPage() {
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600 w-[140px]">Status</th>
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">RBI</th>
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">Cyber</th>
+                <th className="text-center py-2.5 px-3 font-medium text-slate-600">Download</th>
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">Filed</th>
               </tr>
             </thead>
             <tbody>
               {filteredFirs.map(f => (
-                <tr key={f.id} className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer" onClick={() => loadDetail(f.id)}>
-                  <td className="py-2.5 px-3">
+                <tr key={f.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="py-2.5 px-3 cursor-pointer" onClick={() => loadDetail(f.id)}>
                     <span className="font-mono text-xs text-indigo-600 font-semibold">{f.fir_number}</span>
                   </td>
-                  <td className="py-2.5 px-3 text-xs text-slate-500">{f.case_number}</td>
-                  <td className="py-2.5 px-3">
+                  <td className="py-2.5 px-3 text-xs text-slate-500 cursor-pointer" onClick={() => loadDetail(f.id)}>{f.case_number}</td>
+                  <td className="py-2.5 px-3 cursor-pointer" onClick={() => loadDetail(f.id)}>
                     <Badge text={f.offense_type} colors="bg-red-50 text-red-700" />
                   </td>
-                  <td className="py-2.5 px-3 text-xs text-slate-600">{f.police_station}</td>
-                  <td className="py-2.5 px-3 text-right font-mono text-red-600 text-xs">{formatINR(f.fraud_amount)}</td>
-                  <td className="py-2.5 px-3 text-right font-mono text-green-600 text-xs">{formatINR(f.amount_recovered)}</td>
-                  <td className="py-2.5 px-3 whitespace-nowrap">
+                  <td className="py-2.5 px-3 text-xs text-slate-600 cursor-pointer" onClick={() => loadDetail(f.id)}>{f.police_station}</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-red-600 text-xs cursor-pointer" onClick={() => loadDetail(f.id)}>{formatINR(f.fraud_amount)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-green-600 text-xs cursor-pointer" onClick={() => loadDetail(f.id)}>{formatINR(f.amount_recovered)}</td>
+                  <td className="py-2.5 px-3 whitespace-nowrap cursor-pointer" onClick={() => loadDetail(f.id)}>
                     <Badge text={f.status} colors={statusColors[f.status] || 'bg-gray-100 text-gray-700'} />
                   </td>
-                  <td className="py-2.5 px-3">
+                  <td className="py-2.5 px-3 cursor-pointer" onClick={() => loadDetail(f.id)}>
                     {f.rbi_fraud_reported ? <CheckCircle size={14} className="text-green-500" /> : <XCircle size={14} className="text-slate-300" />}
                   </td>
-                  <td className="py-2.5 px-3">
+                  <td className="py-2.5 px-3 cursor-pointer" onClick={() => loadDetail(f.id)}>
                     {f.cyber_cell_reported ? <CheckCircle size={14} className="text-green-500" /> : <XCircle size={14} className="text-slate-300" />}
                   </td>
-                  <td className="py-2.5 px-3 text-xs text-slate-500">{f.filed_at?.split('T')[0] || '-'}</td>
+                  <td className="py-2.5 px-3 text-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        downloadFIR(f.id, f.fir_number)
+                      }}
+                      disabled={downloading === f.id}
+                      className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                      title="Download FIR document"
+                    >
+                      <Download size={14} className={downloading === f.id ? 'text-slate-300' : 'text-blue-600'} />
+                    </button>
+                  </td>
+                  <td className="py-2.5 px-3 text-xs text-slate-500 cursor-pointer" onClick={() => loadDetail(f.id)}>{f.filed_at?.split('T')[0] || '-'}</td>
                 </tr>
               ))}
               {filteredFirs.length === 0 && (

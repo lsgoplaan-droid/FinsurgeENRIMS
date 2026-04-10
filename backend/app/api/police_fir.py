@@ -5,6 +5,7 @@ recovery, and RBI fraud reporting (FMR-1/FMR-2).
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from pydantic import BaseModel
@@ -92,6 +93,89 @@ class FIRUpdate(BaseModel):
 def _gen_fir_number():
     d = datetime.utcnow().strftime("%Y%m%d")
     return f"FIR-{d}-{uuid.uuid4().hex[:4].upper()}"
+
+
+@router.get("/{fir_id}/download", response_class=PlainTextResponse)
+def download_fir(
+    fir_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download Police FIR document with all details."""
+    fir = db.query(PoliceFIR).filter(PoliceFIR.id == fir_id).first()
+    if not fir:
+        raise HTTPException(status_code=404, detail="FIR not found")
+
+    case = db.query(Case).filter(Case.id == fir.case_id).first() if fir.case_id else None
+    customer = db.query(Customer).filter(Customer.id == fir.customer_id).first() if fir.customer_id else None
+    creator = db.query(User).filter(User.id == fir.created_by).first() if fir.created_by else None
+    filer = db.query(User).filter(User.id == fir.filed_by).first() if fir.filed_by else None
+
+    fraud_amount_inr = (fir.fraud_amount or 0) / 100
+    recovered_amount_inr = (fir.amount_recovered or 0) / 100
+
+    document = f"""FIRST INFORMATION REPORT (FIR)
+================================================================
+FIR Number:          {fir.fir_number}
+Status:              {(fir.status or 'DRAFT').upper()}
+Priority:            {(fir.priority or 'MEDIUM').upper()}
+Bank Case Number:    {case.case_number if case else '-'}
+
+REPORTED AGAINST (SUBJECT / CUSTOMER)
+================================================================
+Name:                {customer.full_name if customer else '-'}
+Customer ID:         {customer.customer_number if customer else '-'}
+PAN:                 {customer.pan_number if customer and customer.pan_number else 'Not on file'}
+Address:             {(customer.city if customer else '-')}, {(customer.state if customer else '-')}, INDIA
+
+POLICE STATION & OFFICER DETAILS
+================================================================
+Police Station:      {fir.police_station}
+District:            {fir.police_district or '-'}
+State:               {fir.police_state or '-'}
+Investigating Off.   {fir.investigating_officer or 'To be assigned'}
+
+OFFENSE DETAILS
+================================================================
+Offense Type:        {fir.offense_type}
+IPC / Legal Sections: {fir.ipc_sections or '-'}
+Fraud Amount:        INR {fraud_amount_inr:,.2f}
+
+FIR FILING TIMELINE
+================================================================
+Draft Created:       {fir.created_at.strftime('%d-%b-%Y %H:%M UTC') if fir.created_at else '-'}
+Filed Date:          {fir.filed_at.strftime('%d-%b-%Y %H:%M UTC') if fir.filed_at else 'PENDING'}
+Acknowledged Date:   {fir.acknowledged_at.strftime('%d-%b-%Y') if fir.acknowledged_at else 'Pending'}
+
+INVESTIGATION STATUS
+================================================================
+Charge Sheet Filed:  {fir.charge_sheet_date.strftime('%d-%b-%Y') if fir.charge_sheet_date else 'Not yet filed'}
+Court Name:          {fir.court_name or '-'}
+Next Hearing Date:   {fir.next_hearing_date.strftime('%d-%b-%Y') if fir.next_hearing_date else 'Not scheduled'}
+
+RECOVERY & ASSET FREEZING
+================================================================
+Fraud Amount:        INR {fraud_amount_inr:,.2f}
+Amount Recovered:    INR {recovered_amount_inr:,.2f}
+Recovery Rate:       {round((recovered_amount_inr/fraud_amount_inr*100) if fraud_amount_inr > 0 else 0, 1)}%
+Assets Frozen:       {'YES' if fir.assets_frozen else 'No'}
+
+REGULATORY REPORTING
+================================================================
+RBI Fraud Reported:  {'YES - FMR-1 filed' if fir.rbi_fraud_reported else 'No'}
+Cyber Cell Report:   {'YES' if fir.cyber_cell_reported else 'No'}
+
+Generated:           {datetime.utcnow().strftime('%d-%b-%Y %H:%M UTC')}
+Downloaded by:       {current_user.full_name}
+================================================================
+"""
+
+    return PlainTextResponse(
+        content=document,
+        headers={
+            "Content-Disposition": f"attachment; filename=FIR-{fir.fir_number}.txt"
+        }
+    )
 
 
 @router.get("/reference-data")

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Clock, AlertTriangle, CheckCircle2, FileText, Timer, Filter, TrendingUp, X, ExternalLink } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatNumber } from '../utils/formatters'
@@ -47,10 +47,24 @@ function ProgressRing({ days, total, urgency }: { days: number; total: number; u
 }
 
 export default function FilingDeadlinePage() {
+  const [searchParams] = useSearchParams()
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('')
   const [selectedFiling, setSelectedFiling] = useState<any>(null)
+
+  useEffect(() => {
+    // Get filters from URL parameters
+    const typeParam = searchParams.get('type')
+    const statusParam = searchParams.get('status')
+    if (typeParam) {
+      setFilter(typeParam.toUpperCase())
+    }
+    if (statusParam) {
+      setStatusFilter(statusParam.toLowerCase())
+    }
+  }, [searchParams])
 
   useEffect(() => {
     api.get('/filing-deadlines/summary')
@@ -72,7 +86,18 @@ export default function FilingDeadlinePage() {
   }
 
   const { pending_filings, summary } = data
-  const filtered = filter ? pending_filings.filter((f: any) => f.type === filter) : pending_filings
+  let filtered = pending_filings
+
+  // Filter by type (CTR or STR)
+  if (filter) {
+    filtered = filtered.filter((f: any) => f.type === filter)
+  }
+
+  // Note: pending_filings only contains unfiled items (filing_status != "filed")
+  // statusFilter comes from URL (?status=pending or status=filed)
+  // "pending" means show unfiled items (which is what we already have)
+  // "filed" means... but filed items aren't in this list anyway
+  // So we only need to handle the case where statusFilter is not set
 
   return (
     <div className="space-y-5">

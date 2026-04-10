@@ -70,10 +70,10 @@ export default function ComplianceSARPage() {
   const recentFilings = data?.recent_filings || data?.filings || []
 
   const filingCards = [
-    { label: 'CTR Pending', value: filingStatus.ctr_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines' },
-    { label: 'CTR Filed', value: filingStatus.ctr_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines' },
-    { label: 'SAR Pending', value: filingStatus.sar_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines' },
-    { label: 'SAR Filed', value: filingStatus.sar_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines' },
+    { label: 'CTR Pending', value: filingStatus.ctr_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines?type=ctr' },
+    { label: 'CTR Filed', value: filingStatus.ctr_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines?type=ctr' },
+    { label: 'SAR Pending', value: filingStatus.sar_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines?type=sar' },
+    { label: 'SAR Filed', value: filingStatus.sar_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines?type=sar' },
   ]
 
   const complianceCards = [
