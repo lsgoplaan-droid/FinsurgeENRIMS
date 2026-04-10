@@ -125,7 +125,7 @@ export default function RiskHeatmapPage() {
         {[
           { label: 'States Monitored', value: geoRisk?.summary?.total_states || 0, icon: MapPin, color: 'text-blue-600', bg: 'bg-blue-50' },
           { label: 'Total Customers', value: formatNumber(geoRisk?.summary?.total_customers || 0), icon: Users, color: 'text-purple-600', bg: 'bg-purple-50' },
-          { label: 'High Risk', value: formatNumber(geoRisk?.summary?.total_high_risk || 0), icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
+          { label: 'Very High Risk', value: formatNumber(geoRisk?.summary?.total_high_risk || 0), icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
           { label: 'Open Alerts', value: formatNumber(geoRisk?.summary?.total_open_alerts || 0), icon: Shield, color: 'text-amber-600', bg: 'bg-amber-50' },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
@@ -175,7 +175,7 @@ export default function RiskHeatmapPage() {
 
                 return (
                   <g key={name}>
-                    {/* Pulse ring for high risk */}
+                    {/* Pulse ring for very high risk */}
                     {avgRisk >= 60 && (
                       <circle
                         cx={pos.cx} cy={pos.cy} r={pos.r + 4}
@@ -228,7 +228,7 @@ export default function RiskHeatmapPage() {
                   <div className="mt-1 space-y-0.5 text-xs text-slate-600">
                     <p>Customers: <span className="font-medium">{hd.customers}</span></p>
                     <p>Avg Risk: <span className="font-bold" style={{ color: getRiskColor(hd.avg_risk) }}>{hd.avg_risk}</span></p>
-                    <p>High Risk: <span className="text-red-600 font-medium">{hd.high_risk_count}</span></p>
+                    <p>Very High Risk: <span className="text-red-600 font-medium">{hd.high_risk_count}</span></p>
                     <p>Open Alerts: <span className="text-amber-600 font-medium">{hd.open_alerts}</span></p>
                   </div>
                 </div>
@@ -265,7 +265,7 @@ export default function RiskHeatmapPage() {
                 {([
                   ['Customers', formatNumber(selectedState.customers)],
                   ['Avg Risk Score', String(selectedState.avg_risk)],
-                  ['High Risk', String(selectedState.high_risk_count)],
+                  ['Very High Risk', String(selectedState.high_risk_count)],
                   ['Open Alerts', String(selectedState.open_alerts)],
                   ['Txn Volume', formatINR(selectedState.transaction_volume)],
                   ['Flagged Amount', formatINR(selectedState.flagged_amount)],
@@ -288,7 +288,7 @@ export default function RiskHeatmapPage() {
                     to={`/customers?state=${encodeURIComponent(selectedState.state)}&risk_category=very_high`}
                     className="inline-flex items-center gap-1 text-xs text-red-700 font-medium hover:underline"
                   >
-                    View high-risk customers <ChevronRight size={12} />
+                    View very-high-risk customers <ChevronRight size={12} />
                   </Link>
                 )}
               </div>
@@ -365,7 +365,7 @@ export default function RiskHeatmapPage() {
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-[10px] text-slate-400">
                       <span>{s.customers} customers</span>
-                      <span className="text-red-500">{s.high_risk_count} high risk</span>
+                      <span className="text-red-500">{s.high_risk_count} very high risk</span>
                       <span>{s.open_alerts} alerts</span>
                     </div>
                   </div>

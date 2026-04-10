@@ -336,7 +336,7 @@ export default function DashboardPage() {
                         />
                       </div>
                       <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-400">
-                        <span>{s.high_risk_count} high risk</span>
+                        <span>{s.high_risk_count} very high risk</span>
                         <span>{s.open_alerts} open alerts</span>
                         {s.flagged_amount > 0 && <span>{formatINR(s.flagged_amount)} flagged</span>}
                       </div>
@@ -356,7 +356,7 @@ export default function DashboardPage() {
                     {[
                       ['Customers', selectedState.customers],
                       ['Avg Risk Score', selectedState.avg_risk],
-                      ['High Risk', selectedState.high_risk_count],
+                      ['Very High Risk', selectedState.high_risk_count],
                       ['Open Alerts', selectedState.open_alerts],
                       ['Transaction Vol', formatINR(selectedState.transaction_volume)],
                       ['Flagged Amount', formatINR(selectedState.flagged_amount)],
@@ -371,7 +371,7 @@ export default function DashboardPage() {
                     to={`/customers?state=${selectedState.state}&risk_category=very_high`}
                     className="inline-flex items-center gap-1 mt-2 text-xs text-blue-700 font-medium hover:underline"
                   >
-                    View high-risk customers in {selectedState.state} <ChevronRight size={12} />
+                    View very-high-risk customers in {selectedState.state} <ChevronRight size={12} />
                   </Link>
                 </div>
               )}
@@ -380,7 +380,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-4 pt-2 border-t border-slate-100 text-xs text-slate-500">
                 <span><strong>{geoRisk.summary.total_states}</strong> states</span>
                 <span><strong>{geoRisk.summary.total_customers}</strong> customers</span>
-                <span className="text-red-600"><strong>{geoRisk.summary.total_high_risk}</strong> high risk</span>
+                <span className="text-red-600"><strong>{geoRisk.summary.total_high_risk}</strong> very very high risk</span>
                 <span><strong>{geoRisk.summary.total_open_alerts}</strong> open alerts</span>
               </div>
             </div>
