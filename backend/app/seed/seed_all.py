@@ -2091,6 +2091,267 @@ def seed_audit_trail(db: Session, customers: list, alerts: list, cases: list, us
     db.flush()
 
 
+def seed_corporate_group(db: Session, user_map: dict):
+    """Create sophisticated corporate group with parent, subsidiaries, UBOs, directors, and relationships."""
+
+    # Parent holding company
+    parent = Customer(
+        id=_uid(),
+        customer_number="CIF-8000",
+        customer_type="corporate",
+        company_name="Zenith Capital Holdings Ltd.",
+        email="contact@zenithcapital.in",
+        phone="+91-11-40123400",
+        city="Delhi",
+        state="Delhi",
+        country="India",
+        nationality="IN",
+        risk_category="high",
+        risk_score=62,
+        kyc_status="approved",
+        kyc_expiry_date=NOW.date() + timedelta(days=365),
+        onboarding_date=NOW - timedelta(days=365),
+        is_active=True,
+    )
+    db.add(parent)
+    db.flush()
+
+    # Subsidiary 1: Manufacturing company
+    sub1 = Customer(
+        id=_uid(),
+        customer_number="CIF-8001",
+        customer_type="corporate",
+        company_name="Zenith Manufacturing Private Ltd.",
+        email="info@zenithmfg.in",
+        phone="+91-80-22445566",
+        city="Bangalore",
+        state="Karnataka",
+        country="India",
+        nationality="IN",
+        risk_category="medium",
+        risk_score=35,
+        kyc_status="approved",
+        kyc_expiry_date=NOW.date() + timedelta(days=365),
+        onboarding_date=NOW - timedelta(days=300),
+        is_active=True,
+    )
+    db.add(sub1)
+    db.flush()
+
+    # Subsidiary 2: Real estate company
+    sub2 = Customer(
+        id=_uid(),
+        customer_number="CIF-8002",
+        customer_type="corporate",
+        company_name="Zenith Properties & Developments Ltd.",
+        email="sales@zenithprop.in",
+        phone="+91-22-67890123",
+        city="Mumbai",
+        state="Maharashtra",
+        country="India",
+        nationality="IN",
+        risk_category="medium",
+        risk_score=32,
+        kyc_status="approved",
+        kyc_expiry_date=NOW.date() + timedelta(days=365),
+        onboarding_date=NOW - timedelta(days=280),
+        is_active=True,
+    )
+    db.add(sub2)
+    db.flush()
+
+    # Ultimate Beneficial Owner (UBO) - Individual
+    ubo = Customer(
+        id=_uid(),
+        customer_number="CIF-8010",
+        customer_type="individual",
+        first_name="Vikram",
+        last_name="Patel",
+        date_of_birth=date(1972, 5, 15),
+        gender="M",
+        nationality="IN",
+        pan_number="ABCDE1234F",
+        email="vikram.patel@zenithcapital.in",
+        phone="+91-9876543210",
+        city="Delhi",
+        state="Delhi",
+        country="India",
+        occupation="Business Owner",
+        annual_income=5000000000,  # 50 crores
+        source_of_funds="Self-made businessman in real estate and manufacturing",
+        risk_category="high",
+        risk_score=58,
+        pep_status=True,  # Politically Exposed Person
+        kyc_status="approved",
+        kyc_expiry_date=NOW.date() + timedelta(days=365),
+        onboarding_date=NOW - timedelta(days=400),
+        is_active=True,
+    )
+    db.add(ubo)
+    db.flush()
+
+    # Director 1 - Manufacturing subsidiary
+    dir1 = Customer(
+        id=_uid(),
+        customer_number="CIF-8011",
+        customer_type="individual",
+        first_name="Rajesh",
+        last_name="Kumar",
+        date_of_birth=date(1965, 8, 22),
+        gender="M",
+        nationality="IN",
+        pan_number="FGHIJ5678K",
+        email="rajesh.kumar@zenithmfg.in",
+        phone="+91-9876543211",
+        city="Bangalore",
+        state="Karnataka",
+        country="India",
+        occupation="Managing Director",
+        annual_income=2500000000,  # 25 crores
+        risk_category="low",
+        risk_score=18,
+        kyc_status="approved",
+        kyc_expiry_date=NOW.date() + timedelta(days=365),
+        onboarding_date=NOW - timedelta(days=300),
+        is_active=True,
+    )
+    db.add(dir1)
+    db.flush()
+
+    # Director 2 - Real estate subsidiary
+    dir2 = Customer(
+        id=_uid(),
+        customer_number="CIF-8012",
+        customer_type="individual",
+        first_name="Priya",
+        last_name="Sharma",
+        date_of_birth=date(1978, 3, 10),
+        gender="F",
+        nationality="IN",
+        pan_number="KLMNO9012P",
+        email="priya.sharma@zenithprop.in",
+        phone="+91-9876543212",
+        city="Mumbai",
+        state="Maharashtra",
+        country="India",
+        occupation="Director",
+        annual_income=2000000000,  # 20 crores
+        risk_category="low",
+        risk_score=15,
+        kyc_status="approved",
+        kyc_expiry_date=NOW.date() + timedelta(days=365),
+        onboarding_date=NOW - timedelta(days=280),
+        is_active=True,
+    )
+    db.add(dir2)
+    db.flush()
+
+    # Shareholder - Family member
+    shareholder = Customer(
+        id=_uid(),
+        customer_number="CIF-8013",
+        customer_type="individual",
+        first_name="Neha",
+        last_name="Patel",
+        date_of_birth=date(1980, 6, 5),
+        gender="F",
+        nationality="IN",
+        pan_number="QRSTU3456V",
+        email="neha.patel@zenithcapital.in",
+        phone="+91-9876543213",
+        city="Delhi",
+        state="Delhi",
+        country="India",
+        occupation="Businesswoman",
+        annual_income=1500000000,  # 15 crores
+        risk_category="low",
+        risk_score=12,
+        kyc_status="approved",
+        kyc_expiry_date=NOW.date() + timedelta(days=365),
+        onboarding_date=NOW - timedelta(days=350),
+        is_active=True,
+    )
+    db.add(shareholder)
+    db.flush()
+
+    # Create relationships
+    relationships = [
+        # Parent to subsidiaries
+        CustomerRelationship(
+            id=_uid(),
+            customer_id_1=parent.id,
+            customer_id_2=sub1.id,
+            relationship_type="parent_subsidiary",
+            created_at=NOW - timedelta(days=300),
+        ),
+        CustomerRelationship(
+            id=_uid(),
+            customer_id_1=parent.id,
+            customer_id_2=sub2.id,
+            relationship_type="parent_subsidiary",
+            created_at=NOW - timedelta(days=280),
+        ),
+        # UBO relationships
+        CustomerRelationship(
+            id=_uid(),
+            customer_id_1=parent.id,
+            customer_id_2=ubo.id,
+            relationship_type="ultimate_beneficial_owner",
+            created_at=NOW - timedelta(days=400),
+        ),
+        CustomerRelationship(
+            id=_uid(),
+            customer_id_1=sub1.id,
+            customer_id_2=ubo.id,
+            relationship_type="ultimate_beneficial_owner",
+            created_at=NOW - timedelta(days=300),
+        ),
+        CustomerRelationship(
+            id=_uid(),
+            customer_id_1=sub2.id,
+            customer_id_2=ubo.id,
+            relationship_type="ultimate_beneficial_owner",
+            created_at=NOW - timedelta(days=280),
+        ),
+        # Directors
+        CustomerRelationship(
+            id=_uid(),
+            customer_id_1=sub1.id,
+            customer_id_2=dir1.id,
+            relationship_type="director",
+            created_at=NOW - timedelta(days=300),
+        ),
+        CustomerRelationship(
+            id=_uid(),
+            customer_id_1=sub2.id,
+            customer_id_2=dir2.id,
+            relationship_type="director",
+            created_at=NOW - timedelta(days=280),
+        ),
+        # Shareholders
+        CustomerRelationship(
+            id=_uid(),
+            customer_id_1=parent.id,
+            customer_id_2=shareholder.id,
+            relationship_type="shareholder",
+            created_at=NOW - timedelta(days=350),
+        ),
+        # Inter-subsidiary relationship
+        CustomerLink(
+            id=_uid(),
+            customer_id_1=sub1.id,
+            customer_id_2=sub2.id,
+            link_type="sibling_subsidiary",
+            detected_at=NOW - timedelta(days=250),
+        ),
+    ]
+
+    for rel in relationships:
+        db.add(rel)
+
+    db.flush()
+
+
 # ─── Master Seeder ──────────────────────────────────────────────────────────
 
 def seed_all(db: Session):
@@ -2157,6 +2418,9 @@ def seed_all(db: Session):
 
     print("  Seeding notification rules...")
     seed_notification_rules(db)
+
+    print("  Seeding corporate group structure...")
+    seed_corporate_group(db, user_map)
 
     print("  Seeding audit trail...")
     seed_audit_trail(db, customers, alerts, cases, user_map)
