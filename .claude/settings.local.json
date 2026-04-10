@@ -10,7 +10,19 @@
       "Bash(python -c ':*)",
       "Bash(python -m pytest tests/test_customers.py::test_list_customers -xvs)",
       "Bash(python -m pytest tests/ -v -k \"test_\")",
-      "Bash(pkill -f \"python main.py\")"
+      "Bash(pkill -f \"python main.py\")",
+      "Bash(python)",
+      "Bash(grep -l \"Case\\\\.status\\\\.in_.*closed_inconclusive\" app/api/*.py app/services/*.py)",
+      "Bash(pkill -9 -f \"uvicorn\\\\|npm run\")",
+      "Bash(python main.py)",
+      "Bash(python3)",
+      "Read(//d//**)",
+      "Read(//d/Users/lsgop/Downloads/**)",
+      "Bash(python generate_pptx.py)",
+      "Bash(python generate_pptx_v2.py)",
+      "Bash(python3 -c \"from pptx import Presentation; prs = Presentation\\('FinsurgeENRIMS_Features_v2.pptx'\\); print\\(f'Slides: {len\\(prs.slides\\)}'\\); print\\(f'Slide 1 title: {prs.slides[0].shapes[1].text_frame.text if len\\(prs.slides[0].shapes\\) > 1 else \\\\\"N/A\\\\\"}'\\)\")",
+      "Bash(ls -lh FinsurgeENRIMS_Features*.pptx)",
+      "Bash(python generate_docx.py)"
     ]
   }
 }

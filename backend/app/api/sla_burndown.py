@@ -106,7 +106,7 @@ def sla_burndown_cases(
 
     open_cases = (
         db.query(Case)
-        .filter(~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+        .filter(Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"]))
         .all()
     )
 
@@ -185,11 +185,11 @@ def sla_stats(
 
     # Cases
     total_cases = db.query(func.count(Case.id)).filter(
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+        Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"])
     ).scalar() or 0
     breached_cases = db.query(func.count(Case.id)).filter(
         Case.is_overdue == True,
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]),
+        Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"]),
     ).scalar() or 0
 
     alert_compliance = round((1 - breached_alerts / sla_alerts_with_due) * 100, 1) if sla_alerts_with_due > 0 else 100.0

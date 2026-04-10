@@ -135,7 +135,7 @@ def generate_board_report(
     ).scalar() or 0
     alerts_today = db.query(func.count(Alert.id)).filter(Alert.created_at >= today_start).scalar() or 0
     open_cases = db.query(func.count(Case.id)).filter(
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+        Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"])
     ).scalar() or 0
     total_customers = db.query(func.count(Customer.id)).filter(Customer.is_active == True).scalar() or 1
     high_risk = db.query(func.count(Customer.id)).filter(
@@ -171,7 +171,7 @@ def generate_board_report(
     # Top cases
     top_cases = (
         db.query(Case)
-        .filter(~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+        .filter(Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"]))
         .order_by(Case.priority.asc(), Case.created_at.desc())
         .limit(10)
         .all()

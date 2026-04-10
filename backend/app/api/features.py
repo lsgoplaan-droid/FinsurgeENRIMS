@@ -263,7 +263,7 @@ def scheduled_report_summary(db: Session = Depends(get_db), current_user: User =
     ).scalar() or 0
     overdue_alerts = db.query(func.count(Alert.id)).filter(Alert.is_overdue == True).scalar() or 0
     open_cases = db.query(func.count(Case.id)).filter(
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+        Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"])
     ).scalar() or 0
 
     # Top triggered rules this week

@@ -37,7 +37,7 @@ def fraud_dashboard(db: Session = Depends(get_db), current_user: User = Depends(
     # Fraud cases
     fraud_cases = db.query(func.count(Case.id)).filter(
         Case.case_type == "fraud_investigation",
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]),
+        Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"]),
     ).scalar() or 0
 
     # Blocked/flagged transactions today

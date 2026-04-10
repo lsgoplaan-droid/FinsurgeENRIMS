@@ -146,7 +146,7 @@ def ageing_report(db: Session = Depends(get_db), current_user: User = Depends(ge
 
     # Case ageing
     open_cases = db.query(Case).filter(
-        ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+        Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"])
     ).all()
 
     case_buckets = {"0-1d": 0, "1-3d": 0, "3-7d": 0, "7-14d": 0, "14-30d": 0, "30-60d": 0, "60d+": 0}
@@ -251,7 +251,7 @@ def analyst_performance(db: Session = Depends(get_db), current_user: User = Depe
 
         open_cases = db.query(func.count(Case.id)).filter(
             Case.assigned_to == u.id,
-            ~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]),
+            Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"]),
         ).scalar() or 0
 
         # Resolution stats (30d)
