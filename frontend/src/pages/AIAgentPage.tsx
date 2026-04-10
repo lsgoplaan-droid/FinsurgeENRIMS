@@ -164,9 +164,9 @@ export default function AIAgentPage() {
     setAnalysis(null)
     setAnalysisError('')
 
-    api.post(`/ai-agent/analyze-customer?customer_id=${selectedCustomer.id}`)
+    api.post(`/ai-agent/analyze-customer?customer_id=${selectedCustomer.id}`, {}, { timeout: 45000 })
       .then(res => setAnalysis(res.data))
-      .catch(err => setAnalysisError(err.response?.data?.detail || 'Analysis failed'))
+      .catch(err => setAnalysisError(err.response?.data?.detail || 'Analysis timed out — server may be warming up. Please retry.'))
       .finally(() => setAnalyzing(false))
   }
 

@@ -49,7 +49,9 @@ export default function FraudScenariosPage() {
     ])
       .then(([statsRes, typologiesRes]) => {
         setStats(statsRes.data)
-        setTypologies(typologiesRes.data?.items || typologiesRes.data?.typologies || typologiesRes.data || [])
+        const HIDDEN = ['aml', 'kyc', 'compliance']
+        const raw = typologiesRes.data?.items || typologiesRes.data?.typologies || typologiesRes.data || []
+        setTypologies(raw.filter((t: any) => !HIDDEN.includes(t.category?.toLowerCase())))
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load fraud scenarios'))
       .finally(() => setLoading(false))

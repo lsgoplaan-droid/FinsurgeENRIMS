@@ -86,12 +86,17 @@ export default function AlertsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const [priorityCounts, setPriorityCounts] = useState<Record<string, number>>({})
+  const [priorityFilter, setPriorityFilter] = useState('')
+  const [showClose, setShowClose] = useState<string | null>(null)
+  const [closeDisposition, setCloseDisposition] = useState('closed_false_positive')
+  const [closeJustification, setCloseJustification] = useState('')
 
   const fetchData = useCallback(() => {
     setLoading(true)
     const params: any = { page, page_size: 20 }
     if (tab) params.status = tab
     if (search) params.search = search
+    if (priorityFilter) params.priority = priorityFilter
 
     api.get('/alerts', { params })
       .then(res => {
@@ -103,7 +108,7 @@ export default function AlertsPage() {
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load alerts'))
       .finally(() => setLoading(false))
-  }, [page, tab, search])
+  }, [page, tab, search, priorityFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -154,19 +159,74 @@ export default function AlertsPage() {
         </div>
       )}
 
-      {/* Search */}
+      {/* Search & Filters */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="relative max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-            placeholder="Search alerts..."
-            className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-700"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[220px]">
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => { setSearch(e.target.value); setPage(1) }}
+                placeholder="Search by alert#, customer, title..."
+                className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-700"
+              />
+            </div>
+          </div>
+          <select value={priorityFilter} onChange={e => { setPriorityFilter(e.target.value); setPage(1) }} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white">
+            <option value="">All Priority</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
         </div>
       </div>
+
+      {/* Close Alert Modal */}
+      {showClose && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Close Alert</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Disposition</label>
+                <select value={closeDisposition} onChange={e => setCloseDisposition(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                  <option value="closed_true_positive">Confirmed Fraud (True Positive) → Create Case</option>
+                  <option value="closed_false_positive">False Alarm (False Positive)</option>
+                  <option value="closed_inconclusive">Inconclusive</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Justification <span className="text-red-500">*</span></label>
+                <textarea value={closeJustification} onChange={e => setCloseJustification(e.target.value)} rows={3} placeholder="Provide justification for closure..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => { setShowClose(null); setCloseJustification('') }} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button
+                disabled={!closeJustification.trim()}
+                onClick={() => {
+                  api.put(`/alerts/${showClose}/status`, { status: closeDisposition, notes: closeJustification })
+                    .then(() => {
+                      if (closeDisposition === 'closed_true_positive') {
+                        navigate(`/cases?from_alert=${showClose}`)
+                      }
+                      setShowClose(null)
+                      setCloseJustification('')
+                      fetchData()
+                    })
+                    .catch(() => {})
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40"
+              >
+                {closeDisposition === 'closed_true_positive' ? 'Close & Create Case' : 'Close Alert'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -220,26 +280,38 @@ export default function AlertsPage() {
                     <td className="py-2.5 px-3 whitespace-nowrap">
                       <Badge text={a.status || '-'} colors={statusColors[a.status] || 'bg-gray-100 text-gray-800'} />
                     </td>
-                    <td className="py-2.5 px-3">
-                      {a.status === 'new' ? (
-                        <button
-                          onClick={() => navigate(`/alerts/${a.id}`)}
-                          className="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors whitespace-nowrap"
-                        >
-                          Investigate
-                        </button>
-                      ) : a.case_id ? (
-                        <Link to={`/cases/${a.case_id}`} className="px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md hover:bg-indigo-100 transition-colors whitespace-nowrap inline-block">
-                          Case &rarr;
-                        </Link>
-                      ) : (
-                        <button
-                          onClick={() => navigate(`/alerts/${a.id}`)}
-                          className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-md hover:bg-slate-200 transition-colors whitespace-nowrap"
-                        >
-                          View Alert
-                        </button>
-                      )}
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        {a.status === 'new' ? (
+                          <button
+                            onClick={() => navigate(`/alerts/${a.id}`)}
+                            className="px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 transition-colors"
+                          >
+                            Investigate
+                          </button>
+                        ) : a.case_id ? (
+                          <Link to={`/cases/${a.case_id}`} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md hover:bg-indigo-100 transition-colors inline-block">
+                            Case&rarr;
+                          </Link>
+                        ) : a.status?.startsWith('closed') ? (
+                          <span className="px-2.5 py-1 bg-slate-50 text-slate-500 text-xs rounded-md">{a.status.includes('true') ? 'Confirmed' : a.status.includes('false') ? 'False Alarm' : 'Closed'}</span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => navigate(`/alerts/${a.id}`)}
+                              className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-medium rounded-md hover:bg-slate-200 transition-colors"
+                            >
+                              View
+                            </button>
+                            <button
+                              onClick={() => setShowClose(a.id)}
+                              className="px-2 py-1 bg-amber-50 text-amber-700 text-xs font-medium rounded-md hover:bg-amber-100 transition-colors"
+                            >
+                              Close
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

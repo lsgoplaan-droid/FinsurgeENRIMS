@@ -210,10 +210,11 @@ export default function DashboardPage() {
         <StatCard
           label="Recovered Amount"
           value={formatINR(recovery.amount ?? 0)}
+          subtitle="Via FIR / Insurance / Court orders"
           icon={ArrowUpRight}
           iconColor="text-green-600"
           iconBg="bg-green-50"
-          href="/cases?status=closed_true_positive"
+          href="/police-fir"
         />
         <StatCard
           label="Recovery Rate"
@@ -237,7 +238,7 @@ export default function DashboardPage() {
           icon={Timer}
           iconColor={slaColor ? 'text-green-600' : 'text-red-600'}
           iconBg={slaColor ? 'bg-green-50' : 'bg-red-50'}
-          href="/alerts"
+          href="/sla-burndown"
         />
         <StatCard
           label="Live Txn Rate"
@@ -264,7 +265,7 @@ export default function DashboardPage() {
           value={formatNumber(executive?.open_cases ?? 0)}
           icon={Briefcase}
           iconColor="text-amber-500"
-          href="/cases?status=open"
+          href="/cases?status=assigned,under_investigation,escalated"
         />
         <SmallStatCard
           label="Alerts Today"
@@ -278,14 +279,14 @@ export default function DashboardPage() {
           value={`${operational.escalation_rate ?? 0}%`}
           icon={TrendingUp}
           iconColor="text-orange-500"
-          href="/alerts?status=escalated"
+          href="/cases?status=escalated"
         />
         <SmallStatCard
           label="SLA Breach Rate"
           value={`${operational.sla_breach_rate ?? 0}%`}
           icon={AlertTriangle}
           iconColor="text-red-500"
-          href="/alerts"
+          href="/sla-burndown"
         />
       </div>
 
@@ -367,10 +368,10 @@ export default function DashboardPage() {
                     ))}
                   </div>
                   <Link
-                    to={`/customers?state=${selectedState.state}`}
+                    to={`/customers?state=${selectedState.state}&risk_category=high`}
                     className="inline-flex items-center gap-1 mt-2 text-xs text-blue-700 font-medium hover:underline"
                   >
-                    View customers in {selectedState.state} <ChevronRight size={12} />
+                    View high-risk customers in {selectedState.state} <ChevronRight size={12} />
                   </Link>
                 </div>
               )}

@@ -268,10 +268,10 @@ export default function RiskHeatmapPage() {
                 ))}
               </div>
               <Link
-                to={`/customers?state=${selectedState.state}`}
+                to={`/customers?state=${selectedState.state}&risk_category=high`}
                 className="inline-flex items-center gap-1 mt-3 text-xs text-blue-700 font-medium hover:underline"
               >
-                View customers in {selectedState.state} <ChevronRight size={12} />
+                View high-risk customers in {selectedState.state} <ChevronRight size={12} />
               </Link>
 
               {/* Cases in this state */}

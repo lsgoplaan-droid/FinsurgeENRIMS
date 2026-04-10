@@ -165,6 +165,7 @@ export default function CustomersPage() {
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Name</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Type</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Category</th>
+                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">State</th>
                   <th className="text-center py-2.5 px-3 font-medium text-slate-600">Total Tx</th>
                   <th className="text-center py-2.5 px-3 font-medium text-slate-600">Flagged</th>
                   <th className="text-center py-2.5 px-3 font-medium text-slate-600">Open Cases</th>
@@ -205,6 +206,7 @@ export default function CustomersPage() {
                           colors={riskColors[c.risk_category] || 'bg-gray-100 text-gray-800'}
                         />
                       </td>
+                      <td className="py-2.5 px-3 text-xs text-slate-600">{c.state || '-'}</td>
                       <td className="py-2.5 px-3 text-center text-xs text-slate-600 font-medium">
                         {c.account_count ?? c.total_transactions ?? '-'}
                       </td>
