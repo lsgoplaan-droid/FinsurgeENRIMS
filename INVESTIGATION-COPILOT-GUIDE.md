@@ -154,20 +154,39 @@ Shows other alerts on same customer:
 ## 🎯 NEW: Interactive Features
 
 ### Score Calculation Tooltip
-Click the **Investigation Score** number (top right) to see the breakdown:
-```
-Score Calculation
-┌─────────────────────────┐
-│ Base Alert Risk:   45   │
-│ Risk Factors (3):  +15  │
-│ PEP Factor:        +10  │
-├─────────────────────────┤
-│ Total Score:       70   │
-└─────────────────────────┘
-🔴 CRITICAL - Immediate escalation required
-```
+**Hover over the Investigation Score** (top right) to see a detailed breakdown:
 
-Understand exactly why the score is what it is.
+The tooltip shows:
+- **📊 Investigation Score Breakdown** (header with emoji)
+- **✓ Base Alert Risk** (blue) — Alert severity level
+- **✓ Risk Factors** (orange) — Number of factors × 5
+- **✓ PEP Status** (red, if applicable) — Politically Exposed Person indicator
+- **Calculation** — Shows the full math: 45 + 15 + 10 = 70
+- **SEVERITY badge** (gradient) — 🔴 CRITICAL / 🟠 HIGH / 🟢 MEDIUM/LOW
+- **📋 Recommendation** — Context-specific next steps
+
+Example:
+```
+✓ Base Alert Risk
+Alert severity level
+                              +45
+
+✓ Risk Factors
+3 factors × 5
+                              +15
+
+✓ PEP Status
+Politically Exposed Person
+                              +10
+
+45 + 15 + 10 = 70
+
+SEVERITY                    🔴 CRITICAL
+
+Recommendation
+Immediate escalation required. Document all findings 
+and escalate to compliance immediately.
+```
 
 ### AI Chat with Copilot (🚧 Under Construction)
 Below the action buttons, use the **"Ask the Copilot"** panel:
