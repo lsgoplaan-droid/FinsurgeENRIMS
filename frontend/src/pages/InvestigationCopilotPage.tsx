@@ -290,47 +290,95 @@ export default function InvestigationCopilotPage() {
                   </div>
                   <div className="text-right">
                     <div className="relative inline-block">
-                      <button
-                        onClick={() => setShowScoreTooltip(!showScoreTooltip)}
-                        className={`text-2xl font-bold ${analysis.score >= 70 ? 'text-red-600' : analysis.score >= 40 ? 'text-amber-600' : 'text-green-600'} hover:opacity-70 transition-opacity cursor-help flex items-center gap-1`}
+                      <div
+                        className="text-center px-4 cursor-help"
+                        onMouseEnter={() => setShowScoreTooltip(true)}
+                        onMouseLeave={() => setShowScoreTooltip(false)}
                       >
-                        {analysis.score}
-                        <HelpCircle size={14} className="text-slate-400" />
-                      </button>
-
-                      {/* Score tooltip */}
-                      {showScoreTooltip && (
-                        <div className="absolute right-0 top-full mt-2 bg-slate-900 text-white text-xs rounded-lg p-3 w-48 shadow-lg z-10">
-                          <p className="font-semibold mb-2">Score Calculation</p>
-                          <div className="space-y-1 text-slate-200">
-                            <div className="flex justify-between">
-                              <span>Base Alert Risk:</span>
-                              <span className="font-mono">{selectedAlert.risk_score || 50}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Risk Factors ({analysis.riskFactors?.length || 0}):</span>
-                              <span className="font-mono">+{(analysis.riskFactors?.length || 0) * 5}</span>
-                            </div>
-                            {analysis.customer?.pep_status && (
-                              <div className="flex justify-between">
-                                <span>PEP Factor:</span>
-                                <span className="font-mono">+10</span>
-                              </div>
-                            )}
-                            <div className="border-t border-slate-700 pt-1 mt-1 flex justify-between font-semibold text-slate-100">
-                              <span>Total Score:</span>
-                              <span className="font-mono">{analysis.score}</span>
-                            </div>
+                        <div className="flex items-center gap-2 justify-center">
+                          <div className={`text-2xl font-bold ${analysis.score >= 70 ? 'text-red-600' : analysis.score >= 40 ? 'text-amber-600' : 'text-green-600'}`}>
+                            {analysis.score}
                           </div>
-                          <div className={`mt-2 pt-2 border-t border-slate-700 text-xs font-medium ${
-                            analysis.score >= 70 ? 'text-red-300' : analysis.score >= 40 ? 'text-amber-300' : 'text-green-300'
-                          }`}>
-                            {analysis.score >= 70 ? '🔴 CRITICAL - Immediate escalation required' : analysis.score >= 40 ? '🟠 HIGH - Senior analyst review required' : '🟢 MEDIUM/LOW - Can be resolved quickly'}
+                          <HelpCircle size={16} className="text-slate-400" />
+                        </div>
+                        <div className="text-xs text-slate-400">Investigation Score</div>
+                      </div>
+
+                      {/* Score tooltip with breakdown */}
+                      {showScoreTooltip && (
+                        <div className="absolute right-0 top-full mt-2 bg-slate-900 text-white rounded-lg shadow-lg p-4 w-96 z-10 text-left text-xs border border-slate-700">
+                          <div className="font-semibold mb-3 text-sm">📊 Investigation Score Breakdown</div>
+                          <div className="space-y-2.5 font-mono text-xs">
+                            {(() => {
+                              const baseAlertRisk = selectedAlert.risk_score || 50
+                              const riskFactorScore = (analysis.riskFactors?.length || 0) * 5
+                              const pepFactor = analysis.customer?.pep_status ? 10 : 0
+                              const total = baseAlertRisk + riskFactorScore + pepFactor
+
+                              return (
+                                <>
+                                  {/* Base Alert Risk */}
+                                  <div className="flex items-center justify-between bg-slate-800 p-2 rounded border-l-2 border-blue-500">
+                                    <div>
+                                      <div>✓ Base Alert Risk</div>
+                                      <div className="text-slate-400 text-xs mt-0.5">Alert severity level</div>
+                                    </div>
+                                    <span className="font-semibold text-blue-400">+{baseAlertRisk}</span>
+                                  </div>
+
+                                  {/* Risk Factors */}
+                                  <div className="flex items-center justify-between bg-slate-800 p-2 rounded border-l-2 border-orange-500">
+                                    <div>
+                                      <div>✓ Risk Factors</div>
+                                      <div className="text-slate-400 text-xs mt-0.5">{analysis.riskFactors?.length || 0} factors × 5</div>
+                                    </div>
+                                    <span className="font-semibold text-orange-400">+{riskFactorScore}</span>
+                                  </div>
+
+                                  {/* PEP Factor */}
+                                  {analysis.customer?.pep_status && (
+                                    <div className="flex items-center justify-between bg-slate-800 p-2 rounded border-l-2 border-red-500">
+                                      <div>
+                                        <div>✓ PEP Status</div>
+                                        <div className="text-slate-400 text-xs mt-0.5">Politically Exposed Person</div>
+                                      </div>
+                                      <span className="font-semibold text-red-400">+{pepFactor}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Calculation shown */}
+                                  <div className="bg-slate-700 p-2 rounded text-slate-300 text-xs my-2">
+                                    {baseAlertRisk} + {riskFactorScore} {pepFactor > 0 ? `+ ${pepFactor}` : ''} = {total}
+                                  </div>
+
+                                  {/* Total with severity */}
+                                  <div className="border-t border-slate-600 pt-2 mt-3">
+                                    <div className={`flex justify-between font-semibold p-2 rounded text-white ${
+                                      total >= 70 ? 'bg-gradient-to-r from-red-600 to-red-700' :
+                                      total >= 40 ? 'bg-gradient-to-r from-amber-600 to-amber-700' :
+                                      'bg-gradient-to-r from-green-600 to-green-700'
+                                    }`}>
+                                      <span>SEVERITY</span>
+                                      <span className="text-lg">
+                                        {total >= 70 ? '🔴 CRITICAL' : total >= 40 ? '🟠 HIGH' : '🟢 MEDIUM/LOW'}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Recommendation */}
+                                  <div className="bg-slate-800 p-2 rounded text-slate-200 text-xs border-l-2 border-purple-500 mt-2">
+                                    <div className="font-semibold text-purple-300 mb-1">📋 Recommendation</div>
+                                    {total >= 70 && "Immediate escalation required. Document all findings and escalate to compliance immediately."}
+                                    {total >= 40 && total < 70 && "Senior analyst review required. Review risk factors and apply appropriate due diligence."}
+                                    {total < 40 && "Can be resolved quickly. Verify information and make disposition decision."}
+                                  </div>
+                                </>
+                              )
+                            })()}
                           </div>
                         </div>
                       )}
                     </div>
-                    <div className="text-[9px] text-slate-400">Investigation Score</div>
                   </div>
                 </div>
                 <Link
