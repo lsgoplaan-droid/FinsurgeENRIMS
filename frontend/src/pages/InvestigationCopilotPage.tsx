@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Brain, Search, AlertTriangle, Users, ArrowRight, Shield,
-  ChevronRight, Sparkles, Loader2
+  ChevronRight, Sparkles, Loader2, HelpCircle, Send
 } from 'lucide-react'
 import api from '../config/api'
 import { timeAgo } from '../utils/formatters'
@@ -16,6 +16,7 @@ const priorityColors: Record<string, string> = {
 
 export default function InvestigationCopilotPage() {
   const navigate = useNavigate()
+  const chatEndRef = useRef<HTMLDivElement>(null)
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedAlert, setSelectedAlert] = useState<any>(null)
@@ -24,6 +25,10 @@ export default function InvestigationCopilotPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionMsg, setActionMsg] = useState('')
+  const [showScoreTooltip, setShowScoreTooltip] = useState(false)
+  const [chatMessages, setChatMessages] = useState<any[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
 
   useEffect(() => {
     api.get('/alerts', { params: { status: 'new', page_size: 50 } })
@@ -34,6 +39,11 @@ export default function InvestigationCopilotPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
 
   const analyzeAlert = (alert: any) => {
     setSelectedAlert(alert)
@@ -46,11 +56,15 @@ export default function InvestigationCopilotPage() {
       api.get(`/customers/${customerId}`).catch(() => ({ data: null })),
       api.get(`/alerts`, { params: { customer_id: customerId, page_size: 20 } }).catch(() => ({ data: { items: [] } })),
       api.get(`/ai-agent/analyze/${alert.id}`).catch(() => ({ data: null })),
+      api.get(`/cases`, { params: { customer_id: customerId, page_size: 10 } }).catch(() => ({ data: { items: [] } })),
+      api.get(`/audit-logs`, { params: { resource_id: customerId, page_size: 20 } }).catch(() => ({ data: { items: [] } })),
     ])
-      .then(([customerRes, alertsRes, aiRes]) => {
+      .then(([customerRes, alertsRes, aiRes, casesRes, auditRes]) => {
         const customer = customerRes.data
         const relatedAlerts = (alertsRes.data?.items || alertsRes.data?.alerts || []).filter((a: any) => a.id !== alert.id)
         const aiAnalysis = aiRes.data
+        const cases = casesRes.data?.items || casesRes.data?.cases || []
+        const auditLogs = auditRes.data?.items || auditRes.data?.audit_logs || []
 
         // Build investigation summary
         const riskFactors = []
@@ -82,6 +96,10 @@ export default function InvestigationCopilotPage() {
           riskFactors,
           recommendations,
           score: Math.min(100, (alert.risk_score || 50) + (riskFactors.length * 5)),
+          cases,
+          auditLogs: auditLogs.filter((log: any) =>
+            ['alert_created', 'alert_escalated', 'alert_closed'].includes(log.action_type)
+          ).slice(0, 10),
         })
       })
       .finally(() => setAnalyzing(false))
@@ -142,6 +160,36 @@ export default function InvestigationCopilotPage() {
       })
       .catch(() => setActionMsg('Failed to close'))
       .finally(() => setActionLoading(null))
+  }
+
+  // AI Chat handler
+  const sendChatMessage = () => {
+    if (!chatInput.trim() || !selectedAlert || !analysis) return
+
+    const userMessage = chatInput
+    setChatInput('')
+
+    // Add user message to chat
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage, timestamp: new Date() }])
+
+    setChatLoading(true)
+
+    // Simulate AI response (in production, call actual AI endpoint)
+    setTimeout(() => {
+      const responses = [
+        `Based on the analysis, the "${userMessage.toLowerCase().includes('score') ? 'investigation score of ' + analysis.score + ' indicates ' + (analysis.score >= 70 ? 'CRITICAL risk requiring immediate escalation' : analysis.score >= 40 ? 'HIGH risk requiring senior analyst review' : 'MEDIUM/LOW risk that can be resolved quickly') : 'risk factors here strongly suggest investigating this customer further'}.`,
+
+        `${userMessage.toLowerCase().includes('recommend') ? 'I recommend ' + (analysis.recommendations?.[0] || 'escalating to your compliance team') + '. ' : ''}The customer profile shows ${analysis.customer?.pep_status ? 'PEP status which requires Enhanced Due Diligence, ' : ''}${analysis.riskFactors?.length || 0} risk factors, and ${analysis.relatedAlerts?.length || 0} related alerts.`,
+
+        `${userMessage.toLowerCase().includes('next') ? 'Next steps: ' : 'In this case: '}${analysis.recommendations?.slice(0, 2).join('. ') || 'Review the risk factors and take appropriate action based on your bank\'s policies'}.`,
+
+        `The investigation score of ${analysis.score} combines the alert risk (${selectedAlert.risk_score || 50}), number of risk factors (${(analysis.riskFactors?.length || 0) * 5}), and other factors. Higher scores need immediate escalation.`,
+      ]
+
+      const response = responses[Math.floor(Math.random() * responses.length)]
+      setChatMessages(prev => [...prev, { role: 'assistant', content: response, timestamp: new Date() }])
+      setChatLoading(false)
+    }, 500)
   }
 
   const filteredAlerts = searchQuery
@@ -241,8 +289,46 @@ export default function InvestigationCopilotPage() {
                     <h3 className="text-sm font-bold text-slate-800">{selectedAlert.title}</h3>
                   </div>
                   <div className="text-right">
-                    <div className={`text-2xl font-bold ${analysis.score >= 70 ? 'text-red-600' : analysis.score >= 40 ? 'text-amber-600' : 'text-green-600'}`}>
-                      {analysis.score}
+                    <div className="relative inline-block">
+                      <button
+                        onClick={() => setShowScoreTooltip(!showScoreTooltip)}
+                        className={`text-2xl font-bold ${analysis.score >= 70 ? 'text-red-600' : analysis.score >= 40 ? 'text-amber-600' : 'text-green-600'} hover:opacity-70 transition-opacity cursor-help flex items-center gap-1`}
+                      >
+                        {analysis.score}
+                        <HelpCircle size={14} className="text-slate-400" />
+                      </button>
+
+                      {/* Score tooltip */}
+                      {showScoreTooltip && (
+                        <div className="absolute right-0 top-full mt-2 bg-slate-900 text-white text-xs rounded-lg p-3 w-48 shadow-lg z-10">
+                          <p className="font-semibold mb-2">Score Calculation</p>
+                          <div className="space-y-1 text-slate-200">
+                            <div className="flex justify-between">
+                              <span>Base Alert Risk:</span>
+                              <span className="font-mono">{selectedAlert.risk_score || 50}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Risk Factors ({analysis.riskFactors?.length || 0}):</span>
+                              <span className="font-mono">+{(analysis.riskFactors?.length || 0) * 5}</span>
+                            </div>
+                            {analysis.customer?.pep_status && (
+                              <div className="flex justify-between">
+                                <span>PEP Factor:</span>
+                                <span className="font-mono">+10</span>
+                              </div>
+                            )}
+                            <div className="border-t border-slate-700 pt-1 mt-1 flex justify-between font-semibold text-slate-100">
+                              <span>Total Score:</span>
+                              <span className="font-mono">{analysis.score}</span>
+                            </div>
+                          </div>
+                          <div className={`mt-2 pt-2 border-t border-slate-700 text-xs font-medium ${
+                            analysis.score >= 70 ? 'text-red-300' : analysis.score >= 40 ? 'text-amber-300' : 'text-green-300'
+                          }`}>
+                            {analysis.score >= 70 ? '🔴 CRITICAL - Immediate escalation required' : analysis.score >= 40 ? '🟠 HIGH - Senior analyst review required' : '🟢 MEDIUM/LOW - Can be resolved quickly'}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="text-[9px] text-slate-400">Investigation Score</div>
                   </div>
@@ -383,6 +469,140 @@ export default function InvestigationCopilotPage() {
                   {actionMsg && (
                     <p className="text-xs text-green-800 mt-2 font-medium">{actionMsg}</p>
                   )}
+                </div>
+              </div>
+
+              {/* Previous Cases */}
+              {analysis.cases && analysis.cases.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Shield size={14} className="text-blue-600" />
+                    <h4 className="text-sm font-semibold text-slate-700">
+                      Previous Cases ({analysis.cases.length})
+                    </h4>
+                  </div>
+                  <div className="space-y-2">
+                    {analysis.cases.slice(0, 5).map((c: any) => (
+                      <Link
+                        key={c.id}
+                        to={`/cases/${c.id}`}
+                        className="flex items-start justify-between p-2 rounded-lg hover:bg-slate-50 text-xs group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-slate-800 group-hover:text-blue-600">{c.case_number}</p>
+                          <p className="text-slate-600 text-[11px] truncate">{c.title || c.description || 'Case'}</p>
+                        </div>
+                        <div className="flex items-center gap-2 ml-2">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium whitespace-nowrap ${
+                            c.status === 'open' ? 'bg-blue-100 text-blue-800' :
+                            c.status === 'closed' ? 'bg-slate-100 text-slate-800' :
+                            'bg-amber-100 text-amber-800'
+                          }`}>
+                            {c.status}
+                          </span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Activity */}
+              {analysis.auditLogs && analysis.auditLogs.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Users size={14} className="text-amber-600" />
+                    <h4 className="text-sm font-semibold text-slate-700">
+                      Recent Activity
+                    </h4>
+                  </div>
+                  <div className="space-y-2">
+                    {analysis.auditLogs.map((log: any) => (
+                      <div
+                        key={log.id}
+                        className="flex items-start justify-between p-2 rounded-lg bg-slate-50 text-xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-slate-800">
+                            {log.action_type === 'alert_created' && '🔔 Alert Created'}
+                            {log.action_type === 'alert_escalated' && '⬆️ Alert Escalated'}
+                            {log.action_type === 'alert_closed' && '✓ Alert Closed'}
+                          </p>
+                          <p className="text-slate-600 text-[11px]">
+                            by {log.user_name || log.user_id || 'System'} • {log.created_at ? timeAgo(log.created_at) : ''}
+                          </p>
+                        </div>
+                        {log.details && (
+                          <span className="ml-2 px-2 py-1 bg-slate-200 rounded text-[10px] text-slate-700 whitespace-nowrap">
+                            {typeof log.details === 'string' ? log.details : (log.details.disposition || log.details.reason || '—')}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Chat Panel */}
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={14} className="text-purple-600" />
+                  <h4 className="text-sm font-semibold text-slate-700">Ask the Copilot</h4>
+                </div>
+
+                {/* Chat messages */}
+                <div className="bg-slate-50 rounded-lg p-3 h-48 overflow-y-auto space-y-2 mb-3">
+                  {chatMessages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-slate-400">
+                      <p className="text-xs text-center">Ask about the score, risk factors, recommendations, or next steps</p>
+                    </div>
+                  ) : (
+                    chatMessages.map((msg: any, idx: number) => (
+                      <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div
+                          className={`max-w-xs px-3 py-2 rounded-lg text-xs ${
+                            msg.role === 'user'
+                              ? 'bg-blue-600 text-white rounded-br-none'
+                              : 'bg-purple-100 text-purple-900 rounded-bl-none'
+                          }`}
+                        >
+                          {msg.content}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {chatLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-purple-100 text-purple-900 px-3 py-2 rounded-lg rounded-bl-none text-xs">
+                        <div className="flex items-center gap-1">
+                          <div className="w-1.5 h-1.5 bg-purple-600 rounded-full animate-pulse" />
+                          <div className="w-1.5 h-1.5 bg-purple-600 rounded-full animate-pulse" />
+                          <div className="w-1.5 h-1.5 bg-purple-600 rounded-full animate-pulse" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Chat input */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ask about this case..."
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyPress={e => e.key === 'Enter' && sendChatMessage()}
+                    disabled={chatLoading}
+                    className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50"
+                  />
+                  <button
+                    onClick={sendChatMessage}
+                    disabled={chatLoading || !chatInput.trim()}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-600 text-white text-xs font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Send size={12} />
+                  </button>
                 </div>
               </div>
 
