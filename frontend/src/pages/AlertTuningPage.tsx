@@ -4,6 +4,7 @@ import {
   XCircle, HelpCircle, BarChart3, Lightbulb, Filter, ChevronDown,
   ToggleLeft, ToggleRight, Edit3, Save, X, Sliders
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 import api from '../config/api'
 import { formatNumber } from '../utils/formatters'
@@ -118,10 +119,10 @@ export default function AlertTuningPage() {
   ].filter(d => d.value > 0)
 
   const statCards = [
-    { label: 'Total Alerts', value: summary?.total_alerts || 0, icon: BarChart3, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Confirmed Fraud Rate', value: `${summary?.overall_tp_rate || 0}%`, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
-    { label: 'False Alarm Rate', value: `${summary?.overall_fp_rate || 0}%`, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50' },
-    { label: 'Detection Accuracy', value: `${summary?.overall_precision || 0}%`, icon: Target, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Total Alerts', value: summary?.total_alerts || 0, icon: BarChart3, color: 'text-blue-600', bg: 'bg-blue-50', href: '/alerts' },
+    { label: 'Confirmed Fraud Rate', value: `${summary?.overall_tp_rate || 0}%`, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', href: '/alerts?status=closed_true_positive' },
+    { label: 'False Alarm Rate', value: `${summary?.overall_fp_rate || 0}%`, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', href: '/alerts?status=closed_false_positive' },
+    { label: 'Detection Accuracy', value: `${summary?.overall_precision || 0}%`, icon: Target, color: 'text-purple-600', bg: 'bg-purple-50', href: '/fraud-detection' },
   ]
 
   return (
@@ -137,7 +138,7 @@ export default function AlertTuningPage() {
       {/* Stat cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {statCards.map(s => (
-          <div key={s.label} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <Link key={s.label} to={s.href} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-500">{s.label}</p>
@@ -149,7 +150,8 @@ export default function AlertTuningPage() {
                 <s.icon className={s.color} size={22} />
               </div>
             </div>
-          </div>
+            <p className="text-[10px] text-blue-500 mt-1 font-medium">View details &rarr;</p>
+          </Link>
         ))}
       </div>
 

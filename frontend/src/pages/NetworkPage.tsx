@@ -337,6 +337,140 @@ function NetworkGraph({
 }
 
 // NxN Flow Matrix
+/* ── Sankey-style Fund Flow Diagram ─────────────────────────────────────── */
+function SankeyDiagram({ nodes, edges, center }: { nodes: NetworkNode[]; edges: NetworkEdge[]; center?: NetworkNode }) {
+  // Build 4-level hierarchy: Center → Direct → Indirect → Peripheral
+  const centerNode = center || nodes[0]
+  if (!centerNode || nodes.length < 2) return null
+
+  const directIds = new Set<string>()
+  const indirectIds = new Set<string>()
+  const peripheralIds = new Set<string>()
+
+  // Level 1: direct connections to center
+  edges.forEach(e => {
+    if (e.source === centerNode.id) directIds.add(e.target)
+    if (e.target === centerNode.id) directIds.add(e.source)
+  })
+
+  // Level 2: connections of direct
+  edges.forEach(e => {
+    if (directIds.has(e.source) && e.target !== centerNode.id && !directIds.has(e.target)) indirectIds.add(e.target)
+    if (directIds.has(e.target) && e.source !== centerNode.id && !directIds.has(e.source)) indirectIds.add(e.source)
+  })
+
+  // Level 3: connections of indirect
+  edges.forEach(e => {
+    if (indirectIds.has(e.source) && e.target !== centerNode.id && !directIds.has(e.target) && !indirectIds.has(e.target)) peripheralIds.add(e.target)
+    if (indirectIds.has(e.target) && e.source !== centerNode.id && !directIds.has(e.source) && !indirectIds.has(e.source)) peripheralIds.add(e.source)
+  })
+
+  const nodeById = new Map(nodes.map(n => [n.id, n]))
+  const levels: { label: string; color: string; nodes: NetworkNode[] }[] = [
+    { label: 'Center', color: '#ef4444', nodes: [centerNode] },
+    { label: 'Direct', color: '#f97316', nodes: [...directIds].map(id => nodeById.get(id)).filter(Boolean) as NetworkNode[] },
+    { label: 'Indirect', color: '#3b82f6', nodes: [...indirectIds].map(id => nodeById.get(id)).filter(Boolean) as NetworkNode[] },
+    { label: 'Peripheral', color: '#8b5cf6', nodes: [...peripheralIds].map(id => nodeById.get(id)).filter(Boolean) as NetworkNode[] },
+  ].filter(l => l.nodes.length > 0)
+
+  // SVG dimensions
+  const W = 900, H = Math.max(300, Math.max(...levels.map(l => l.nodes.length)) * 55 + 60)
+  const colW = W / levels.length
+  const nodeH = 32, gap = 12
+
+  // Position nodes in columns
+  type PosNode = NetworkNode & { px: number; py: number; level: number }
+  const posNodes: PosNode[] = []
+  levels.forEach((lvl, li) => {
+    const colX = li * colW + colW / 2
+    const totalH = lvl.nodes.length * (nodeH + gap) - gap
+    const startY = (H - totalH) / 2
+    lvl.nodes.forEach((n, ni) => {
+      posNodes.push({ ...n, px: colX, py: startY + ni * (nodeH + gap) + nodeH / 2, level: li })
+    })
+  })
+
+  const posMap = new Map(posNodes.map(n => [n.id, n]))
+
+  // Build flow links between adjacent levels
+  const links: { from: PosNode; to: PosNode; amount: number }[] = []
+  edges.forEach(e => {
+    const s = posMap.get(e.source), t = posMap.get(e.target)
+    if (s && t && Math.abs(s.level - t.level) <= 1 && s.level !== t.level) {
+      const [left, right] = s.level < t.level ? [s, t] : [t, s]
+      links.push({ from: left, to: right, amount: e.total_amount || 1 })
+    }
+  })
+
+  const maxAmt = Math.max(1, ...links.map(l => l.amount))
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+      <h3 className="text-sm font-semibold text-slate-700 mb-3">Fund Flow Hierarchy (Sankey — 4 Levels)</h3>
+      <div className="overflow-x-auto">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 600, maxHeight: 500 }}>
+          {/* Level labels */}
+          {levels.map((lvl, i) => (
+            <text key={i} x={i * colW + colW / 2} y={18} textAnchor="middle" fill={lvl.color} fontSize="11" fontWeight="bold">
+              {lvl.label} ({lvl.nodes.length})
+            </text>
+          ))}
+
+          {/* Flow paths */}
+          {links.map((link, i) => {
+            const thickness = Math.max(2, (link.amount / maxAmt) * 18)
+            const opacity = 0.15 + (link.amount / maxAmt) * 0.45
+            const mx = (link.from.px + link.to.px) / 2
+            return (
+              <path
+                key={i}
+                d={`M ${link.from.px + 50} ${link.from.py} C ${mx} ${link.from.py} ${mx} ${link.to.py} ${link.to.px - 50} ${link.to.py}`}
+                fill="none"
+                stroke={levels[link.from.level]?.color || '#94a3b8'}
+                strokeWidth={thickness}
+                opacity={opacity}
+                strokeLinecap="round"
+              />
+            )
+          })}
+
+          {/* Nodes */}
+          {posNodes.map(n => {
+            const color = levels[n.level]?.color || '#94a3b8'
+            const score = n.risk_score || 0
+            return (
+              <g key={n.id}>
+                <rect
+                  x={n.px - 48} y={n.py - nodeH / 2}
+                  width={96} height={nodeH}
+                  rx={6}
+                  fill={color}
+                  opacity={0.9}
+                />
+                <text x={n.px} y={n.py - 2} textAnchor="middle" fill="#fff" fontSize="10" fontWeight="bold">
+                  {nodeName(n).length > 14 ? nodeName(n).slice(0, 13) + '…' : nodeName(n)}
+                </text>
+                <text x={n.px} y={n.py + 10} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="8">
+                  Risk: {score}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+      <div className="flex items-center justify-center gap-6 mt-3 text-xs text-slate-500">
+        {levels.map(l => (
+          <div key={l.label} className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded" style={{ backgroundColor: l.color }} />
+            <span>{l.label}</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[9px] text-slate-400 mt-1 text-center">Flow thickness indicates transaction volume between entities</p>
+    </div>
+  )
+}
+
 function FlowMatrix({ nodes, edges, center }: { nodes: NetworkNode[]; edges: NetworkEdge[]; center?: NetworkNode }) {
   // Build NxN matrix showing flows between nodes
   const nodeList = [
@@ -598,6 +732,9 @@ export default function NetworkPage() {
               </div>
             </div>
           </div>
+
+          {/* Sankey Fund Flow Diagram */}
+          <SankeyDiagram nodes={data.nodes || []} edges={data.edges || []} center={data.center} />
 
           {/* NxN Flow Matrix */}
           <FlowMatrix nodes={data.nodes || []} edges={data.edges || []} center={data.center} />

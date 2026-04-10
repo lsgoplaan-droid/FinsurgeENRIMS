@@ -66,6 +66,7 @@ export default function InternalFraudPage() {
   const [riskFilter, setRiskFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [activeTab, setActiveTab] = useState<'activities' | 'rules'>('activities')
+  const [selectedActivity, setSelectedActivity] = useState<any>(null)
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -208,7 +209,7 @@ export default function InternalFraudPage() {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 text-center text-slate-400">No activities found</div>
         ) : (
           activities.map((item, idx) => (
-            <div key={item.id || idx} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div key={item.id || idx} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setSelectedActivity(selectedActivity === (item.id || idx) ? null : (item.id || idx))}>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   {/* Header row */}
@@ -293,6 +294,26 @@ export default function InternalFraudPage() {
                   />
                 </div>
               </div>
+              {/* Expanded detail panel */}
+              {selectedActivity === (item.id || idx) && (
+                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                    <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">Employee ID</span><p className="font-bold text-slate-700">{item.employee_id || '-'}</p></div>
+                    <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">Department</span><p className="font-bold text-slate-700">{item.department || '-'}</p></div>
+                    <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">Activity Type</span><p className="font-bold text-slate-700">{(item.activity_type || '-').replace(/_/g, ' ')}</p></div>
+                    <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">Workstation</span><p className="font-bold text-slate-700">{item.workstation_id || '-'}</p></div>
+                    <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">IP Address</span><p className="font-bold text-slate-700 font-mono">{item.ip_address || '-'}</p></div>
+                    <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">Risk Level</span><p className="font-bold text-slate-700">{item.risk_level || '-'}</p></div>
+                    <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">After Hours</span><p className="font-bold text-slate-700">{item.after_hours ? 'Yes' : 'No'}</p></div>
+                    <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">Unauthorized</span><p className="font-bold text-slate-700">{item.unauthorized_access ? 'Yes' : 'No'}</p></div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700">Escalate to HR</button>
+                    <button className="px-3 py-1.5 bg-amber-50 text-amber-700 text-xs font-medium rounded-lg border border-amber-200 hover:bg-amber-100">Flag for Investigation</button>
+                    <button className="px-3 py-1.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-lg hover:bg-slate-200">Mark Cleared</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))
         )}

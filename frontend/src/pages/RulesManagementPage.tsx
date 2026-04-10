@@ -63,6 +63,7 @@ export default function RulesManagementPage() {
   const [severityFilter, setSeverityFilter] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRule, setSelectedRule] = useState<any>(null)
+  const [msg, setMsg] = useState('')
 
   const fetchData = () => {
     setLoading(true)
@@ -115,6 +116,14 @@ export default function RulesManagementPage() {
 
   return (
     <div className="space-y-4">
+      {/* Message */}
+      {msg && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center justify-between">
+          <span>{msg}</span>
+          <button onClick={() => setMsg('')} className="text-blue-600 hover:text-blue-800"><XCircle size={14} /></button>
+        </div>
+      )}
+
       {/* Stat cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {statCards.map(s => (
@@ -371,12 +380,30 @@ export default function RulesManagementPage() {
             <div className="space-y-3">
               {bestPractices.recommended_rules?.map((r: any, i: number) => (
                 <div key={i} className="bg-white rounded-lg p-3 border border-amber-100">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-medium text-sm text-slate-800">{r.name}</span>
-                    <Badge text={r.category} colors={categoryColors[r.category]?.replace('border-', 'bg-').split(' ').slice(0, 2).join(' ') || 'bg-gray-100 text-gray-800'} />
-                    <Badge text={r.severity} colors={severityColors[r.severity] || 'bg-gray-100 text-gray-800'} />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium text-sm text-slate-800">{r.name}</span>
+                        <Badge text={r.category} colors={categoryColors[r.category]?.replace('border-', 'bg-').split(' ').slice(0, 2).join(' ') || 'bg-gray-100 text-gray-800'} />
+                        <Badge text={r.severity} colors={severityColors[r.severity] || 'bg-gray-100 text-gray-800'} />
+                      </div>
+                      <p className="text-xs text-slate-600">{r.description}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        api.post('/rules/create', {
+                          name: r.name, description: r.description,
+                          category: r.category || 'fraud', subcategory: r.subcategory || 'recommended',
+                          severity: r.severity || 'medium', priority: 5, is_enabled: false,
+                          conditions: { type: 'AND', conditions: [] }, actions: [{ action: 'create_alert', params: { priority: r.severity || 'medium' } }],
+                        }).then(() => { setMsg(`Rule "${r.name}" added (disabled, pending approval)`); fetchData(); setTimeout(() => setMsg(''), 4000) })
+                          .catch(() => setMsg('Failed to add rule'))
+                      }}
+                      className="px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 whitespace-nowrap flex-shrink-0 ml-3"
+                    >
+                      + Add Rule
+                    </button>
                   </div>
-                  <p className="text-xs text-slate-600">{r.description}</p>
                 </div>
               ))}
             </div>

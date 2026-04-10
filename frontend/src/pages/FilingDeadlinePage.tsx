@@ -123,10 +123,11 @@ export default function FilingDeadlinePage() {
             <span className="text-sm font-semibold text-slate-700">CTR — Currency Transaction Reports</span>
           </div>
           <div className="flex items-center gap-4 text-xs text-slate-500">
-            <span>Deadline: <strong>15 days</strong></span>
+            <span>Deadline: <strong>15 days</strong> from transaction date</span>
             <span>Pending: <strong className="text-blue-600">{summary.ctrs_pending}</strong></span>
             <span>Filed: <strong className="text-green-600">{summary.ctrs_filed}</strong></span>
           </div>
+          <p className="text-[10px] text-slate-400 mt-2">RBI Master Direction on KYC — Cash transactions exceeding INR 10 lakh must be reported to FIU-IND within 15 days of the month following the transaction</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -134,10 +135,11 @@ export default function FilingDeadlinePage() {
             <span className="text-sm font-semibold text-slate-700">STR — Suspicious Transaction Reports</span>
           </div>
           <div className="flex items-center gap-4 text-xs text-slate-500">
-            <span>Deadline: <strong>7 days</strong></span>
+            <span>Deadline: <strong>7 days</strong> from suspicion formed</span>
             <span>Pending: <strong className="text-purple-600">{summary.sars_pending}</strong></span>
             <span>Filed: <strong className="text-green-600">{summary.sars_filed}</strong></span>
           </div>
+          <p className="text-[10px] text-slate-400 mt-2">PMLA Rules 2005 Rule 7 — STR must be filed with FIU-IND within 7 days of the date on which suspicion is formed by the Principal Officer</p>
         </div>
       </div>
 
