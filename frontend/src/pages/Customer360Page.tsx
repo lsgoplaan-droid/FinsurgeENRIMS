@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, User, CreditCard, Bell, Shield, MapPin, Phone, Mail, Building, AlertCircle } from 'lucide-react'
+import { ArrowLeft, User, CreditCard, Bell, Shield, MapPin, Phone, Mail, Building, AlertCircle, History } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDate, formatDateTime, timeAgo, priorityColors, statusColors, riskColors } from '../utils/formatters'
 
@@ -26,25 +26,110 @@ function getHighRiskRelations(networkData: any, centerId: string) {
     .filter((entity: any) => entity && (entity.risk_category === 'high' || entity.risk_category === 'very_high'))
 }
 
-type Tab = 'overview' | 'transactions' | 'alerts'
+type Tab = 'overview' | 'transactions' | 'alerts' | 'audit'
 
-// Circular gauge SVG for risk score
-function RiskGauge({ score }: { score: number }) {
+// Enhanced Circular gauge SVG with tooltip
+function RiskGauge({ score, customer }: { score: number; customer?: any }) {
+  const [showTooltip, setShowTooltip] = useState(false)
   const radius = 54
   const circumference = 2 * Math.PI * radius
   const progress = (score / 100) * circumference
   const color = score >= 75 ? '#ef4444' : score >= 50 ? '#f97316' : score >= 25 ? '#f59e0b' : '#10b981'
 
+  const categoryEmoji = score > 70 ? '🔴' : score > 40 ? '🟠' : score > 20 ? '🟡' : '🟢'
+  const categoryLabel = score > 70 ? 'VERY HIGH' : score > 40 ? 'HIGH' : score > 20 ? 'MEDIUM' : 'LOW'
+  const categoryColor = score > 70 ? 'bg-red-100 text-red-800' : score > 40 ? 'bg-orange-100 text-orange-800' : score > 20 ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
+
+  const baseScore = 10
+  const alertRiskContribution = Math.min(40, Math.max(0, (customer?.alert_count ?? 0) * 5))
+  const behavioralRiskContribution = Math.max(0, score - baseScore - alertRiskContribution)
+  const displayScore = Math.min(100, baseScore + alertRiskContribution + behavioralRiskContribution)
+
   return (
-    <div className="relative w-32 h-32">
-      <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-        <circle cx="60" cy="60" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="8" />
-        <circle cx="60" cy="60" r={radius} fill="none" stroke={color} strokeWidth="8" strokeDasharray={circumference} strokeDashoffset={circumference - progress} strokeLinecap="round" />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-bold" style={{ color }}>{score}</span>
-        <span className="text-xs text-slate-400">Risk Score</span>
+    <div className="relative inline-block">
+      <div
+        className="w-32 h-32 cursor-help relative"
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+      >
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="8" />
+          <circle cx="60" cy="60" r={radius} fill="none" stroke={color} strokeWidth="8" strokeDasharray={circumference} strokeDashoffset={circumference - progress} strokeLinecap="round" />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-bold" style={{ color }}>{score}</span>
+          <span className="text-xs text-slate-400">Risk Score</span>
+        </div>
       </div>
+
+      {showTooltip && (
+        <div className="absolute bottom-36 left-1/2 -translate-x-1/2 w-72 bg-white border border-slate-200 rounded-lg shadow-lg p-4 z-50">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-200">
+            <h4 className="text-sm font-semibold text-slate-800">Risk Score Breakdown</h4>
+            <span className={`px-2 py-1 rounded text-xs font-semibold ${categoryColor}`}>
+              {categoryEmoji} {categoryLabel}
+            </span>
+          </div>
+
+          {/* Component boxes */}
+          <div className="space-y-2 mb-3">
+            {/* Base Risk */}
+            <div className="flex items-center gap-2">
+              <div className="w-12 h-10 rounded bg-blue-50 border border-blue-200 flex items-center justify-center">
+                <span className="text-xs font-bold text-blue-700">{baseScore}</span>
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-medium text-slate-700">Base Risk</div>
+                <div className="text-[10px] text-slate-500">Baseline for all customers</div>
+              </div>
+            </div>
+
+            {/* Alert Risk */}
+            <div className="flex items-center gap-2">
+              <div className="w-12 h-10 rounded bg-orange-50 border border-orange-200 flex items-center justify-center">
+                <span className="text-xs font-bold text-orange-700">+{alertRiskContribution.toFixed(0)}</span>
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-medium text-slate-700">Alert Risk</div>
+                <div className="text-[10px] text-slate-500">{customer?.alert_count ?? 0} open alerts</div>
+              </div>
+            </div>
+
+            {/* Behavioral Risk */}
+            <div className="flex items-center gap-2">
+              <div className="w-12 h-10 rounded bg-purple-50 border border-purple-200 flex items-center justify-center">
+                <span className="text-xs font-bold text-purple-700">+{behavioralRiskContribution.toFixed(0)}</span>
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-medium text-slate-700">Behavioral Risk</div>
+                <div className="text-[10px] text-slate-500">Transaction patterns & network</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Total equation */}
+          <div className="mb-3 p-2 bg-slate-50 rounded border border-slate-200">
+            <div className="text-xs text-slate-600">
+              <span className="font-semibold">{baseScore}</span>
+              {' + '}
+              <span className="font-semibold">{alertRiskContribution.toFixed(0)}</span>
+              {' + '}
+              <span className="font-semibold">{behavioralRiskContribution.toFixed(0)}</span>
+              {' = '}
+              <span className="font-bold text-slate-900">{displayScore.toFixed(0)}</span>
+            </div>
+          </div>
+
+          {/* Risk appetite info */}
+          <div className="text-[10px] text-slate-500 border-t border-slate-200 pt-2">
+            <div className="font-medium text-slate-700 mb-1">Risk Actions Triggered:</div>
+            {score > 70 && <div>🔴 Enhanced monitoring & mandatory review</div>}
+            {score > 40 && score <= 70 && <div>🟠 Regular monitoring & periodic review</div>}
+            {score <= 40 && <div>🟡 Standard compliance procedures</div>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -57,6 +142,8 @@ export default function Customer360Page() {
   const [tab, setTab] = useState<Tab>('overview')
   const [networkData, setNetworkData] = useState<any>(null)
   const [networkLoading, setNetworkLoading] = useState(false)
+  const [auditEntries, setAuditEntries] = useState<any[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -76,6 +163,22 @@ export default function Customer360Page() {
       .finally(() => setNetworkLoading(false))
   }, [id])
 
+  // Fetch audit trail when audit tab is selected
+  const fetchAuditTrail = () => {
+    setAuditLoading(true)
+    api.get('/audit-trail/entries', { params: { resource_type: 'customer', per_page: 100 } })
+      .then(res => {
+        const entries = (res.data.entries || []).filter((e: any) => e.resource_id === id)
+        setAuditEntries(entries)
+      })
+      .catch(() => setAuditEntries([]))
+      .finally(() => setAuditLoading(false))
+  }
+
+  useEffect(() => {
+    if (tab === 'audit' && id) fetchAuditTrail()
+  }, [tab, id])
+
   if (loading) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
   if (error) return <div className="flex items-center justify-center h-full text-red-500">{error}</div>
   if (!data) return <div className="flex items-center justify-center h-full text-slate-400">Customer not found</div>
@@ -91,6 +194,7 @@ export default function Customer360Page() {
     { key: 'overview', label: 'Overview', icon: User },
     { key: 'transactions', label: 'Transactions', icon: CreditCard },
     { key: 'alerts', label: 'Alerts & Cases', icon: Bell },
+    { key: 'audit', label: 'Audit Trail', icon: History },
   ]
 
   return (
@@ -121,7 +225,7 @@ export default function Customer360Page() {
             </div>
           </div>
 
-          <RiskGauge score={customer.risk_score || 0} />
+          <RiskGauge score={customer.risk_score || 0} customer={customer} />
         </div>
       </div>
 
@@ -381,6 +485,65 @@ export default function Customer360Page() {
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Audit Trail */}
+      {tab === 'audit' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-700">Audit Trail</h3>
+          </div>
+          {auditLoading ? (
+            <div className="py-8 text-center text-slate-400">Loading audit trail...</div>
+          ) : auditEntries.length === 0 ? (
+            <div className="py-8 text-center text-slate-400">No audit entries</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Timestamp</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Action</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">User</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditEntries.map((entry: any) => {
+                    const actionEmojis: Record<string, string> = {
+                      'create': '✨',
+                      'update': '✏️',
+                      'delete': '🗑️',
+                      'assign': '👤',
+                      'escalate': '⬆️',
+                      'close': '✅',
+                      'reopen': '🔄',
+                      'disposition': '📋',
+                      'status_change': '📊',
+                    }
+                    const actionEmoji = Object.entries(actionEmojis).find(([key]) =>
+                      entry.action?.toLowerCase().includes(key)
+                    )?.[1] || '📝'
+
+                    return (
+                      <tr key={entry.id} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="py-2.5 px-3 text-slate-500 text-xs whitespace-nowrap">{formatDateTime(entry.timestamp || entry.created_at)}</td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center gap-2">
+                            <span>{actionEmoji}</span>
+                            <span className="font-medium text-slate-700 capitalize">{(entry.action || '-').replace(/_/g, ' ')}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 text-xs">{entry.user_name || entry.user_id || '-'}</td>
+                        <td className="py-2.5 px-3 text-slate-600 text-xs">{entry.description || entry.details || '-'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
