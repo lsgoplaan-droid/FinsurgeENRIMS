@@ -78,6 +78,7 @@ export default function RulesManagementPage() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [severityFilter, setSeverityFilter] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [enabledOnlyFilter, setEnabledOnlyFilter] = useState(true)
   const [selectedRule, setSelectedRule] = useState<any>(null)
   const [msg, setMsg] = useState('')
   const [showRuleModal, setShowRuleModal] = useState(false)
@@ -199,6 +200,7 @@ export default function RulesManagementPage() {
 
   const HIDDEN_CATEGORIES = ['aml', 'kyc', 'compliance']
   let filteredRules = rules.filter(r => !HIDDEN_CATEGORIES.includes(r.category))
+  if (enabledOnlyFilter) filteredRules = filteredRules.filter(r => r.is_enabled)
   if (categoryFilter) filteredRules = filteredRules.filter(r => r.category === categoryFilter)
   if (severityFilter) filteredRules = filteredRules.filter(r => r.severity === severityFilter)
   if (searchQuery) filteredRules = filteredRules.filter(r => r.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -292,6 +294,17 @@ export default function RulesManagementPage() {
               </select>
               <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
+            <button
+              onClick={() => setEnabledOnlyFilter(!enabledOnlyFilter)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                enabledOnlyFilter
+                  ? 'bg-green-100 text-green-700 border border-green-300'
+                  : 'bg-slate-100 text-slate-700 border border-slate-300'
+              }`}
+              title={enabledOnlyFilter ? 'Showing only enabled rules' : 'Showing all rules'}
+            >
+              {enabledOnlyFilter ? '✓ Enabled Only' : '◯ All Rules'}
+            </button>
             <button
               onClick={openCreateRule}
               className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"

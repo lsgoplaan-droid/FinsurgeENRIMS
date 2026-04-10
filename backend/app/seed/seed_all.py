@@ -924,9 +924,12 @@ def seed_rules(db: Session) -> list:
     ]
 
     for name, desc, cat, subcat, sev, conds, acts, tw, threshold_amt, threshold_cnt in rules_data:
+        # Disable AML and KYC rules (they are not actively used in demo)
+        is_enabled = cat not in ["aml", "kyc", "compliance"]
+
         r = Rule(
             id=_uid(), name=name, description=desc, category=cat, subcategory=subcat,
-            severity=sev, is_enabled=True, priority=10 if sev == "critical" else 20 if sev == "high" else 30,
+            severity=sev, is_enabled=is_enabled, priority=10 if sev == "critical" else 20 if sev == "high" else 30,
             conditions=json.dumps(conds), actions=json.dumps(acts),
             time_window=tw, threshold_amount=threshold_amt, threshold_count=threshold_cnt,
             detection_count=random.randint(0, 50),
