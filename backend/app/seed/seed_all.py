@@ -406,7 +406,7 @@ def seed_transactions(db: Session, customers: list, acct_map: dict) -> list:
                 counterparty_account=_acct() if counterparty_name else None,
                 counterparty_bank=bank[0] if counterparty_name else None,
                 counterparty_ifsc=f"{bank[1]}0{random.randint(100000, 999999)}" if counterparty_name else None,
-                description=f"{method.upper()}/{c.customer_number}/{dt.strftime('%b%Y').upper()}",
+                details=json.dumps({"message": f"{method.upper()}/{c.customer_number}/{dt.strftime('%b%Y').upper()}"}),
                 location_city=city,
                 location_country=country,
                 risk_score=risk,
@@ -1059,7 +1059,6 @@ def seed_alerts(db: Session, customers: list, rules: list, user_map: dict) -> li
                 risk_score=random.uniform(40, 95),
                 status=status,
                 title=f"{rule.description} - {customer.full_name}",
-                description=f"Rule {rule.name} triggered for customer {customer.customer_number}. {rule.description}",
                 details=json.dumps({"rule": rule.name, "customer": customer.customer_number, "triggered_values": {"amount": random.randint(100000_00, 10000000_00)}}),
                 assigned_to=assigned_to,
                 assigned_at=assigned_at,
@@ -1111,7 +1110,7 @@ def seed_cases(db: Session, customers: list, alerts: list, user_map: dict) -> li
                 id=_uid(),
                 case_number=case_num,
                 title=f"{case_type.replace('_', ' ').title()} - {customer.full_name}",
-                description=f"Investigation into suspicious activities by {customer.customer_number}",
+                details=json.dumps({"message": f"Investigation into suspicious activities by {customer.customer_number}"}),
                 case_type=case_type,
                 priority=priority,
                 status=status,
@@ -1138,7 +1137,7 @@ def seed_cases(db: Session, customers: list, alerts: list, user_map: dict) -> li
             act = CaseActivity(case_id=c.id, user_id=user_map["admin"].id, activity_type="created", description="Case created from alert investigation", created_at=dt)
             db.add(act)
             if assigned_to:
-                act2 = CaseActivity(case_id=c.id, user_id=user_map["admin"].id, activity_type="assigned", description=f"Assigned to investigator", created_at=dt + timedelta(hours=2))
+                act2 = CaseActivity(case_id=c.id, user_id=user_map["admin"].id, activity_type="assigned", details=json.dumps({"message": f"Assigned to investigator"}), created_at=dt + timedelta(hours=2))
                 db.add(act2)
 
             cases.append(c)
@@ -1589,7 +1588,7 @@ def seed_police_firs(db: Session, cases, user_map):
             ipc_sections=ipc_map.get(offense, "IPC 420"),
             fraud_amount=case.total_suspicious_amount or random.randint(500000, 50000000),
             offense_date=created - timedelta(days=random.randint(1, 10)),
-            offense_description=f"Fraud detected in case {case.case_number}. {offense.replace('_', ' ').title()} involving customer account.",
+            offense_details=json.dumps({"message": f"Fraud detected in case {case.case_number}. {offense.replace('_', ' ').title()} involving customer account."}),
             status=status,
             priority=case.priority,
             filed_by=comp_user.id if status != "draft" else None,
@@ -1615,16 +1614,16 @@ def seed_police_firs(db: Session, cases, user_map):
 
         # Add activity trail
         db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
-                           activity_type="created", description=f"FIR draft created for case {case.case_number}", created_at=created))
+                           activity_type="created", details=json.dumps({"message": f"FIR draft created for case {case.case_number}"}), created_at=created))
         if status != "draft":
             db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
-                               activity_type="filed", description=f"FIR filed at {ps[0]}", created_at=created + timedelta(days=1)))
+                               activity_type="filed", details=json.dumps({"message": f"FIR filed at {ps[0]}"}), created_at=created + timedelta(days=1)))
         if status in ("acknowledged", "under_investigation", "charge_sheet_filed"):
             db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
-                               activity_type="acknowledged", description=f"FIR acknowledged by police", created_at=created + timedelta(days=3)))
+                               activity_type="acknowledged", details=json.dumps({"message": f"FIR acknowledged by police"}), created_at=created + timedelta(days=3)))
         if fir.rbi_fraud_reported:
             db.add(FIRActivity(id=str(uuid.uuid4()), fir_id=fir.id, user_id=comp_user.id,
-                               activity_type="rbi_reported", description=f"Fraud reported to RBI via FMR-1", created_at=created + timedelta(days=2)))
+                               activity_type="rbi_reported", details=json.dumps({"message": f"Fraud reported to RBI via FMR-1"}), created_at=created + timedelta(days=2)))
 
     db.flush()
     return fir_data
@@ -2000,175 +1999,95 @@ def seed_notification_rules(db: Session):
 def seed_audit_trail(db: Session, customers: list, alerts: list, cases: list, user_map: dict):
     """Seed audit trail entries for customers, alerts, and cases."""
     NOW = datetime.utcnow()
-
-    # Get a few users for audit entries
-    analyst_user = next((u for u in user_map.values() if u.role.name == 'analyst'), None)
-    investigator_user = next((u for u in user_map.values() if u.role.name == 'investigator'), None)
-    compliance_user = next((u for u in user_map.values() if u.role.name == 'compliance'), None)
-    system_user = user_map.get(list(user_map.keys())[0])  # First user as fallback
-
-    users_for_audit = [analyst_user, investigator_user, compliance_user, system_user]
-    users_for_audit = [u for u in users_for_audit if u]  # Remove None values
-
-    audit_entries = []
+    users_list = list(user_map.values()) if user_map else []
+    if not users_list:
+        return
 
     # ─── Customer Audit Entries ───
-    for i, customer in enumerate(customers[:20]):  # Create for first 20 customers
+    for i, customer in enumerate(customers[:20]):
+        user = random.choice(users_list)
         base_time = NOW - timedelta(days=random.randint(1, 30))
-        user = random.choice(users_for_audit)
 
-        # Onboarding/KYC approval
-        audit_entries.append(AuditLog(
+        db.add(AuditLog(
             id=str(uuid.uuid4()),
             resource_type='customer',
             resource_id=customer.id,
             action='kyc_approved',
             user_id=user.id,
-            description=f'KYC review completed for {customer.full_name} - Documents verified',
-            details=json.dumps({'kyc_status': 'approved', 'verified_by': 'system'}),
+            details=json.dumps({'msg': f'KYC review completed for {customer.full_name}', 'status': 'approved'}),
             created_at=base_time,
             ip_address='192.168.1.100'
         ))
 
-        # Risk category update
         if i % 3 == 0:
-            audit_entries.append(AuditLog(
+            db.add(AuditLog(
                 id=str(uuid.uuid4()),
                 resource_type='customer',
                 resource_id=customer.id,
-                action='risk_category_updated',
+                action='risk_updated',
                 user_id=user.id,
-                description=f'Risk category updated to {customer.risk_category} based on transaction analysis',
-                details=json.dumps({'old_category': 'medium', 'new_category': customer.risk_category}),
+                details=json.dumps({'msg': f'Risk category updated to {customer.risk_category}', 'new': customer.risk_category}),
                 created_at=base_time + timedelta(days=5),
                 ip_address='192.168.1.100'
             ))
 
-        # Account activity
-        if i % 2 == 0:
-            audit_entries.append(AuditLog(
-                id=str(uuid.uuid4()),
-                resource_type='customer',
-                resource_id=customer.id,
-                action='account_flagged',
-                user_id=user.id,
-                description=f'Account activity review - Unusual transaction pattern detected',
-                details=json.dumps({'pattern': 'structuring', 'flag_count': 3}),
-                created_at=base_time + timedelta(days=10),
-                ip_address='192.168.1.101'
-            ))
-
     # ─── Alert Audit Entries ───
-    for alert in alerts[:30]:  # Create for first 30 alerts
+    for alert in alerts[:30]:
+        user = random.choice(users_list)
         base_time = NOW - timedelta(days=random.randint(1, 20))
-        user = random.choice(users_for_audit)
 
-        # Alert created
-        audit_entries.append(AuditLog(
+        db.add(AuditLog(
             id=str(uuid.uuid4()),
             resource_type='alert',
             resource_id=alert.id,
             action='created',
             user_id=user.id,
-            description=f'Alert {alert.alert_number} created by rule engine - {alert.title}',
-            details=json.dumps({'rule_id': alert.rule_id, 'priority': alert.priority}),
+            details=json.dumps({'msg': f'Alert created: {alert.title}', 'priority': alert.priority}),
             created_at=base_time,
-            ip_address='192.168.1.102'
+            ip_address='192.168.1.101'
         ))
 
-        # Alert assigned
-        if random.random() > 0.3:
-            audit_entries.append(AuditLog(
-                id=str(uuid.uuid4()),
-                resource_type='alert',
-                resource_id=alert.id,
-                action='assigned',
-                user_id=user.id,
-                description=f'Alert assigned to investigator for review',
-                details=json.dumps({'assigned_to': analyst_user.id if analyst_user else 'system'}),
-                created_at=base_time + timedelta(hours=2),
-                ip_address='192.168.1.102'
-            ))
-
-        # Alert status change
-        if alert.status != 'new':
-            audit_entries.append(AuditLog(
+        if random.random() > 0.5:
+            db.add(AuditLog(
                 id=str(uuid.uuid4()),
                 resource_type='alert',
                 resource_id=alert.id,
                 action='status_changed',
                 user_id=user.id,
-                description=f'Status changed to {alert.status}',
-                details=json.dumps({'old_status': 'new', 'new_status': alert.status}),
-                created_at=base_time + timedelta(days=1),
-                ip_address='192.168.1.102'
+                details=json.dumps({'msg': f'Status changed to {alert.status}', 'status': alert.status}),
+                created_at=base_time + timedelta(hours=2),
+                ip_address='192.168.1.101'
             ))
 
     # ─── Case Audit Entries ───
-    for case in cases[:15]:  # Create for first 15 cases
+    for case in cases[:15]:
+        user = random.choice(users_list)
         base_time = NOW - timedelta(days=random.randint(1, 15))
-        user = random.choice(users_for_audit)
 
-        # Case created
-        audit_entries.append(AuditLog(
+        db.add(AuditLog(
             id=str(uuid.uuid4()),
             resource_type='case',
             resource_id=case.id,
             action='created',
             user_id=user.id,
-            description=f'Case {case.case_number} created for customer investigation',
-            details=json.dumps({'case_type': case.case_type, 'priority': case.priority}),
+            details=json.dumps({'msg': f'Case created: {case.title}', 'type': case.case_type}),
             created_at=base_time,
-            ip_address='192.168.1.103'
+            ip_address='192.168.1.102'
         ))
 
-        # Case status update
-        if case.status != 'open':
-            audit_entries.append(AuditLog(
+        if random.random() > 0.6:
+            db.add(AuditLog(
                 id=str(uuid.uuid4()),
                 resource_type='case',
                 resource_id=case.id,
                 action='status_changed',
                 user_id=user.id,
-                description=f'Case status updated to {case.status}',
-                details=json.dumps({'old_status': 'open', 'new_status': case.status}),
-                created_at=base_time + timedelta(days=3),
-                ip_address='192.168.1.103'
+                details=json.dumps({'msg': f'Status changed to {case.status}', 'status': case.status}),
+                created_at=base_time + timedelta(days=2),
+                ip_address='192.168.1.102'
             ))
 
-        # Investigation notes
-        if random.random() > 0.4:
-            audit_entries.append(AuditLog(
-                id=str(uuid.uuid4()),
-                resource_type='case',
-                resource_id=case.id,
-                action='investigation_updated',
-                user_id=user.id,
-                description=f'Investigation findings documented',
-                details=json.dumps({'findings_count': random.randint(1, 5)}),
-                created_at=base_time + timedelta(days=5),
-                ip_address='192.168.1.103'
-            ))
-
-        # Case escalation
-        if random.random() > 0.6:
-            audit_entries.append(AuditLog(
-                id=str(uuid.uuid4()),
-                resource_type='case',
-                resource_id=case.id,
-                action='escalated',
-                user_id=user.id,
-                description=f'Case escalated to senior management',
-                details=json.dumps({'escalation_reason': 'high_value_transaction'}),
-                created_at=base_time + timedelta(days=7),
-                ip_address='192.168.1.103'
-            ))
-
-    # Add all audit entries to database
-    for entry in audit_entries:
-        db.add(entry)
-
-    print(f"    Created {len(audit_entries)} audit trail entries")
+    print(f"    Created audit entries for {len(customers[:20])} customers, {len(alerts[:30])} alerts, {len(cases[:15])} cases")
     db.flush()
 
 
