@@ -57,7 +57,8 @@
       "Bash(curl -s \"http://localhost:8000/health\")",
       "Bash(curl -s -X POST \"http://localhost:8000/api/v1/auth/login\" -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"Demo@2026\"}')",
       "Bash(ls -l \"d:/Claude Projects/EnterpriseRiskSystem/\"*.docx)",
-      "Bash(python -m py_compile app/api/customers.py)"
+      "Bash(python -m py_compile app/api/customers.py)",
+      "Bash(python -m py_compile app/seed/seed_all.py)"
     ]
   }
 }

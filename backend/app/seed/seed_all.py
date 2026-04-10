@@ -1997,6 +1997,181 @@ def seed_notification_rules(db: Session):
     db.flush()
 
 
+def seed_audit_trail(db: Session, customers: list, alerts: list, cases: list, user_map: dict):
+    """Seed audit trail entries for customers, alerts, and cases."""
+    NOW = datetime.utcnow()
+
+    # Get a few users for audit entries
+    analyst_user = next((u for u in user_map.values() if u.role.name == 'analyst'), None)
+    investigator_user = next((u for u in user_map.values() if u.role.name == 'investigator'), None)
+    compliance_user = next((u for u in user_map.values() if u.role.name == 'compliance'), None)
+    system_user = user_map.get(list(user_map.keys())[0])  # First user as fallback
+
+    users_for_audit = [analyst_user, investigator_user, compliance_user, system_user]
+    users_for_audit = [u for u in users_for_audit if u]  # Remove None values
+
+    audit_entries = []
+
+    # ─── Customer Audit Entries ───
+    for i, customer in enumerate(customers[:20]):  # Create for first 20 customers
+        base_time = NOW - timedelta(days=random.randint(1, 30))
+        user = random.choice(users_for_audit)
+
+        # Onboarding/KYC approval
+        audit_entries.append(AuditLog(
+            id=str(uuid.uuid4()),
+            resource_type='customer',
+            resource_id=customer.id,
+            action='kyc_approved',
+            user_id=user.id,
+            description=f'KYC review completed for {customer.full_name} - Documents verified',
+            details=json.dumps({'kyc_status': 'approved', 'verified_by': 'system'}),
+            created_at=base_time,
+            ip_address='192.168.1.100'
+        ))
+
+        # Risk category update
+        if i % 3 == 0:
+            audit_entries.append(AuditLog(
+                id=str(uuid.uuid4()),
+                resource_type='customer',
+                resource_id=customer.id,
+                action='risk_category_updated',
+                user_id=user.id,
+                description=f'Risk category updated to {customer.risk_category} based on transaction analysis',
+                details=json.dumps({'old_category': 'medium', 'new_category': customer.risk_category}),
+                created_at=base_time + timedelta(days=5),
+                ip_address='192.168.1.100'
+            ))
+
+        # Account activity
+        if i % 2 == 0:
+            audit_entries.append(AuditLog(
+                id=str(uuid.uuid4()),
+                resource_type='customer',
+                resource_id=customer.id,
+                action='account_flagged',
+                user_id=user.id,
+                description=f'Account activity review - Unusual transaction pattern detected',
+                details=json.dumps({'pattern': 'structuring', 'flag_count': 3}),
+                created_at=base_time + timedelta(days=10),
+                ip_address='192.168.1.101'
+            ))
+
+    # ─── Alert Audit Entries ───
+    for alert in alerts[:30]:  # Create for first 30 alerts
+        base_time = NOW - timedelta(days=random.randint(1, 20))
+        user = random.choice(users_for_audit)
+
+        # Alert created
+        audit_entries.append(AuditLog(
+            id=str(uuid.uuid4()),
+            resource_type='alert',
+            resource_id=alert.id,
+            action='created',
+            user_id=user.id,
+            description=f'Alert {alert.alert_number} created by rule engine - {alert.title}',
+            details=json.dumps({'rule_id': alert.rule_id, 'priority': alert.priority}),
+            created_at=base_time,
+            ip_address='192.168.1.102'
+        ))
+
+        # Alert assigned
+        if random.random() > 0.3:
+            audit_entries.append(AuditLog(
+                id=str(uuid.uuid4()),
+                resource_type='alert',
+                resource_id=alert.id,
+                action='assigned',
+                user_id=user.id,
+                description=f'Alert assigned to investigator for review',
+                details=json.dumps({'assigned_to': analyst_user.id if analyst_user else 'system'}),
+                created_at=base_time + timedelta(hours=2),
+                ip_address='192.168.1.102'
+            ))
+
+        # Alert status change
+        if alert.status != 'new':
+            audit_entries.append(AuditLog(
+                id=str(uuid.uuid4()),
+                resource_type='alert',
+                resource_id=alert.id,
+                action='status_changed',
+                user_id=user.id,
+                description=f'Status changed to {alert.status}',
+                details=json.dumps({'old_status': 'new', 'new_status': alert.status}),
+                created_at=base_time + timedelta(days=1),
+                ip_address='192.168.1.102'
+            ))
+
+    # ─── Case Audit Entries ───
+    for case in cases[:15]:  # Create for first 15 cases
+        base_time = NOW - timedelta(days=random.randint(1, 15))
+        user = random.choice(users_for_audit)
+
+        # Case created
+        audit_entries.append(AuditLog(
+            id=str(uuid.uuid4()),
+            resource_type='case',
+            resource_id=case.id,
+            action='created',
+            user_id=user.id,
+            description=f'Case {case.case_number} created for customer investigation',
+            details=json.dumps({'case_type': case.case_type, 'priority': case.priority}),
+            created_at=base_time,
+            ip_address='192.168.1.103'
+        ))
+
+        # Case status update
+        if case.status != 'open':
+            audit_entries.append(AuditLog(
+                id=str(uuid.uuid4()),
+                resource_type='case',
+                resource_id=case.id,
+                action='status_changed',
+                user_id=user.id,
+                description=f'Case status updated to {case.status}',
+                details=json.dumps({'old_status': 'open', 'new_status': case.status}),
+                created_at=base_time + timedelta(days=3),
+                ip_address='192.168.1.103'
+            ))
+
+        # Investigation notes
+        if random.random() > 0.4:
+            audit_entries.append(AuditLog(
+                id=str(uuid.uuid4()),
+                resource_type='case',
+                resource_id=case.id,
+                action='investigation_updated',
+                user_id=user.id,
+                description=f'Investigation findings documented',
+                details=json.dumps({'findings_count': random.randint(1, 5)}),
+                created_at=base_time + timedelta(days=5),
+                ip_address='192.168.1.103'
+            ))
+
+        # Case escalation
+        if random.random() > 0.6:
+            audit_entries.append(AuditLog(
+                id=str(uuid.uuid4()),
+                resource_type='case',
+                resource_id=case.id,
+                action='escalated',
+                user_id=user.id,
+                description=f'Case escalated to senior management',
+                details=json.dumps({'escalation_reason': 'high_value_transaction'}),
+                created_at=base_time + timedelta(days=7),
+                ip_address='192.168.1.103'
+            ))
+
+    # Add all audit entries to database
+    for entry in audit_entries:
+        db.add(entry)
+
+    print(f"    Created {len(audit_entries)} audit trail entries")
+    db.flush()
+
+
 # ─── Master Seeder ──────────────────────────────────────────────────────────
 
 def seed_all(db: Session):
@@ -2063,6 +2238,9 @@ def seed_all(db: Session):
 
     print("  Seeding notification rules...")
     seed_notification_rules(db)
+
+    print("  Seeding audit trail...")
+    seed_audit_trail(db, customers, alerts, cases, user_map)
 
     db.commit()
     print("  All seed data committed!")
