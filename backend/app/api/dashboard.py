@@ -245,7 +245,7 @@ def geographic_risk(db: Session = Depends(get_db), current_user: User = Depends(
             Customer.state,
             func.count(Customer.id).label("customers"),
             func.avg(Customer.risk_score).label("avg_risk"),
-            func.sum(sql_case((Customer.risk_category.in_(["high", "very_high"]), 1), else_=0)).label("high_risk_count"),
+            func.sum(sql_case((Customer.risk_category == "very_high", 1), else_=0)).label("high_risk_count"),
         )
         .filter(Customer.is_active == True, Customer.state.isnot(None))
         .group_by(Customer.state)
@@ -371,7 +371,7 @@ def risk_appetite(db: Session = Depends(get_db), current_user: User = Depends(ge
 
     total_customers = db.query(func.count(Customer.id)).filter(Customer.is_active == True).scalar() or 1
     high_risk = db.query(func.count(Customer.id)).filter(
-        Customer.is_active == True, Customer.risk_category.in_(["high", "very_high"])
+        Customer.is_active == True, Customer.risk_category == "very_high"
     ).scalar() or 0
     avg_portfolio_risk = db.query(func.avg(Customer.risk_score)).filter(Customer.is_active == True).scalar() or 0
 
