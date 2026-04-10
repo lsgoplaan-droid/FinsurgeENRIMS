@@ -6,7 +6,9 @@
       "Bash(alembic revision:*)",
       "Bash(alembic upgrade:*)",
       "Bash(timeout 5 python -m pytest tests/test_alerts.py::test_list_alerts -v)",
-      "Bash(python -m pytest tests/test_alerts.py::test_list_alerts -v --tb=short)"
+      "Bash(python -m pytest tests/test_alerts.py::test_list_alerts -v --tb=short)",
+      "Bash(python -c ':*)",
+      "Bash(python -m pytest tests/test_customers.py::test_list_customers -xvs)"
     ]
   }
 }

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from datetime import datetime, date
 
 
@@ -38,6 +38,16 @@ class CustomerResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @model_validator(mode="after")
+    def mask_pii_fields(self):
+        """D2: Mask PII fields in API responses to prevent exposure in list/detail views."""
+        from app.utils.encryption import mask_pan, mask_phone
+        if self.pan_number:
+            self.pan_number = mask_pan(self.pan_number)
+        if self.phone:
+            self.phone = mask_phone(self.phone)
+        return self
 
 
 class Customer360Response(BaseModel):
