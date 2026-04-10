@@ -1,0 +1,56 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Backend to Render
+        if: github.event_name == 'push'
+        run: |
+          curl https://api.render.com/deploy/srv-${{ secrets.RENDER_SERVICE_ID }}?key=${{ secrets.RENDER_DEPLOY_KEY }} -X POST
+        timeout-minutes: 30
+
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Verify health check
+        run: |
+          for i in {1..10}; do
+            if curl -f https://${{ secrets.RENDER_BACKEND_URL }}/health; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for deployment to be ready... (attempt $i/10)"
+            sleep 15
+          done
+          echo "Deployment verification timeout"
+          exit 1
+
+      - name: Slack notification
+        if: always()
+        uses: slackapi/slack-github-action@v1.24
+        with:
+          payload: |
+            {
+              "text": "Render deployment: ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Render Deployment*\nStatus: `${{ job.status }}`\nCommit: `${{ github.sha }}`\nAuthor: ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

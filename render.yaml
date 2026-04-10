@@ -1,0 +1,72 @@
+services:
+  # FinsurgeENRIMS Backend API
+  - type: web
+    name: finsurge-enrims-backend
+    runtime: python
+    plan: free  # Use 'standard' for production
+
+    root_dir: backend
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12
+
+      - key: SEED_ON_STARTUP
+        value: "true"
+
+      - key: DEBUG
+        value: "false"
+
+      - key: ENVIRONMENT
+        value: staging
+
+      - key: DATABASE_URL
+        fromDatabase:
+          name: finsurge-enrims-db
+          property: connectionString
+
+      - key: SECRET_KEY
+        sync: false
+
+      - key: PII_ENCRYPTION_KEY
+        sync: false
+
+      - key: CORS_ORIGINS
+        value: "https://finsurge-staging.netlify.app,http://localhost:5173,http://localhost:3000"
+
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel
+      pip install -r requirements.txt
+
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    healthCheckPath: /health
+    healthCheckInterval: 300  # 5 minutes
+
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+
+  # FinsurgeENRIMS PostgreSQL Database
+  - type: pserv
+    name: finsurge-enrims-db
+    plan: free  # Upgrade to 'standard' for production
+
+    envVars:
+      - key: POSTGRES_DB
+        value: finsurge_enrims
+
+      - key: POSTGRES_USER
+        value: finsurge_user
+
+      - key: POSTGRES_PASSWORD
+        sync: false
+
+    disk:
+      sizeGB: 10
+
+databases:
+  - name: finsurge-enrims-db
+    plan: free
+    version: "15"
