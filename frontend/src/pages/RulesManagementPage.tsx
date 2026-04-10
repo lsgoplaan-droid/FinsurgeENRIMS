@@ -50,6 +50,22 @@ function PrecisionBar({ value }: { value: number }) {
   )
 }
 
+const EMPTY_RULE_FORM = {
+  id: '',
+  name: '',
+  description: '',
+  category: 'fraud',
+  subcategory: '',
+  severity: 'medium',
+  priority: 30,
+  conditions: '{\n  "all": [\n    { "field": "amount", "operator": "greater_than", "value": 100000 }\n  ]\n}',
+  actions: '[\n  { "action": "create_alert", "params": { "title": "Suspicious activity" } }\n]',
+  time_window: '',
+  threshold_amount: '',
+  threshold_count: '',
+  is_enabled: true,
+}
+
 export default function RulesManagementPage() {
   const [rules, setRules] = useState<any[]>([])
   const [rulesSummary, setRulesSummary] = useState<any>({})
@@ -64,6 +80,10 @@ export default function RulesManagementPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedRule, setSelectedRule] = useState<any>(null)
   const [msg, setMsg] = useState('')
+  const [showRuleModal, setShowRuleModal] = useState(false)
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null)
+  const [ruleForm, setRuleForm] = useState(EMPTY_RULE_FORM)
+  const [savingRule, setSavingRule] = useState(false)
 
   const fetchData = () => {
     setLoading(true)
@@ -96,6 +116,82 @@ export default function RulesManagementPage() {
     api.post(`/rules-management/${ruleId}/duplicate`)
       .then(() => fetchData())
       .catch(() => {})
+  }
+
+  const openCreateRule = () => {
+    setEditingRuleId(null)
+    setRuleForm(EMPTY_RULE_FORM)
+    setShowRuleModal(true)
+  }
+
+  const openEditRule = (r: any) => {
+    setEditingRuleId(r.id)
+    setRuleForm({
+      id: r.id,
+      name: r.name || '',
+      description: r.description || '',
+      category: r.category || 'fraud',
+      subcategory: r.subcategory || '',
+      severity: r.severity || 'medium',
+      priority: r.priority || 30,
+      conditions: typeof r.conditions === 'string' ? r.conditions : JSON.stringify(r.conditions || {}, null, 2),
+      actions: typeof r.actions === 'string' ? r.actions : JSON.stringify(r.actions || [], null, 2),
+      time_window: r.time_window || '',
+      threshold_amount: r.threshold_amount?.toString() || '',
+      threshold_count: r.threshold_count?.toString() || '',
+      is_enabled: r.is_enabled ?? true,
+    })
+    setShowRuleModal(true)
+  }
+
+  const saveRule = () => {
+    setSavingRule(true)
+    let conditions, actions
+    try {
+      conditions = JSON.parse(ruleForm.conditions)
+      actions = JSON.parse(ruleForm.actions)
+    } catch (err) {
+      setMsg('Invalid JSON in conditions or actions')
+      setSavingRule(false)
+      return
+    }
+    const body = {
+      name: ruleForm.name,
+      description: ruleForm.description,
+      category: ruleForm.category,
+      subcategory: ruleForm.subcategory || null,
+      severity: ruleForm.severity,
+      priority: Number(ruleForm.priority),
+      conditions,
+      actions,
+      time_window: ruleForm.time_window || null,
+      threshold_amount: ruleForm.threshold_amount ? Number(ruleForm.threshold_amount) : null,
+      threshold_count: ruleForm.threshold_count ? Number(ruleForm.threshold_count) : null,
+      is_enabled: ruleForm.is_enabled,
+    }
+    const req = editingRuleId
+      ? api.put(`/rules-management/${editingRuleId}`, body)
+      : api.post('/rules-management/create', body)
+    req
+      .then(() => {
+        setMsg(editingRuleId ? 'Rule updated' : 'Rule created')
+        setShowRuleModal(false)
+        fetchData()
+        setTimeout(() => setMsg(''), 3000)
+      })
+      .catch(err => setMsg(err.response?.data?.detail || 'Failed to save rule'))
+      .finally(() => setSavingRule(false))
+  }
+
+  const deleteRule = (ruleId: string) => {
+    if (!confirm('Delete this rule? This cannot be undone (only allowed if no alerts are linked).')) return
+    api.delete(`/rules-management/${ruleId}`)
+      .then(() => {
+        setMsg('Rule deleted')
+        fetchData()
+        setTimeout(() => setMsg(''), 3000)
+      })
+      .catch(err => setMsg(err.response?.data?.detail || 'Failed to delete rule'))
   }
 
   if (loading) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
@@ -196,6 +292,13 @@ export default function RulesManagementPage() {
               </select>
               <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             </div>
+            <button
+              onClick={openCreateRule}
+              className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
+            >
+              <Plus size={14} />
+              New Rule
+            </button>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -244,7 +347,9 @@ export default function RulesManagementPage() {
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="flex items-center gap-1">
+                          <button onClick={() => openEditRule(r)} className="p-1 rounded hover:bg-blue-50" title="Edit"><Pencil size={13} className="text-blue-500" /></button>
                           <button onClick={() => duplicateRule(r.id)} className="p-1 rounded hover:bg-slate-100" title="Duplicate"><Copy size={13} className="text-slate-400" /></button>
+                          <button onClick={() => deleteRule(r.id)} className="p-1 rounded hover:bg-red-50" title="Delete"><Trash2 size={13} className="text-red-400" /></button>
                         </div>
                       </td>
                     </tr>
@@ -406,6 +511,146 @@ export default function RulesManagementPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create / Edit Rule Modal */}
+      {showRuleModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowRuleModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-slate-800 mb-4">{editingRuleId ? 'Edit Rule' : 'Create New Rule'}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={ruleForm.name}
+                  onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })}
+                  placeholder="e.g. R-FRD-099 — Cross-border high-value cash deposit"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Description</label>
+                <textarea
+                  value={ruleForm.description}
+                  onChange={e => setRuleForm({ ...ruleForm, description: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Category</label>
+                <select
+                  value={ruleForm.category}
+                  onChange={e => setRuleForm({ ...ruleForm, category: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                >
+                  <option value="fraud">Fraud</option>
+                  <option value="cyber_fraud">Cyber Fraud</option>
+                  <option value="ai_fraud">AI Fraud</option>
+                  <option value="internal_fraud">Internal Fraud</option>
+                  <option value="operational">Operational</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Subcategory</label>
+                <input
+                  type="text"
+                  value={ruleForm.subcategory}
+                  onChange={e => setRuleForm({ ...ruleForm, subcategory: e.target.value })}
+                  placeholder="e.g. card, upi, mule_account"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Severity</label>
+                <select
+                  value={ruleForm.severity}
+                  onChange={e => setRuleForm({ ...ruleForm, severity: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                >
+                  <option value="critical">Critical (4h SLA)</option>
+                  <option value="high">High (24h SLA)</option>
+                  <option value="medium">Medium (72h SLA)</option>
+                  <option value="low">Low (168h SLA)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Priority (lower = first)</label>
+                <input
+                  type="number"
+                  value={ruleForm.priority}
+                  onChange={e => setRuleForm({ ...ruleForm, priority: Number(e.target.value) })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Time Window</label>
+                <input
+                  type="text"
+                  value={ruleForm.time_window}
+                  onChange={e => setRuleForm({ ...ruleForm, time_window: e.target.value })}
+                  placeholder="e.g. 24h, 7d, 30d"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Threshold Amount (paise)</label>
+                <input
+                  type="number"
+                  value={ruleForm.threshold_amount}
+                  onChange={e => setRuleForm({ ...ruleForm, threshold_amount: e.target.value })}
+                  placeholder="100000 = ₹1000"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Conditions (JSON)</label>
+                <textarea
+                  value={ruleForm.conditions}
+                  onChange={e => setRuleForm({ ...ruleForm, conditions: e.target.value })}
+                  rows={6}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Actions (JSON)</label>
+                <textarea
+                  value={ruleForm.actions}
+                  onChange={e => setRuleForm({ ...ruleForm, actions: e.target.value })}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={ruleForm.is_enabled}
+                    onChange={e => setRuleForm({ ...ruleForm, is_enabled: e.target.checked })}
+                    className="accent-blue-600"
+                  />
+                  <span className="text-sm text-slate-700">Rule is active (will run on incoming transactions)</span>
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-slate-100">
+              <button
+                onClick={() => setShowRuleModal(false)}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={savingRule || !ruleForm.name.trim()}
+                onClick={saveRule}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40"
+              >
+                {savingRule ? 'Saving...' : (editingRuleId ? 'Update Rule' : 'Create Rule')}
+              </button>
             </div>
           </div>
         </div>

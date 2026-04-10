@@ -21,6 +21,9 @@ _DEFAULT_THRESHOLDS = {
 }
 _risk_thresholds: Dict[str, Dict[str, float]] = {k: dict(v) for k, v in _DEFAULT_THRESHOLDS.items()}
 
+# Audit log of threshold changes — each entry: {metric_id, warning, limit, evidence_url, changed_by, changed_at}
+_threshold_change_log: list = []
+
 
 def _get_risk_thresholds():
     return _risk_thresholds
@@ -30,6 +33,8 @@ class ThresholdUpdate(BaseModel):
     metric_id: str
     warning: Optional[float] = None
     limit: Optional[float] = None
+    evidence_url: Optional[str] = None
+    justification: Optional[str] = None
 
 
 @router.get("/risk-appetite/thresholds")
@@ -38,9 +43,15 @@ def get_thresholds(current_user: User = Depends(get_current_user)):
     return _risk_thresholds
 
 
+@router.get("/risk-appetite/thresholds/history")
+def get_threshold_history(current_user: User = Depends(get_current_user)):
+    """Get audit history of all threshold changes (with evidence URLs)."""
+    return {"history": _threshold_change_log, "total": len(_threshold_change_log)}
+
+
 @router.put("/risk-appetite/thresholds")
 def update_threshold(body: ThresholdUpdate, current_user: User = Depends(get_current_user)):
-    """Update a risk appetite threshold (CRO action)."""
+    """Update a risk appetite threshold (CRO action). Logs evidence_url for audit."""
     if body.metric_id not in _risk_thresholds:
         from fastapi import HTTPException
         raise HTTPException(400, f"Unknown metric: {body.metric_id}")
@@ -48,6 +59,16 @@ def update_threshold(body: ThresholdUpdate, current_user: User = Depends(get_cur
         _risk_thresholds[body.metric_id]["warning"] = body.warning
     if body.limit is not None:
         _risk_thresholds[body.metric_id]["limit"] = body.limit
+    # Append to immutable change log
+    _threshold_change_log.append({
+        "metric_id": body.metric_id,
+        "warning": _risk_thresholds[body.metric_id]["warning"],
+        "limit": _risk_thresholds[body.metric_id]["limit"],
+        "evidence_url": body.evidence_url,
+        "justification": body.justification,
+        "changed_by": current_user.full_name,
+        "changed_at": datetime.utcnow().isoformat(),
+    })
     return {"metric_id": body.metric_id, **_risk_thresholds[body.metric_id]}
 
 
@@ -143,8 +164,12 @@ def executive_dashboard(db: Session = Depends(get_db), current_user: User = Depe
     )
     analyst_workload = [{"name": name, "open_alerts": cnt} for name, cnt in workload]
 
-    # SLA compliance
-    overdue_alerts = db.query(func.count(Alert.id)).filter(Alert.is_overdue == True).scalar() or 0
+    # SLA compliance — calculate overdue dynamically: sla_due_at has passed
+    overdue_alerts = db.query(func.count(Alert.id)).filter(
+        Alert.sla_due_at.isnot(None),
+        Alert.sla_due_at < now,
+        ~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+    ).scalar() or 0
     total_active = db.query(func.count(Alert.id)).filter(
         ~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
     ).scalar() or 1

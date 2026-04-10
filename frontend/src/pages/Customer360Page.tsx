@@ -54,6 +54,7 @@ export default function Customer360Page() {
   const accounts = data.accounts || customer.accounts || []
   const transactions = data.transactions || data.recent_transactions || []
   const alerts = data.alerts || data.recent_alerts || []
+  const cases = data.cases || customer.cases || []
   const kycInfo = data.kyc || customer.kyc || null
 
   const tabs: { key: Tab; label: string; icon: typeof User }[] = [
@@ -231,39 +232,87 @@ export default function Customer360Page() {
 
       {/* Alerts & Cases */}
       {tab === 'alerts' && (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Alert#</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Priority</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Title</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
-                  <th className="text-left py-2.5 px-3 font-medium text-slate-600">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {alerts.map((a: any) => (
-                  <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
-                    <td className="py-2.5 px-3">
-                      <Link to={`/alerts/${a.id}`} className="text-blue-600 hover:underline font-mono text-xs">{a.alert_number || a.id}</Link>
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <Badge text={a.priority || '-'} colors={priorityColors[a.priority] || 'bg-gray-100 text-gray-800'} />
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-700">{a.title || '-'}</td>
-                    <td className="py-2.5 px-3">
-                      <Badge text={a.status || '-'} colors={statusColors[a.status] || 'bg-gray-100 text-gray-800'} />
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-500 text-xs">{formatDateTime(a.created_at)}</td>
+        <div className="space-y-4">
+          {/* Alerts */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-700">Alerts ({alerts.length})</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Alert#</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Priority</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Title</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Created</th>
                   </tr>
-                ))}
-                {alerts.length === 0 && (
-                  <tr><td colSpan={5} className="py-12 text-center text-slate-400">No alerts or cases</td></tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {alerts.map((a: any) => (
+                    <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
+                      <td className="py-2.5 px-3">
+                        <Link to={`/alerts/${a.id}`} className="text-blue-600 hover:underline font-mono text-xs">{a.alert_number || a.id}</Link>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Badge text={a.priority || '-'} colors={priorityColors[a.priority] || 'bg-gray-100 text-gray-800'} />
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-700">{a.title || '-'}</td>
+                      <td className="py-2.5 px-3">
+                        <Badge text={a.status || '-'} colors={statusColors[a.status] || 'bg-gray-100 text-gray-800'} />
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-500 text-xs">{formatDateTime(a.created_at)}</td>
+                    </tr>
+                  ))}
+                  {alerts.length === 0 && (
+                    <tr><td colSpan={5} className="py-8 text-center text-slate-400">No alerts</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Cases */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-700">Cases ({cases.length})</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Case#</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Priority</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Title</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Type</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
+                    <th className="text-left py-2.5 px-3 font-medium text-slate-600">Created</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cases.map((c: any) => (
+                    <tr key={c.id} className="border-t border-slate-100 hover:bg-slate-50">
+                      <td className="py-2.5 px-3">
+                        <Link to={`/cases/${c.id}`} className="text-blue-600 hover:underline font-mono text-xs">{c.case_number || c.id}</Link>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Badge text={c.priority || '-'} colors={priorityColors[c.priority] || 'bg-gray-100 text-gray-800'} />
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-700">{c.title || '-'}</td>
+                      <td className="py-2.5 px-3 text-slate-600 text-xs">{(c.case_type || '-').replace(/_/g, ' ')}</td>
+                      <td className="py-2.5 px-3">
+                        <Badge text={c.status || '-'} colors={statusColors[c.status] || 'bg-gray-100 text-gray-800'} />
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-500 text-xs">{formatDateTime(c.created_at)}</td>
+                    </tr>
+                  ))}
+                  {cases.length === 0 && (
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-400">No cases</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

@@ -44,8 +44,12 @@ def fraud_summary(db: Session = Depends(get_db), current_user: User = Depends(ge
     true_positive_rate = round(closed_tp / closed_total * 100, 1) if closed_total > 0 else 0
     false_positive_rate = round(closed_fp / closed_total * 100, 1) if closed_total > 0 else 0
 
-    # SLA compliance
-    overdue = db.query(func.count(Alert.id)).filter(Alert.is_overdue == True).scalar() or 0
+    # SLA compliance — calculate overdue dynamically: sla_due_at has passed
+    overdue = db.query(func.count(Alert.id)).filter(
+        Alert.sla_due_at.isnot(None),
+        Alert.sla_due_at < now,
+        ~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
+    ).scalar() or 0
     open_alerts = db.query(func.count(Alert.id)).filter(
         ~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
     ).scalar() or 1

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Search, Plus, Briefcase,
-  AlertTriangle, FileText, Clock, LayoutGrid, List
+  AlertTriangle, FileText, Clock, LayoutGrid, List, Filter
 } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDate, priorityColors, statusColors } from '../utils/formatters'
@@ -107,6 +107,12 @@ export default function CasesPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const initialStatus = searchParams.get('status') || ''
+  const initialCaseType = searchParams.get('case_type') || ''
+  const initialPriority = searchParams.get('priority') || ''
+  const initialAssigned = searchParams.get('assigned_to') || ''
+  const initialMinAmt = searchParams.get('min_amount') || ''
+  const initialMaxAmt = searchParams.get('max_amount') || ''
+  const initialDate = searchParams.get('date') || ''
   const [cases, setCases] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -121,12 +127,26 @@ export default function CasesPage() {
   const [custSearch, setCustSearch] = useState('')
   const [creating, setCreating] = useState(false)
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card')
+  // Extra filters
+  const [caseType, setCaseType] = useState(initialCaseType)
+  const [priority, setPriority] = useState(initialPriority)
+  const [assignedTo, setAssignedTo] = useState(initialAssigned)
+  const [minAmount, setMinAmount] = useState(initialMinAmt)
+  const [maxAmount, setMaxAmount] = useState(initialMaxAmt)
+  const [dateFilter, setDateFilter] = useState(initialDate)
+  const [users, setUsers] = useState<any[]>([])
 
   const fetchData = useCallback(() => {
     setLoading(true)
     const params: any = { page, page_size: 18 }
     if (tab) params.status = tab
     if (search) params.search = search
+    if (caseType) params.case_type = caseType
+    if (priority) params.priority = priority
+    if (assignedTo) params.assigned_to = assignedTo
+    if (dateFilter) params.date = dateFilter
+    if (minAmount) params.min_amount = Number(minAmount) * 100  // INR → paise
+    if (maxAmount) params.max_amount = Number(maxAmount) * 100
 
     api.get('/cases', { params })
       .then(res => {
@@ -137,7 +157,7 @@ export default function CasesPage() {
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load cases'))
       .finally(() => setLoading(false))
-  }, [page, tab, search])
+  }, [page, tab, search, caseType, priority, assignedTo, dateFilter, minAmount, maxAmount])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -175,20 +195,75 @@ export default function CasesPage() {
         ))}
       </div>
 
-      {/* Search + View toggle */}
+      {/* Search + Filters + View toggle */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex-1 relative max-w-md">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-[220px] max-w-md relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1) }}
-              placeholder="Search cases by number, customer, or type..."
+              placeholder="Search by case#, title, or customer..."
               className="w-full pl-9 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg text-slate-700"
             />
           </div>
-          <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden">
+          <Filter size={14} className="text-slate-400" />
+          <select value={priority} onChange={e => { setPriority(e.target.value); setPage(1) }} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white">
+            <option value="">All Priority</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+          <select value={caseType} onChange={e => { setCaseType(e.target.value); setPage(1) }} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white">
+            <option value="">All Types</option>
+            <option value="fraud_investigation">Fraud Investigation</option>
+            <option value="cyber_fraud">Cyber Fraud</option>
+            <option value="internal_fraud">Internal Fraud</option>
+            <option value="compliance_review">Compliance Review</option>
+          </select>
+          <select value={dateFilter} onChange={e => { setDateFilter(e.target.value); setPage(1) }} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white">
+            <option value="">Any Date</option>
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="week">Last 7 Days</option>
+          </select>
+          <select
+            value={assignedTo}
+            onChange={e => { setAssignedTo(e.target.value); setPage(1) }}
+            onFocus={() => { if (users.length === 0) api.get('/admin/users').then(r => setUsers(r.data || [])).catch(() => {}) }}
+            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white"
+          >
+            <option value="">All Assignees</option>
+            <option value="me">Assigned to Me</option>
+            {users.filter(u => u.is_active).map((u: any) => (
+              <option key={u.id} value={u.id}>{u.full_name}</option>
+            ))}
+          </select>
+          <input
+            type="number"
+            value={minAmount}
+            onChange={e => { setMinAmount(e.target.value); setPage(1) }}
+            placeholder="Min ₹"
+            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white w-24"
+          />
+          <input
+            type="number"
+            value={maxAmount}
+            onChange={e => { setMaxAmount(e.target.value); setPage(1) }}
+            placeholder="Max ₹"
+            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white w-24"
+          />
+          {(priority || caseType || dateFilter || assignedTo || minAmount || maxAmount) && (
+            <button
+              onClick={() => { setPriority(''); setCaseType(''); setDateFilter(''); setAssignedTo(''); setMinAmount(''); setMaxAmount(''); setPage(1) }}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
+          <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden ml-auto">
             <button onClick={() => setViewMode('card')} className={`p-2 ${viewMode === 'card' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}><LayoutGrid size={16} /></button>
             <button onClick={() => setViewMode('list')} className={`p-2 ${viewMode === 'list' ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}><List size={16} /></button>
           </div>

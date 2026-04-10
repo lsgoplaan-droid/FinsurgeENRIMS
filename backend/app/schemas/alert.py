@@ -41,10 +41,22 @@ class AlertAssign(BaseModel):
 class AlertClose(BaseModel):
     disposition: str  # true_positive, false_positive, inconclusive
     reason: str
+    evidence_url: str | None = None
 
 
 class AlertNote(BaseModel):
     note: str
+
+
+class AlertCreate(BaseModel):
+    customer_id: str
+    alert_type: str = "manual"
+    priority: str = "medium"
+    title: str
+    description: str | None = None
+    risk_score: float = 50.0
+    transaction_id: str | None = None
+    account_id: str | None = None
 
 
 class AlertStats(BaseModel):

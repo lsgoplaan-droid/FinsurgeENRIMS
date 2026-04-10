@@ -64,17 +64,25 @@ export default function RiskHeatmapPage() {
     setStateCases([])
     if (state) {
       setCasesLoading(true)
-      // Fetch customers in state, then find their cases
-      api.get('/customers', { params: { search: state.state, page_size: 100 } })
+      // Fetch ALL customers in this state (server-side filter, not name-search), then their cases
+      api.get('/customers', { params: { state: state.state, page_size: 100 } })
         .then(res => {
-          const customers = res.data?.items || []
-          const stateCustomers = customers.filter((c: any) => c.state === state.state)
+          const stateCustomers = res.data?.items || []
           const customerIds = stateCustomers.map((c: any) => c.id)
-          // Fetch cases and filter by customer IDs in this state
-          return api.get('/cases', { params: { page_size: 50 } }).then(casesRes => {
-            const allCases = casesRes.data?.items || []
-            const filtered = allCases.filter((c: any) => customerIds.includes(c.customer_id))
-            setStateCases(filtered)
+          if (customerIds.length === 0) {
+            setStateCases([])
+            return
+          }
+          // Fetch cases for each customer in parallel — this matches the heatmap count exactly
+          return Promise.all(
+            customerIds.map((cid: string) =>
+              api.get('/cases', { params: { customer_id: cid, page_size: 20 } })
+                .then(r => r.data?.items || [])
+                .catch(() => [])
+            )
+          ).then(results => {
+            const flat = results.flat()
+            setStateCases(flat)
           })
         })
         .catch(() => {})
@@ -267,12 +275,22 @@ export default function RiskHeatmapPage() {
                   </div>
                 ))}
               </div>
-              <Link
-                to={`/customers?state=${selectedState.state}&risk_category=high`}
-                className="inline-flex items-center gap-1 mt-3 text-xs text-blue-700 font-medium hover:underline"
-              >
-                View high-risk customers in {selectedState.state} <ChevronRight size={12} />
-              </Link>
+              <div className="flex items-center gap-3 mt-3">
+                <Link
+                  to={`/customers?state=${encodeURIComponent(selectedState.state)}`}
+                  className="inline-flex items-center gap-1 text-xs text-blue-700 font-medium hover:underline"
+                >
+                  View all {selectedState.customers} customers <ChevronRight size={12} />
+                </Link>
+                {selectedState.high_risk_count > 0 && (
+                  <Link
+                    to={`/customers?state=${encodeURIComponent(selectedState.state)}&risk_category=high`}
+                    className="inline-flex items-center gap-1 text-xs text-red-700 font-medium hover:underline"
+                  >
+                    {selectedState.high_risk_count} high-risk only <ChevronRight size={12} />
+                  </Link>
+                )}
+              </div>
 
               {/* Cases in this state */}
               <div className="mt-4 pt-3 border-t border-blue-100">

@@ -1,7 +1,19 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, Shield, AlertTriangle, Activity, Eye, EyeOff } from 'lucide-react'
+import { BookOpen, Shield, AlertTriangle, Activity, Plus, Pencil, Trash2, X } from 'lucide-react'
 import api from '../config/api'
 import { formatNumber } from '../utils/formatters'
+
+const EMPTY_TYPOLOGY = {
+  name: '',
+  category: 'Fraud',
+  subcategory: '',
+  risk: 'medium',
+  status: 'active',
+  description: '',
+  fatf_reference: '',
+  indicators: '',  // newline-separated in form, converted to array on save
+  rules_count: 0,
+}
 
 const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
@@ -35,11 +47,15 @@ export default function FraudScenariosPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [tab, setTab] = useState('')
+  const [showModal, setShowModal] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<any>(EMPTY_TYPOLOGY)
+  const [saving, setSaving] = useState(false)
+  const [actionMsg, setActionMsg] = useState('')
 
-  useEffect(() => {
+  const fetchData = () => {
     setLoading(true)
     setError('')
-
     const params: any = {}
     if (tab) params.category = tab
 
@@ -55,7 +71,66 @@ export default function FraudScenariosPage() {
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load fraud scenarios'))
       .finally(() => setLoading(false))
-  }, [tab])
+  }
+
+  useEffect(() => { fetchData() }, [tab])
+
+  const openCreate = () => {
+    setEditingId(null)
+    setForm({ ...EMPTY_TYPOLOGY })
+    setShowModal(true)
+  }
+
+  const openEdit = (typ: any) => {
+    setEditingId(typ.id)
+    setForm({
+      name: typ.name || '',
+      category: typ.category || 'Fraud',
+      subcategory: typ.subcategory || '',
+      risk: typ.risk || typ.risk_level || 'medium',
+      status: typ.status || 'active',
+      description: typ.description || '',
+      fatf_reference: typ.fatf_reference || '',
+      indicators: (typ.indicators || []).join('\n'),
+      rules_count: typ.rules_count || 0,
+    })
+    setShowModal(true)
+  }
+
+  const saveTypology = () => {
+    setSaving(true)
+    const payload = {
+      ...form,
+      rules_count: Number(form.rules_count) || 0,
+      indicators: form.indicators
+        .split('\n')
+        .map((s: string) => s.trim())
+        .filter(Boolean),
+    }
+    const req = editingId
+      ? api.put(`/fraud-scenarios/typologies/${editingId}`, payload)
+      : api.post('/fraud-scenarios/typologies', payload)
+    req
+      .then(() => {
+        setShowModal(false)
+        setActionMsg(editingId ? 'Typology updated' : 'Typology created')
+        setTimeout(() => setActionMsg(''), 3000)
+        fetchData()
+      })
+      .catch(err => setActionMsg(err.response?.data?.detail || 'Save failed'))
+      .finally(() => setSaving(false))
+  }
+
+  const deleteTypology = (id: string) => {
+    if (!window.confirm('Delete this typology? This cannot be undone.')) return
+    api.delete(`/fraud-scenarios/typologies/${id}`)
+      .then(() => {
+        setActionMsg('Typology deleted')
+        setTimeout(() => setActionMsg(''), 3000)
+        fetchData()
+      })
+      .catch(() => setActionMsg('Delete failed'))
+  }
 
   if (loading && !stats) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
   if (error && !stats) return <div className="flex items-center justify-center h-full text-red-500">{error}</div>
@@ -86,7 +161,7 @@ export default function FraudScenariosPage() {
         ))}
       </div>
 
-      {/* Filter tabs */}
+      {/* Filter tabs + new button */}
       <div className="flex items-center gap-2 flex-wrap">
         {TABS.map(t => (
           <button
@@ -101,7 +176,20 @@ export default function FraudScenariosPage() {
             {t.label}
           </button>
         ))}
+        <button
+          onClick={openCreate}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
+        >
+          <Plus size={14} /> New Typology
+        </button>
       </div>
+
+      {actionMsg && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center justify-between">
+          <span>{actionMsg}</span>
+          <button onClick={() => setActionMsg('')}><X size={14} /></button>
+        </div>
+      )}
 
       {/* Typology cards grid */}
       {loading ? (
@@ -126,10 +214,26 @@ export default function FraudScenariosPage() {
                     )}
                   </div>
                 </div>
-                <Badge
-                  text={typ.risk_level || 'medium'}
-                  colors={riskBadgeColors[typ.risk_level?.toLowerCase()] || 'bg-gray-100 text-gray-800'}
-                />
+                <div className="flex items-center gap-1.5">
+                  <Badge
+                    text={typ.risk || typ.risk_level || 'medium'}
+                    colors={riskBadgeColors[(typ.risk || typ.risk_level || '').toLowerCase()] || 'bg-gray-100 text-gray-800'}
+                  />
+                  <button
+                    onClick={() => openEdit(typ)}
+                    className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                    title="Edit typology"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                  <button
+                    onClick={() => deleteTypology(typ.id)}
+                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    title="Delete typology"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               </div>
 
               {/* Description */}
@@ -181,6 +285,142 @@ export default function FraudScenariosPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Create / Edit Typology Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-slate-800">{editingId ? 'Edit Typology' : 'New Typology'}</h2>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. UPI Collect Request Fraud"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Category</label>
+                  <select
+                    value={form.category}
+                    onChange={e => setForm({ ...form, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  >
+                    <option value="Fraud">Fraud</option>
+                    <option value="AML">AML</option>
+                    <option value="Compliance">Compliance</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Subcategory</label>
+                  <input
+                    type="text"
+                    value={form.subcategory}
+                    onChange={e => setForm({ ...form, subcategory: e.target.value })}
+                    placeholder="e.g. Digital Payment"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Risk Level</label>
+                  <select
+                    value={form.risk}
+                    onChange={e => setForm({ ...form, risk: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  >
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Description <span className="text-red-500">*</span></label>
+                <textarea
+                  value={form.description}
+                  onChange={e => setForm({ ...form, description: e.target.value })}
+                  rows={3}
+                  placeholder="Brief description of the typology and how it works..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">FATF Reference</label>
+                  <input
+                    type="text"
+                    value={form.fatf_reference}
+                    onChange={e => setForm({ ...form, fatf_reference: e.target.value })}
+                    placeholder="e.g. FATF Typology 2024"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Linked Rules Count</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.rules_count}
+                    onChange={e => setForm({ ...form, rules_count: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Indicators (one per line)</label>
+                <textarea
+                  value={form.indicators}
+                  onChange={e => setForm({ ...form, indicators: e.target.value })}
+                  rows={4}
+                  placeholder={"Multiple cash deposits below threshold\nDifferent branches same day\nNo business justification"}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Status</label>
+                <select
+                  value={form.status}
+                  onChange={e => setForm({ ...form, status: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={saving || !form.name.trim() || !form.description.trim()}
+                onClick={saveTypology}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : (editingId ? 'Update' : 'Create')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -25,6 +25,7 @@ const channelIcons: Record<string, any> = {
 
 export default function FraudDetectionPage() {
   const [dashboard, setDashboard] = useState<any>(null)
+  const [fraudMetrics, setFraudMetrics] = useState<any>(null)
   const [rules, setRules] = useState<any[]>([])
   const [liveFeed, setLiveFeed] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,16 +33,28 @@ export default function FraudDetectionPage() {
   const [drillDown, setDrillDown] = useState<{ title: string; data: any[] } | null>(null)
   const navigate = useNavigate()
 
+  // Get month-to-date date range for metrics matching
+  const getMTDDates = () => {
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    return {
+      dateFrom: monthStart.toISOString().split('T')[0],
+      dateTo: now.toISOString().split('T')[0],
+    }
+  }
+
   const fetchData = () => {
     setLoading(true)
     Promise.allSettled([
       api.get('/fraud-detection/dashboard'),
       api.get('/fraud-detection/rules'),
       api.get('/fraud-detection/live-feed?page_size=15'),
-    ]).then(([dashRes, rulesRes, feedRes]) => {
+      api.get('/fraud-metrics/summary'),
+    ]).then(([dashRes, rulesRes, feedRes, metricsRes]) => {
       if (dashRes.status === 'fulfilled') setDashboard(dashRes.value.data)
       if (rulesRes.status === 'fulfilled') setRules(rulesRes.value.data)
       if (feedRes.status === 'fulfilled') setLiveFeed(feedRes.value.data.items || [])
+      if (metricsRes.status === 'fulfilled') setFraudMetrics(metricsRes.value.data)
     }).finally(() => setLoading(false))
   }
 
@@ -91,11 +104,19 @@ export default function FraudDetectionPage() {
       {tab === 'overview' && (
         <div className="space-y-6">
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
             {[
-              { label: 'Fraud Alerts Today', value: dashboard.fraud_alerts_today, color: 'text-red-600', icon: AlertTriangle, onClick: () => navigate('/alerts') },
-              { label: 'Open Fraud Alerts', value: dashboard.open_fraud_alerts, color: 'text-amber-600', icon: Zap, onClick: () => navigate('/alerts') },
-              { label: 'Active Fraud Cases', value: dashboard.active_fraud_cases, color: 'text-blue-600', icon: Shield, onClick: () => navigate('/cases') },
+              { label: 'Fraud Loss (MTD)', value: formatINR(fraudMetrics?.fraud_loss?.monthly || 0), color: 'text-red-700', icon: TrendingUp, onClick: () => {
+                const { dateFrom, dateTo } = getMTDDates()
+                navigate(`/transactions?is_flagged=true&date_from=${dateFrom}&date_to=${dateTo}`)
+              } },
+              // Drill-down URLs match the dashboard counts exactly:
+              // - "Fraud Alerts Today" counts ALL fraud alerts created today (any status)
+              // - "Open Fraud Alerts" counts ALL fraud alerts not in a closed* status (status=open)
+              // - "Active Fraud Cases" counts fraud_investigation cases not in closed* status
+              { label: 'Fraud Alerts Today', value: dashboard.fraud_alerts_today, color: 'text-red-600', icon: AlertTriangle, onClick: () => navigate('/alerts?date=today&alert_type=fraud') },
+              { label: 'Open Fraud Alerts', value: dashboard.open_fraud_alerts, color: 'text-amber-600', icon: Zap, onClick: () => navigate('/alerts?status=open&alert_type=fraud') },
+              { label: 'Active Fraud Cases', value: dashboard.active_fraud_cases, color: 'text-blue-600', icon: Shield, onClick: () => navigate('/cases?status=open&case_type=fraud_investigation') },
               { label: 'Flagged Txns Today', value: dashboard.flagged_transactions_today, color: 'text-purple-600', icon: TrendingUp, onClick: () => setTab('live') },
               { label: 'Amount at Risk (7d)', value: formatINR(dashboard.amount_at_risk || 0), color: 'text-red-700', icon: CreditCard, onClick: () => setTab('live') },
             ].map((kpi, i) => (

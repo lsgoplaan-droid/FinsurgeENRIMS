@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Case, CaseActivity, CaseEvidence as CaseEvidenceModel, Customer, User, Alert, case_alerts
@@ -55,6 +55,9 @@ def list_cases(
     assigned_to: str = Query(None),
     customer_id: str = Query(None),
     search: str = Query(None),
+    date: str = Query(None, description="today | yesterday | week | YYYY-MM-DD"),
+    min_amount: float = Query(None, description="Minimum suspicious amount in paise"),
+    max_amount: float = Query(None, description="Maximum suspicious amount in paise"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -63,6 +66,9 @@ def list_cases(
     if status:
         if status == "closed":
             query = query.filter(Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+        elif status == "open":
+            # All non-closed statuses — matches the dashboard "open" count semantics
+            query = query.filter(~Case.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
         elif "," in status:
             statuses = [s.strip() for s in status.split(",") if s.strip()]
             query = query.filter(Case.status.in_(statuses))
@@ -80,7 +86,41 @@ def list_cases(
     if customer_id:
         query = query.filter(Case.customer_id == customer_id)
     if search:
-        query = query.filter(Case.title.ilike(f"%{search}%"))
+        # Search by title, case_number, or customer name (first/last/company/cif)
+        cust_ids_subq = db.query(Customer.id).filter(or_(
+            Customer.first_name.ilike(f"%{search}%"),
+            Customer.last_name.ilike(f"%{search}%"),
+            Customer.company_name.ilike(f"%{search}%"),
+            Customer.customer_number.ilike(f"%{search}%"),
+        ))
+        query = query.filter(or_(
+            Case.title.ilike(f"%{search}%"),
+            Case.case_number.ilike(f"%{search}%"),
+            Case.customer_id.in_(cust_ids_subq),
+        ))
+
+    # Date filter — semantic values + ISO date
+    if date:
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if date == "today":
+            query = query.filter(Case.created_at >= today_start)
+        elif date == "yesterday":
+            y_start = today_start - timedelta(days=1)
+            query = query.filter(Case.created_at >= y_start, Case.created_at < today_start)
+        elif date == "week":
+            query = query.filter(Case.created_at >= today_start - timedelta(days=7))
+        else:
+            try:
+                d = datetime.fromisoformat(date)
+                query = query.filter(Case.created_at >= d, Case.created_at < d + timedelta(days=1))
+            except ValueError:
+                pass
+
+    if min_amount is not None:
+        query = query.filter(Case.total_suspicious_amount >= min_amount)
+    if max_amount is not None:
+        query = query.filter(Case.total_suspicious_amount <= max_amount)
 
     total = query.count()
     cases = query.order_by(Case.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()

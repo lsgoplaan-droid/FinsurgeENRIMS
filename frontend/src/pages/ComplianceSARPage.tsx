@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, AlertTriangle, Users, Clock, Shield, CheckCircle } from 'lucide-react'
+import { FileText, AlertTriangle, Users, Clock, Shield, CheckCircle, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import api from '../config/api'
 import { formatNumber, formatINR, formatDate } from '../utils/formatters'
@@ -29,6 +29,7 @@ export default function ComplianceSARPage() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [downloading, setDownloading] = useState<string | null>(null)
 
   useEffect(() => {
     api.get('/compliance/dashboard')
@@ -36,6 +37,29 @@ export default function ComplianceSARPage() {
       .catch(err => setError(err.response?.data?.detail || 'Failed to load compliance dashboard'))
       .finally(() => setLoading(false))
   }, [])
+
+  const downloadFiling = (f: any) => {
+    if (!f.id) {
+      alert('This filing has no document on file yet')
+      return
+    }
+    setDownloading(f.id)
+    const filingType = (f.type || f.report_type || 'CTR').toLowerCase()
+    api.get(`/compliance/filings/${filingType}/${f.id}/download`, { responseType: 'blob' })
+      .then(res => {
+        const blob = new Blob([res.data], { type: 'text/plain' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${f.report_number || f.id}.txt`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
+      })
+      .catch(() => alert('Failed to download filing'))
+      .finally(() => setDownloading(null))
+  }
 
   if (loading) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
   if (error) return <div className="flex items-center justify-center h-full text-red-500">{error}</div>
@@ -178,6 +202,7 @@ export default function ComplianceSARPage() {
                 <th className="text-right py-2.5 px-3 font-medium text-slate-600">Amount</th>
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">Filed Date</th>
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
+                <th className="text-right py-2.5 px-3 font-medium text-slate-600">Document</th>
               </tr>
             </thead>
             <tbody>
@@ -203,10 +228,21 @@ export default function ComplianceSARPage() {
                       colors={statusBadgeColors[f.status] || 'bg-gray-100 text-gray-800'}
                     />
                   </td>
+                  <td className="py-2.5 px-3 text-right">
+                    <button
+                      onClick={() => downloadFiling(f)}
+                      disabled={downloading === f.id || !f.id}
+                      title={f.id ? 'Download filed document' : 'Document not yet available'}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Download size={12} />
+                      {downloading === f.id ? 'Downloading...' : 'Download'}
+                    </button>
+                  </td>
                 </tr>
               ))}
               {recentFilings.length === 0 && (
-                <tr><td colSpan={6} className="py-12 text-center text-slate-400">No recent filings</td></tr>
+                <tr><td colSpan={7} className="py-12 text-center text-slate-400">No recent filings</td></tr>
               )}
             </tbody>
           </table>

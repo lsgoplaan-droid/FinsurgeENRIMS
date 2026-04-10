@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import Alert, AlertNote as AlertNoteModel, Customer, User, Case, case_alerts
-from app.schemas.alert import AlertResponse, AlertAssign, AlertClose, AlertNote as AlertNoteSchema, AlertStats
+from app.models import Alert, AlertNote as AlertNoteModel, Customer, User, Case, Transaction, case_alerts
+from app.schemas.alert import AlertResponse, AlertAssign, AlertClose, AlertNote as AlertNoteSchema, AlertStats, AlertCreate
 
 router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
@@ -18,6 +18,10 @@ def _alert_response(a: Alert, db: Session) -> AlertResponse:
         for n in (a.notes or [])
     ]
     rule_name = a.rule.name if a.rule else None
+    # Calculate is_overdue dynamically: alert is overdue if SLA due date has passed
+    is_overdue = False
+    if a.sla_due_at and datetime.utcnow() > a.sla_due_at:
+        is_overdue = True
     return AlertResponse(
         id=a.id,
         alert_number=a.alert_number,
@@ -38,7 +42,7 @@ def _alert_response(a: Alert, db: Session) -> AlertResponse:
         assignee_name=assignee.full_name if assignee else None,
         assigned_at=a.assigned_at,
         sla_due_at=a.sla_due_at,
-        is_overdue=a.is_overdue or False,
+        is_overdue=is_overdue,
         case_id=a.case_id,
         closure_reason=a.closure_reason,
         closed_at=a.closed_at,
@@ -59,6 +63,10 @@ def list_alerts(
     customer_id: str = Query(None),
     is_overdue: bool = Query(None),
     search: str = Query(None),
+    date: str = Query(None, description="today | yesterday | week | YYYY-MM-DD"),
+    created_after: str = Query(None, description="ISO datetime"),
+    min_amount: float = Query(None, description="Minimum transaction amount in paise"),
+    max_amount: float = Query(None, description="Maximum transaction amount in paise"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -67,6 +75,9 @@ def list_alerts(
     if status:
         if status == "closed":
             query = query.filter(Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
+        elif status == "open":
+            # All non-closed statuses — matches the dashboard "open" count semantics
+            query = query.filter(~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]))
         elif "," in status:
             statuses = [s.strip() for s in status.split(",") if s.strip()]
             query = query.filter(Alert.status.in_(statuses))
@@ -86,7 +97,50 @@ def list_alerts(
     if is_overdue is not None:
         query = query.filter(Alert.is_overdue == is_overdue)
     if search:
-        query = query.filter(Alert.title.ilike(f"%{search}%"))
+        # Search by title, alert_number, or customer name (first/last/company)
+        cust_ids_subq = db.query(Customer.id).filter(or_(
+            Customer.first_name.ilike(f"%{search}%"),
+            Customer.last_name.ilike(f"%{search}%"),
+            Customer.company_name.ilike(f"%{search}%"),
+            Customer.customer_number.ilike(f"%{search}%"),
+        ))
+        query = query.filter(or_(
+            Alert.title.ilike(f"%{search}%"),
+            Alert.alert_number.ilike(f"%{search}%"),
+            Alert.customer_id.in_(cust_ids_subq),
+        ))
+
+    # Date filter — supports semantic values + ISO date
+    if date:
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if date == "today":
+            query = query.filter(Alert.created_at >= today_start)
+        elif date == "yesterday":
+            y_start = today_start - timedelta(days=1)
+            query = query.filter(Alert.created_at >= y_start, Alert.created_at < today_start)
+        elif date == "week":
+            query = query.filter(Alert.created_at >= today_start - timedelta(days=7))
+        else:
+            try:
+                d = datetime.fromisoformat(date)
+                query = query.filter(Alert.created_at >= d, Alert.created_at < d + timedelta(days=1))
+            except ValueError:
+                pass
+
+    if created_after:
+        try:
+            query = query.filter(Alert.created_at >= datetime.fromisoformat(created_after))
+        except ValueError:
+            pass
+
+    # Amount filter — joins alerts to their linked transaction
+    if min_amount is not None or max_amount is not None:
+        query = query.join(Transaction, Alert.transaction_id == Transaction.id)
+        if min_amount is not None:
+            query = query.filter(Transaction.amount >= min_amount)
+        if max_amount is not None:
+            query = query.filter(Transaction.amount <= max_amount)
 
     total = query.count()
     alerts = query.order_by(Alert.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
@@ -98,6 +152,47 @@ def list_alerts(
         "page_size": page_size,
         "total_pages": (total + page_size - 1) // page_size,
     }
+
+
+@router.post("", status_code=201)
+def create_alert_manual(
+    body: AlertCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Manually create an alert (analyst-driven, not rule-driven)."""
+    customer = db.query(Customer).filter(Customer.id == body.customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    # Generate alert number
+    today_str = datetime.utcnow().strftime("%Y%m%d")
+    count_today = db.query(func.count(Alert.id)).filter(
+        Alert.alert_number.like(f"ALT-{today_str}-%")
+    ).scalar() or 0
+    alert_number = f"ALT-{today_str}-M{count_today + 1:04d}"
+
+    # SLA based on priority
+    sla_hours = {"critical": 4, "high": 24, "medium": 72, "low": 168}.get(body.priority, 72)
+
+    alert = Alert(
+        alert_number=alert_number,
+        customer_id=body.customer_id,
+        transaction_id=body.transaction_id,
+        account_id=body.account_id,
+        alert_type=body.alert_type,
+        priority=body.priority,
+        risk_score=body.risk_score,
+        status="new",
+        title=body.title,
+        description=body.description or f"Manually created by {current_user.full_name}",
+        sla_due_at=datetime.utcnow() + timedelta(hours=sla_hours),
+        created_at=datetime.utcnow(),
+    )
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+    return _alert_response(alert, db)
 
 
 @router.get("/stats")

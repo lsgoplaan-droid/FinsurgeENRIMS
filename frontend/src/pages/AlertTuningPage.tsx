@@ -118,11 +118,21 @@ export default function AlertTuningPage() {
     { name: 'Open', value: summary?.open || 0 },
   ].filter(d => d.value > 0)
 
-  const statCards = [
+  const accuracyTooltip =
+    'Detection Accuracy = True Positives / (True Positives + False Positives)\n\n' +
+    'Also called Precision. Of all the alerts the system flagged as suspicious\n' +
+    'and an analyst reviewed, this is the percentage that turned out to be\n' +
+    'real fraud (True Positive disposition).\n\n' +
+    '• 90%+ → Excellent rule tuning, low investigator fatigue\n' +
+    '• 70-90% → Acceptable, room to tighten rules\n' +
+    '• < 70% → Too many false alarms; review thresholds and ML weights\n\n' +
+    'Inconclusive and still-open alerts are excluded from the denominator.'
+
+  const statCards: any[] = [
     { label: 'Total Alerts', value: summary?.total_alerts || 0, icon: BarChart3, color: 'text-blue-600', bg: 'bg-blue-50', href: '/alerts' },
     { label: 'Confirmed Fraud Rate', value: `${summary?.overall_tp_rate || 0}%`, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50', href: '/alerts?status=closed_true_positive' },
     { label: 'False Alarm Rate', value: `${summary?.overall_fp_rate || 0}%`, icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', href: '/alerts?status=closed_false_positive' },
-    { label: 'Detection Accuracy', value: `${summary?.overall_precision || 0}%`, icon: Target, color: 'text-purple-600', bg: 'bg-purple-50', href: '/fraud-detection' },
+    { label: 'Detection Accuracy', value: `${summary?.overall_precision || 0}%`, icon: Target, color: 'text-purple-600', bg: 'bg-purple-50', href: '/fraud-detection', tooltip: accuracyTooltip },
   ]
 
   return (
@@ -138,10 +148,18 @@ export default function AlertTuningPage() {
       {/* Stat cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {statCards.map(s => (
-          <Link key={s.label} to={s.href} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
+          <Link
+            key={s.label}
+            to={s.href}
+            title={s.tooltip || undefined}
+            className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all"
+          >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-slate-500">{s.label}</p>
+                <p className="text-sm text-slate-500 flex items-center gap-1">
+                  {s.label}
+                  {s.tooltip && <span className="text-slate-400 text-[10px] cursor-help" title={s.tooltip}>ⓘ</span>}
+                </p>
                 <p className={`text-2xl font-bold mt-1 ${s.color}`}>
                   {typeof s.value === 'number' ? formatNumber(s.value) : s.value}
                 </p>

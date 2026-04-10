@@ -318,47 +318,68 @@ export default function AIAgentPage() {
                 )}
               </div>
 
-              {/* Risk factors */}
+              {/* Risk factors — backend returns dicts {factor, severity, detail}, fall back to plain strings */}
               {(analysis.risk_factors || []).length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-slate-500 mb-1">Risk Factors:</p>
                   <ul className="space-y-1">
-                    {analysis.risk_factors.map((f: string, i: number) => (
-                      <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
-                        <AlertTriangle size={10} className="text-amber-500 mt-0.5 flex-shrink-0" />
-                        <span>{f}</span>
-                      </li>
-                    ))}
+                    {analysis.risk_factors.map((f: any, i: number) => {
+                      const isObj = f && typeof f === 'object'
+                      const title = isObj ? (f.factor || f.name || '') : String(f)
+                      const detail = isObj ? f.detail || f.description || '' : ''
+                      const severity = isObj ? f.severity : null
+                      return (
+                        <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
+                          <AlertTriangle size={10} className="text-amber-500 mt-0.5 flex-shrink-0" />
+                          <span>
+                            <strong className="text-slate-800">{title}</strong>
+                            {severity && <span className="ml-1 text-[9px] uppercase font-bold text-amber-700">[{severity}]</span>}
+                            {detail && <span className="block text-slate-500">{detail}</span>}
+                          </span>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               )}
 
-              {/* Behavioral patterns */}
+              {/* Behavioral patterns — backend returns dicts {type, detail} */}
               {(analysis.behavioral_patterns || []).length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-slate-500 mb-1">Behavioral Patterns:</p>
                   <ul className="space-y-1">
-                    {analysis.behavioral_patterns.map((p: string, i: number) => (
-                      <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
-                        <Activity size={10} className="text-blue-500 mt-0.5 flex-shrink-0" />
-                        <span>{p}</span>
-                      </li>
-                    ))}
+                    {analysis.behavioral_patterns.map((p: any, i: number) => {
+                      const isObj = p && typeof p === 'object'
+                      const title = isObj ? (p.type || p.pattern || '') : String(p)
+                      const detail = isObj ? p.detail || p.description || '' : ''
+                      return (
+                        <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
+                          <Activity size={10} className="text-blue-500 mt-0.5 flex-shrink-0" />
+                          <span>
+                            <strong className="text-slate-800">{title}</strong>
+                            {detail && <span className="block text-slate-500">{detail}</span>}
+                          </span>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               )}
 
-              {/* Recommendations */}
+              {/* Recommendations — strings or {action, ...} dicts */}
               {(analysis.recommendations || []).length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-slate-500 mb-1">Recommendations:</p>
                   <ul className="space-y-1">
-                    {analysis.recommendations.map((r: string, i: number) => (
-                      <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
-                        <Lightbulb size={10} className="text-green-500 mt-0.5 flex-shrink-0" />
-                        <span>{r}</span>
-                      </li>
-                    ))}
+                    {analysis.recommendations.map((r: any, i: number) => {
+                      const text = r && typeof r === 'object' ? (r.action || r.text || r.description || JSON.stringify(r)) : String(r)
+                      return (
+                        <li key={i} className="text-xs text-slate-600 flex items-start gap-1.5">
+                          <Lightbulb size={10} className="text-green-500 mt-0.5 flex-shrink-0" />
+                          <span>{text}</span>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
               )}

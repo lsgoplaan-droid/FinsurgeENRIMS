@@ -65,103 +65,14 @@ def compliance_summary(
 
     pep_customers = db.query(func.count(Customer.id)).filter(Customer.pep_status == True).scalar() or 0
 
-    # Build scorecard sections
+    # Build scorecard sections — KYC/AML sections intentionally hidden per bank's
+    # FRIMS positioning (KYC/AML handled by separate system; FRIMS is fraud-only).
+    # Variables kyc_reviewed/total_txns_30d/active_rules/total_rules/ctrs_*/sars_*/
+    # watchlist_entries/pep_customers/kyc_coverage are kept for use in remaining sections.
+    _ = (kyc_reviewed, total_txns_30d, active_rules, total_rules,
+         ctrs_filed, ctrs_total, sars_filed, sars_total, watchlist_entries,
+         pep_customers, kyc_coverage)
     sections = [
-        {
-            "id": "kyc_cdd",
-            "title": "KYC / CDD (Master Direction on KYC, 2016)",
-            "rbi_reference": "RBI/2015-16/Master Direction DBR.AML.BC.No.81/14.01.001/2015-16",
-            "requirements": [
-                {
-                    "id": "kyc-01",
-                    "requirement": "Customer Identification Procedure (CIP)",
-                    "description": "Verify identity of all customers using officially valid documents (OVDs)",
-                    "status": _check_status(True, kyc_coverage),
-                    "coverage": kyc_coverage,
-                    "evidence": f"{kyc_reviewed} of {total_customers} customers KYC verified",
-                    "implemented": True,
-                },
-                {
-                    "id": "kyc-02",
-                    "requirement": "Risk-Based Customer Categorization",
-                    "description": "Categorize customers into low/medium/high/very-high risk tiers",
-                    "status": "compliant",
-                    "coverage": 100,
-                    "evidence": "All customers auto-scored on 0-100 scale with 4-tier categorization",
-                    "implemented": True,
-                },
-                {
-                    "id": "kyc-03",
-                    "requirement": "Enhanced Due Diligence (EDD) for PEP",
-                    "description": "Apply EDD for Politically Exposed Persons and high-risk customers",
-                    "status": _check_status(True, 100 if pep_customers > 0 else 80),
-                    "coverage": 100 if pep_customers > 0 else 80,
-                    "evidence": f"{pep_customers} PEP customers flagged with enhanced monitoring",
-                    "implemented": True,
-                },
-                {
-                    "id": "kyc-04",
-                    "requirement": "Ongoing CDD / Periodic Review",
-                    "description": "Periodic review of KYC: high-risk every 2 years, medium every 8, low every 10",
-                    "status": _check_status(True, 75),
-                    "coverage": 75,
-                    "evidence": "KYC review scheduling and tracking implemented",
-                    "implemented": True,
-                },
-            ],
-        },
-        {
-            "id": "aml_cft",
-            "title": "AML / CFT (Prevention of Money Laundering Act, 2002)",
-            "rbi_reference": "PMLA 2002, PML Rules 2005",
-            "requirements": [
-                {
-                    "id": "aml-01",
-                    "requirement": "Transaction Monitoring System",
-                    "description": "Automated system to monitor transactions against predefined rules/scenarios",
-                    "status": "compliant",
-                    "coverage": 100,
-                    "evidence": f"{active_rules} of {total_rules} detection rules active, screening {total_txns_30d} txns/month",
-                    "implemented": True,
-                },
-                {
-                    "id": "aml-02",
-                    "requirement": "Suspicious Transaction Reporting (STR)",
-                    "description": "File STR with FIU-IND within 7 days of suspicion",
-                    "status": _check_status(True, round(sars_filed / max(sars_total, 1) * 100, 1)),
-                    "coverage": round(sars_filed / max(sars_total, 1) * 100, 1),
-                    "evidence": f"{sars_filed} of {sars_total} SARs filed with FIU-IND",
-                    "implemented": True,
-                },
-                {
-                    "id": "aml-03",
-                    "requirement": "Currency Transaction Reporting (CTR)",
-                    "description": "File CTR for cash transactions > INR 10 lakh within 15 days",
-                    "status": _check_status(True, round(ctrs_filed / max(ctrs_total, 1) * 100, 1)),
-                    "coverage": round(ctrs_filed / max(ctrs_total, 1) * 100, 1),
-                    "evidence": f"{ctrs_filed} of {ctrs_total} CTRs filed",
-                    "implemented": True,
-                },
-                {
-                    "id": "aml-04",
-                    "requirement": "Watchlist / Sanctions Screening",
-                    "description": "Screen against OFAC, UN, India MHA sanctions lists",
-                    "status": _check_status(True, 90 if watchlist_entries > 0 else 50),
-                    "coverage": 90 if watchlist_entries > 0 else 50,
-                    "evidence": f"{watchlist_entries} active watchlist entries being screened",
-                    "implemented": True,
-                },
-                {
-                    "id": "aml-05",
-                    "requirement": "Record Retention (10 years)",
-                    "description": "Maintain records of all transactions and KYC for 10 years from closure",
-                    "status": _check_status(True, 85),
-                    "coverage": 85,
-                    "evidence": "Full audit trail with immutable logging; archival policy pending",
-                    "implemented": True,
-                },
-            ],
-        },
         {
             "id": "fraud_risk",
             "title": "Fraud Risk Management (Circular on Cyber Security Framework)",

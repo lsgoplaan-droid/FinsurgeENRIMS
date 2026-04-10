@@ -80,6 +80,8 @@ export default function RiskAppetitePage() {
   const [editingMetric, setEditingMetric] = useState<string | null>(null)
   const [editWarning, setEditWarning] = useState('')
   const [editLimit, setEditLimit] = useState('')
+  const [editEvidenceUrl, setEditEvidenceUrl] = useState('')
+  const [editJustification, setEditJustification] = useState('')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -96,12 +98,16 @@ export default function RiskAppetitePage() {
     setEditingMetric(m.id)
     setEditWarning(String(m.threshold.warning))
     setEditLimit(String(m.threshold.limit))
+    setEditEvidenceUrl('')
+    setEditJustification('')
   }
 
   const cancelEdit = () => {
     setEditingMetric(null)
     setEditWarning('')
     setEditLimit('')
+    setEditEvidenceUrl('')
+    setEditJustification('')
   }
 
   const saveThreshold = (metricId: string) => {
@@ -110,9 +116,13 @@ export default function RiskAppetitePage() {
       metric_id: metricId,
       warning: parseFloat(editWarning),
       limit: parseFloat(editLimit),
+      evidence_url: editEvidenceUrl || null,
+      justification: editJustification || null,
     })
       .then(() => {
         setEditingMetric(null)
+        setEditEvidenceUrl('')
+        setEditJustification('')
         setMsg('Threshold updated')
         setTimeout(() => setMsg(''), 3000)
         loadData()
@@ -264,11 +274,11 @@ export default function RiskAppetitePage() {
               </tr>
             </thead>
             <tbody>
-              {metrics.map((m: any) => {
+              {metrics.flatMap((m: any) => {
                 const utilization = m.threshold.limit > 0 ? Math.min((m.value / m.threshold.limit) * 100, 120) : 0
                 const barColor = m.status === 'breach' ? '#ef4444' : m.status === 'warning' ? '#f59e0b' : '#22c55e'
                 const isEditing = editingMetric === m.id
-                return (
+                const rowEls: any[] = [
                   <tr key={m.id} className={`border-t border-slate-100 ${isEditing ? 'bg-blue-50/30' : ''}`}>
                     <td className="py-2.5 px-3 font-medium text-slate-700">{m.label}</td>
                     <td className="py-2.5 px-3 text-right font-bold" style={{ color: barColor }}>{m.value}{m.unit}</td>
@@ -323,7 +333,39 @@ export default function RiskAppetitePage() {
                       )}
                     </td>
                   </tr>
-                )
+                ]
+                if (isEditing) {
+                  rowEls.push(
+                    <tr key={`${m.id}-evidence`} className="bg-blue-50/30 border-t border-blue-100">
+                      <td colSpan={7} className="py-3 px-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] uppercase font-bold text-blue-700 mb-1">Evidence URL (CRO memo, board minutes, etc.)</label>
+                            <input
+                              type="url"
+                              value={editEvidenceUrl}
+                              onChange={e => setEditEvidenceUrl(e.target.value)}
+                              placeholder="https://docs.bank.intra/risk-committee/2026-q2-appetite-revision.pdf"
+                              className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-blue-400 outline-none"
+                            />
+                            <p className="text-[10px] text-slate-400 mt-1">Required by RBI Risk Management Framework — link to the document authorising this change.</p>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] uppercase font-bold text-blue-700 mb-1">Justification (why is this change needed?)</label>
+                            <textarea
+                              value={editJustification}
+                              onChange={e => setEditJustification(e.target.value)}
+                              rows={2}
+                              placeholder="e.g. Q2 stress test results show portfolio can absorb 3% additional high-risk exposure..."
+                              className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-blue-400 outline-none"
+                            />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                }
+                return rowEls
               })}
             </tbody>
           </table>

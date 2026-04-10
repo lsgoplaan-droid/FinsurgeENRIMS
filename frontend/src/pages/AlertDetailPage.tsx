@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, UserPlus, AlertTriangle, XCircle, Send, Clock, User } from 'lucide-react'
+import { ArrowLeft, UserPlus, AlertTriangle, XCircle, Send, Clock, User, History } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDateTime, timeAgo, priorityColors, statusColors } from '../utils/formatters'
 
@@ -20,7 +20,11 @@ export default function AlertDetailPage() {
   const [showCloseDialog, setShowCloseDialog] = useState(false)
   const [closeDisposition, setCloseDisposition] = useState('true_positive')
   const [closeReason, setCloseReason] = useState('')
+  const [closeEvidenceUrl, setCloseEvidenceUrl] = useState('')
   const [users, setUsers] = useState<any[]>([])
+  const [tab, setTab] = useState<'details' | 'audit'>('details')
+  const [auditEntries, setAuditEntries] = useState<any[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 
   const fetchAlert = () => {
@@ -31,7 +35,21 @@ export default function AlertDetailPage() {
       .finally(() => setLoading(false))
   }
 
+  const fetchAuditTrail = () => {
+    setAuditLoading(true)
+    api.get('/audit-trail/entries', { params: { resource_type: 'alert', per_page: 100 } })
+      .then(res => {
+        const entries = (res.data.entries || []).filter((e: any) => e.resource_id === id)
+        setAuditEntries(entries)
+      })
+      .catch(() => setAuditEntries([]))
+      .finally(() => setAuditLoading(false))
+  }
+
   useEffect(() => { fetchAlert() }, [id])
+  useEffect(() => {
+    if (tab === 'audit' && id) fetchAuditTrail()
+  }, [tab, id])
 
   const handleAction = async (action: string) => {
     setActionLoading(action)
@@ -103,6 +121,78 @@ export default function AlertDetailPage() {
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{error}</div>}
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-slate-200">
+        {[
+          { key: 'details', label: 'Details', icon: AlertTriangle },
+          { key: 'audit', label: 'Audit Trail', icon: History },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key as any)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              tab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <t.icon size={14} />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'audit' ? (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-slate-700">Hash-chained Audit Trail for this Alert</h3>
+            <button
+              onClick={fetchAuditTrail}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Refresh
+            </button>
+          </div>
+          {auditLoading ? (
+            <div className="py-8 text-center text-slate-400 text-sm">Loading audit history...</div>
+          ) : auditEntries.length === 0 ? (
+            <div className="py-8 text-center text-slate-400 text-sm">
+              No audit entries recorded for this alert yet
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-left">
+                    <th className="py-2.5 px-3 font-medium text-slate-600">Timestamp</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">User</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">Action</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">IP Address</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">Hash</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditEntries.map((e: any) => (
+                    <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50">
+                      <td className="py-2 px-3 text-slate-500 whitespace-nowrap">
+                        {e.created_at ? new Date(e.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
+                      </td>
+                      <td className="py-2 px-3 font-medium text-slate-700">{e.user_name}</td>
+                      <td className="py-2 px-3">
+                        <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">{e.action}</span>
+                      </td>
+                      <td className="py-2 px-3 text-slate-500">{e.ip_address || '-'}</td>
+                      <td className="py-2 px-3">
+                        <span className="font-mono text-[9px] text-slate-400" title={e.hash}>
+                          {e.hash ? e.hash.slice(0, 12) + '...' : '-'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Left column - details */}
         <div className="xl:col-span-2 space-y-4">
@@ -312,6 +402,7 @@ export default function AlertDetailPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Close Alert Disposition Dialog */}
       {showCloseDialog && (
@@ -356,17 +447,29 @@ export default function AlertDetailPage() {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Evidence URL <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input
+                  type="url"
+                  value={closeEvidenceUrl}
+                  onChange={e => setCloseEvidenceUrl(e.target.value)}
+                  placeholder="https://docs.bank.intra/case-files/..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Link to supporting documentation in the bank's DMS</p>
+              </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowCloseDialog(false)} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={() => { setShowCloseDialog(false); setCloseEvidenceUrl('') }} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
               <button
                 disabled={!!actionLoading || !closeReason.trim()}
                 onClick={async () => {
                   setActionLoading('close')
                   try {
-                    await api.post(`/alerts/${id}/close`, { disposition: closeDisposition, reason: closeReason })
+                    await api.post(`/alerts/${id}/close`, { disposition: closeDisposition, reason: closeReason, evidence_url: closeEvidenceUrl || null })
                     setShowCloseDialog(false)
                     setCloseReason('')
+                    setCloseEvidenceUrl('')
                     fetchAlert()
                   } catch (err: any) { setError(err.response?.data?.detail || 'Failed to close alert') }
                   finally { setActionLoading('') }

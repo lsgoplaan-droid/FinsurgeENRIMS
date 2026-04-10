@@ -2,9 +2,10 @@
 Compliance & SAR — Dedicated compliance module with filing workflows,
 regulatory calendar, and compliance dashboard.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from calendar import monthrange
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
@@ -149,6 +150,7 @@ def compliance_dashboard(db: Session = Depends(get_db), current_user: User = Dep
     for r in recent_ctrs:
         customer = db.query(Customer).filter(Customer.id == r.customer_id).first() if r.customer_id else None
         recent_filings.append({
+            "id": r.id,
             "type": "CTR",
             "report_number": r.report_number,
             "customer": customer.full_name if customer else "-",
@@ -159,6 +161,7 @@ def compliance_dashboard(db: Session = Depends(get_db), current_user: User = Dep
     for r in recent_sars:
         customer = db.query(Customer).filter(Customer.id == r.customer_id).first() if r.customer_id else None
         recent_filings.append({
+            "id": r.id,
             "type": "SAR",
             "report_number": r.report_number,
             "customer": customer.full_name if customer else "-",
@@ -184,6 +187,111 @@ def compliance_dashboard(db: Session = Depends(get_db), current_user: User = Dep
         "regulatory_deadlines": deadlines,
         "recent_filings": recent_filings,
     }
+
+
+@router.get("/filings/{filing_type}/{filing_id}/download", response_class=PlainTextResponse)
+def download_filing(
+    filing_type: str,
+    filing_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download a CTR or SAR filing as a printable text document.
+
+    `filing_type` must be 'ctr' or 'sar'. Returns the rendered report content
+    that was submitted to FIU-IND, suitable for archival or reprint.
+    """
+    filing_type = filing_type.lower()
+    if filing_type not in ("ctr", "sar"):
+        raise HTTPException(status_code=400, detail="filing_type must be 'ctr' or 'sar'")
+
+    if filing_type == "ctr":
+        rec = db.query(CTRReport).filter(CTRReport.id == filing_id).first()
+    else:
+        rec = db.query(SARReport).filter(SARReport.id == filing_id).first()
+
+    if not rec:
+        raise HTTPException(status_code=404, detail=f"{filing_type.upper()} not found")
+
+    customer = db.query(Customer).filter(Customer.id == rec.customer_id).first() if rec.customer_id else None
+
+    # Build the same content that was filed with FIU-IND
+    if filing_type == "ctr":
+        amount_inr = (rec.transaction_amount or 0) / 100
+        body = f"""CURRENCY TRANSACTION REPORT (CTR)
+================================================================
+Filed with: Financial Intelligence Unit India (FIU-IND)
+Reference:  RBI Master Direction on KYC — INR 10 lakh threshold
+Generated:  {datetime.utcnow().strftime('%d-%b-%Y %H:%M UTC')}
+
+Report Number:    {rec.report_number}
+Filing Status:    {(rec.filing_status or 'pending').upper()}
+Filed Date:       {rec.filed_at.strftime('%d-%b-%Y') if rec.filed_at else 'PENDING'}
+Created:          {rec.created_at.strftime('%d-%b-%Y %H:%M UTC') if rec.created_at else '-'}
+
+CUSTOMER DETAILS
+----------------------------------------------------------------
+Customer Name:    {customer.full_name if customer else '-'}
+Customer Number:  {customer.customer_number if customer else '-'}
+PAN:              {customer.pan_number if customer and customer.pan_number else 'Not on file'}
+Address:          {(customer.city if customer else '-')}, {(customer.state if customer else '-')}, India
+
+TRANSACTION DETAILS
+----------------------------------------------------------------
+Amount:           INR {amount_inr:,.2f}
+Threshold:        INR 10,00,000.00 (mandatory CTR threshold)
+Reporting Window: 15 days from end of transaction month
+
+Reported under RBI Master Direction on KYC and PMLA Section 12.
+This is the canonical document submitted to FIU-IND for archival.
+================================================================
+Downloaded by: {current_user.full_name} on {datetime.utcnow().strftime('%d-%b-%Y %H:%M UTC')}
+"""
+    else:
+        amount_inr = (rec.total_amount or 0) / 100
+        body = f"""SUSPICIOUS TRANSACTION REPORT (STR / SAR)
+================================================================
+Filed with: Financial Intelligence Unit India (FIU-IND)
+Reference:  PMLA Rules 2005 Rule 7 — 7 day filing window
+Generated:  {datetime.utcnow().strftime('%d-%b-%Y %H:%M UTC')}
+
+Report Number:    {rec.report_number}
+Filing Status:    {(rec.filing_status or 'pending').upper()}
+Filed Date:       {rec.filed_at.strftime('%d-%b-%Y') if rec.filed_at else 'PENDING'}
+Created:          {rec.created_at.strftime('%d-%b-%Y %H:%M UTC') if rec.created_at else '-'}
+
+SUBJECT (CUSTOMER) DETAILS
+----------------------------------------------------------------
+Customer Name:    {customer.full_name if customer else '-'}
+Customer Number:  {customer.customer_number if customer else '-'}
+PAN:              {customer.pan_number if customer and customer.pan_number else 'Not on file'}
+Customer Type:    {customer.customer_type if customer else '-'}
+PEP Status:       {'YES' if (customer and customer.pep_status) else 'No'}
+Risk Score:       {customer.risk_score if customer else '-'} / 100
+Address:          {(customer.city if customer else '-')}, {(customer.state if customer else '-')}, India
+
+SUSPICIOUS ACTIVITY DETAILS
+----------------------------------------------------------------
+Total Suspicious Amount: INR {amount_inr:,.2f}
+Narrative / Findings:
+{(getattr(rec, 'narrative', None) or getattr(rec, 'description', None) or 'See linked case file for full investigation narrative.')}
+
+REGULATORY ACTIONS
+----------------------------------------------------------------
+- File this STR with FIU-IND within 7 days of suspicion (PMLA Rule 7)
+- Restrict account operations pending investigation outcome
+- Preserve all transaction records for minimum 5 years (PMLA Section 12)
+- Notify the Principal Officer (PMLA Act 2002)
+================================================================
+Downloaded by: {current_user.full_name} on {datetime.utcnow().strftime('%d-%b-%Y %H:%M UTC')}
+"""
+
+    return PlainTextResponse(
+        content=body,
+        headers={
+            "Content-Disposition": f'attachment; filename="{rec.report_number}.txt"',
+        },
+    )
 
 
 @router.get("/regulatory-calendar")

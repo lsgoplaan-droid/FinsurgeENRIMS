@@ -4,14 +4,41 @@ Covers Tier 1-3: AML, fraud, cyber, UPI, mule, TBML, insider, synthetic ID.
 """
 import json
 import random
+import uuid
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends
+from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from app.database import get_db
 from sqlalchemy.orm import Session
 from app.dependencies import get_current_user
 from app.models import User, Scenario, Rule
 
 router = APIRouter(prefix="/fraud-scenarios", tags=["Fraud Scenarios"])
+
+
+class TypologyCreate(BaseModel):
+    name: str
+    category: str
+    subcategory: Optional[str] = None
+    risk: str = "medium"
+    status: str = "active"
+    description: str
+    fatf_reference: Optional[str] = None
+    indicators: List[str] = []
+    rules_count: int = 0
+
+
+class TypologyUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    subcategory: Optional[str] = None
+    risk: Optional[str] = None
+    status: Optional[str] = None
+    description: Optional[str] = None
+    fatf_reference: Optional[str] = None
+    indicators: Optional[List[str]] = None
+    rules_count: Optional[int] = None
 
 NOW = datetime.utcnow()
 
@@ -123,6 +150,7 @@ def get_typology_library(
         result = [t for t in result if t["category"].lower() == category.lower()]
     return {
         "typologies": result,
+        "items": result,  # also expose under 'items' for consistency with paginated endpoints
         "total": len(result),
         "by_category": {
             "AML": sum(1 for t in TYPOLOGY_LIBRARY if t["category"] == "AML"),
@@ -130,6 +158,73 @@ def get_typology_library(
             "Compliance": sum(1 for t in TYPOLOGY_LIBRARY if t["category"] == "Compliance"),
         },
     }
+
+
+def _next_typology_id(category: str) -> str:
+    """Generate next sequential ID for a category, e.g. TYP-FRD-013."""
+    prefix_map = {"aml": "AML", "fraud": "FRD", "compliance": "CMP"}
+    prefix = prefix_map.get(category.lower(), "OTH")
+    existing = [t["id"] for t in TYPOLOGY_LIBRARY if t["id"].startswith(f"TYP-{prefix}-")]
+    nums = []
+    for tid in existing:
+        try:
+            nums.append(int(tid.split("-")[-1]))
+        except (ValueError, IndexError):
+            pass
+    next_num = (max(nums) + 1) if nums else 1
+    return f"TYP-{prefix}-{next_num:03d}"
+
+
+@router.post("/typologies", status_code=201)
+def create_typology(
+    body: TypologyCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new fraud typology entry. Stored in the in-memory library."""
+    new_id = _next_typology_id(body.category)
+    typ = {
+        "id": new_id,
+        "name": body.name,
+        "category": body.category,
+        "subcategory": body.subcategory or "",
+        "risk": body.risk,
+        "status": body.status,
+        "rules_count": body.rules_count,
+        "detections_30d": 0,
+        "description": body.description,
+        "fatf_reference": body.fatf_reference or "",
+        "indicators": body.indicators,
+    }
+    TYPOLOGY_LIBRARY.append(typ)
+    return typ
+
+
+@router.put("/typologies/{typology_id}")
+def update_typology(
+    typology_id: str,
+    body: TypologyUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Update an existing typology in the library."""
+    for typ in TYPOLOGY_LIBRARY:
+        if typ["id"] == typology_id:
+            data = body.model_dump(exclude_none=True)
+            typ.update(data)
+            return typ
+    raise HTTPException(status_code=404, detail="Typology not found")
+
+
+@router.delete("/typologies/{typology_id}", status_code=204)
+def delete_typology(
+    typology_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a typology from the library."""
+    for i, typ in enumerate(TYPOLOGY_LIBRARY):
+        if typ["id"] == typology_id:
+            TYPOLOGY_LIBRARY.pop(i)
+            return
+    raise HTTPException(status_code=404, detail="Typology not found")
 
 
 @router.get("/scenarios")

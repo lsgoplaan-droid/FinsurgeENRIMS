@@ -406,9 +406,27 @@ function SankeyDiagram({ nodes, edges, center }: { nodes: NetworkNode[]; edges: 
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-      <h3 className="text-sm font-semibold text-slate-700 mb-3">Fund Flow Hierarchy (Sankey — 4 Levels)</h3>
+      <h3 className="text-sm font-semibold text-slate-700 mb-3">Fund Flow Hierarchy (Sankey — {levels.length} Level{levels.length !== 1 ? 's' : ''})</h3>
       <div className="overflow-x-auto">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 600, maxHeight: 500 }}>
+          {/* Arrowhead marker definitions — one per level color so arrows blend with their flow */}
+          <defs>
+            {levels.map((lvl, i) => (
+              <marker
+                key={`arrow-${i}`}
+                id={`flow-arrow-${i}`}
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="6"
+                markerHeight="6"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill={lvl.color} />
+              </marker>
+            ))}
+          </defs>
+
           {/* Level labels */}
           {levels.map((lvl, i) => (
             <text key={i} x={i * colW + colW / 2} y={18} textAnchor="middle" fill={lvl.color} fontSize="11" fontWeight="bold">
@@ -416,20 +434,21 @@ function SankeyDiagram({ nodes, edges, center }: { nodes: NetworkNode[]; edges: 
             </text>
           ))}
 
-          {/* Flow paths */}
+          {/* Flow paths — arrowhead at the receiving (right) node */}
           {links.map((link, i) => {
             const thickness = Math.max(2, (link.amount / maxAmt) * 18)
-            const opacity = 0.15 + (link.amount / maxAmt) * 0.45
+            const opacity = 0.35 + (link.amount / maxAmt) * 0.45
             const mx = (link.from.px + link.to.px) / 2
             return (
               <path
                 key={i}
-                d={`M ${link.from.px + 50} ${link.from.py} C ${mx} ${link.from.py} ${mx} ${link.to.py} ${link.to.px - 50} ${link.to.py}`}
+                d={`M ${link.from.px + 50} ${link.from.py} C ${mx} ${link.from.py} ${mx} ${link.to.py} ${link.to.px - 56} ${link.to.py}`}
                 fill="none"
                 stroke={levels[link.from.level]?.color || '#94a3b8'}
                 strokeWidth={thickness}
                 opacity={opacity}
                 strokeLinecap="round"
+                markerEnd={`url(#flow-arrow-${link.from.level})`}
               />
             )
           })}

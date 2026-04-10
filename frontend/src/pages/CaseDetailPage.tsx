@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Clock, User, FileText, Bell, Activity, ChevronRight, Edit3, UserPlus, AlertTriangle, XCircle, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Clock, User, FileText, Bell, Activity, ChevronRight, Edit3, UserPlus, AlertTriangle, XCircle, CheckCircle, History } from 'lucide-react'
 import api from '../config/api'
 import { formatDateTime, formatINR, timeAgo, priorityColors, statusColors } from '../utils/formatters'
 
@@ -8,7 +8,7 @@ const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
 )
 
-type Tab = 'summary' | 'alerts' | 'timeline'
+type Tab = 'summary' | 'alerts' | 'timeline' | 'audit'
 
 const STATUS_TRANSITIONS: Record<string, { label: string; value: string; color: string }[]> = {
   open: [
@@ -47,6 +47,21 @@ export default function CaseDetailPage() {
   const [dispositionNotes, setDispositionNotes] = useState('')
   const [showEdit, setShowEdit] = useState(false)
   const [editForm, setEditForm] = useState({ title: '', description: '', priority: '', findings: '', recommendation: '' })
+  const [auditEntries, setAuditEntries] = useState<any[]>([])
+  const [auditLoading, setAuditLoading] = useState(false)
+
+  const fetchAuditTrail = () => {
+    setAuditLoading(true)
+    api.get('/audit-trail/entries', { params: { resource_type: 'case', per_page: 100 } })
+      .then(res => {
+        const entries = (res.data.entries || []).filter((e: any) => e.resource_id === id)
+        setAuditEntries(entries)
+      })
+      .catch(() => setAuditEntries([]))
+      .finally(() => setAuditLoading(false))
+  }
+
+  useEffect(() => { if (tab === 'audit' && id) fetchAuditTrail() }, [tab, id])
 
   const fetchCase = () => {
     setLoading(true)
@@ -110,6 +125,7 @@ export default function CaseDetailPage() {
     { key: 'summary', label: 'Summary', icon: FileText },
     { key: 'alerts', label: `Related Alerts (${alerts.length})`, icon: Bell },
     { key: 'timeline', label: 'Timeline', icon: Activity },
+    { key: 'audit', label: 'Audit Trail', icon: History },
   ]
 
   return (
@@ -308,6 +324,47 @@ export default function CaseDetailPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'audit' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-slate-700">Hash-chained Audit Trail for this Case</h3>
+            <button onClick={fetchAuditTrail} className="text-xs text-blue-600 hover:underline">Refresh</button>
+          </div>
+          {auditLoading ? (
+            <div className="py-8 text-center text-slate-400 text-sm">Loading audit history...</div>
+          ) : auditEntries.length === 0 ? (
+            <div className="py-8 text-center text-slate-400 text-sm">No audit entries recorded for this case yet</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-left">
+                    <th className="py-2.5 px-3 font-medium text-slate-600">Timestamp</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">User</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">Action</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">IP Address</th>
+                    <th className="py-2.5 px-3 font-medium text-slate-600">Hash</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditEntries.map((e: any) => (
+                    <tr key={e.id} className="border-t border-slate-100 hover:bg-slate-50">
+                      <td className="py-2 px-3 text-slate-500 whitespace-nowrap">
+                        {e.created_at ? new Date(e.created_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
+                      </td>
+                      <td className="py-2 px-3 font-medium text-slate-700">{e.user_name}</td>
+                      <td className="py-2 px-3"><span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">{e.action}</span></td>
+                      <td className="py-2 px-3 text-slate-500">{e.ip_address || '-'}</td>
+                      <td className="py-2 px-3"><span className="font-mono text-[9px] text-slate-400" title={e.hash}>{e.hash ? e.hash.slice(0, 12) + '...' : '-'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

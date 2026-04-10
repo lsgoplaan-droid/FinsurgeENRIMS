@@ -2,7 +2,9 @@
 Internal Fraud Monitoring — Employee activity tracking, access monitoring, insider threat detection.
 Tracks: account access, login events, privileged actions, data exports, config changes, overrides.
 """
-from fastapi import APIRouter, Depends, Query
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
@@ -10,6 +12,23 @@ from app.dependencies import get_current_user
 from app.models import User, EmployeeActivity
 
 router = APIRouter(prefix="/internal-fraud", tags=["Internal Fraud"])
+
+
+class IFRRuleCreate(BaseModel):
+    name: str
+    description: str
+    category: str = "access_control"
+    severity: str = "medium"
+    enabled: bool = True
+
+
+class IFRRuleUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    severity: Optional[str] = None
+    enabled: Optional[bool] = None
+    triggers: Optional[int] = None
 
 # Internal fraud detection rules (static configuration — these define what triggers insider threat alerts)
 INTERNAL_FRAUD_RULES = [
@@ -34,6 +53,64 @@ def get_internal_fraud_rules(
 ):
     """Get all internal fraud detection rules."""
     return INTERNAL_FRAUD_RULES
+
+
+def _next_ifr_id() -> str:
+    nums = []
+    for r in INTERNAL_FRAUD_RULES:
+        try:
+            nums.append(int(r["id"].split("-")[-1]))
+        except (ValueError, IndexError):
+            pass
+    next_num = (max(nums) + 1) if nums else 1
+    return f"IFR-{next_num:03d}"
+
+
+@router.post("/rules", status_code=201)
+def create_internal_fraud_rule(
+    body: IFRRuleCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Create a new internal fraud detection rule."""
+    rule = {
+        "id": _next_ifr_id(),
+        "name": body.name,
+        "description": body.description,
+        "category": body.category,
+        "severity": body.severity,
+        "enabled": body.enabled,
+        "triggers": 0,
+    }
+    INTERNAL_FRAUD_RULES.append(rule)
+    return rule
+
+
+@router.put("/rules/{rule_id}")
+def update_internal_fraud_rule(
+    rule_id: str,
+    body: IFRRuleUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Update an existing internal fraud rule."""
+    for r in INTERNAL_FRAUD_RULES:
+        if r["id"] == rule_id:
+            data = body.model_dump(exclude_none=True)
+            r.update(data)
+            return r
+    raise HTTPException(status_code=404, detail="Rule not found")
+
+
+@router.delete("/rules/{rule_id}", status_code=204)
+def delete_internal_fraud_rule(
+    rule_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete an internal fraud rule."""
+    for i, r in enumerate(INTERNAL_FRAUD_RULES):
+        if r["id"] == rule_id:
+            INTERNAL_FRAUD_RULES.pop(i)
+            return
+    raise HTTPException(status_code=404, detail="Rule not found")
 
 
 @router.get("/activities")

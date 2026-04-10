@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
-  Brain, Search, AlertTriangle, Users, ArrowRight, Briefcase, Shield,
-  ChevronRight, Sparkles, FileText, Network, Clock
+  Brain, Search, AlertTriangle, Users, ArrowRight, Shield,
+  ChevronRight, Sparkles, Loader2
 } from 'lucide-react'
 import api from '../config/api'
-import { formatINR, formatNumber, formatDate, timeAgo } from '../utils/formatters'
+import { timeAgo } from '../utils/formatters'
 
 const priorityColors: Record<string, string> = {
   critical: 'bg-red-100 text-red-800',
@@ -15,12 +15,15 @@ const priorityColors: Record<string, string> = {
 }
 
 export default function InvestigationCopilotPage() {
+  const navigate = useNavigate()
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedAlert, setSelectedAlert] = useState<any>(null)
   const [analysis, setAnalysis] = useState<any>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [actionMsg, setActionMsg] = useState('')
 
   useEffect(() => {
     api.get('/alerts', { params: { page_size: 50 } })
@@ -83,6 +86,63 @@ export default function InvestigationCopilotPage() {
         })
       })
       .finally(() => setAnalyzing(false))
+  }
+
+  // Action handlers — turn each "recommended action" into a one-click action
+  const doEscalate = () => {
+    if (!selectedAlert) return
+    setActionLoading('escalate')
+    api.post(`/alerts/${selectedAlert.id}/escalate`)
+      .then(() => {
+        setActionMsg('Alert escalated to senior analyst')
+        setTimeout(() => setActionMsg(''), 3000)
+      })
+      .catch(() => setActionMsg('Failed to escalate'))
+      .finally(() => setActionLoading(null))
+  }
+
+  const doPromoteToCase = () => {
+    if (!selectedAlert) return
+    setActionLoading('promote')
+    api.post(`/alerts/${selectedAlert.id}/promote-to-case`)
+      .then(res => {
+        setActionMsg(`Case ${res.data.case_number} created`)
+        setTimeout(() => navigate(`/cases/${res.data.case_id}`), 800)
+      })
+      .catch(() => setActionMsg('Failed to create case'))
+      .finally(() => setActionLoading(null))
+  }
+
+  const doAddNote = () => {
+    if (!selectedAlert) return
+    const note = window.prompt('Add an investigation note:')
+    if (!note?.trim()) return
+    setActionLoading('note')
+    api.post(`/alerts/${selectedAlert.id}/add-note`, { note })
+      .then(() => {
+        setActionMsg('Note added to alert')
+        setTimeout(() => setActionMsg(''), 3000)
+      })
+      .catch(() => setActionMsg('Failed to add note'))
+      .finally(() => setActionLoading(null))
+  }
+
+  const doCloseAlert = (disposition: 'true_positive' | 'false_positive' | 'inconclusive') => {
+    if (!selectedAlert) return
+    const reason = window.prompt(`Justification for closing as ${disposition.replace('_', ' ')}:`)
+    if (!reason?.trim()) return
+    setActionLoading('close')
+    api.post(`/alerts/${selectedAlert.id}/close`, { disposition, reason })
+      .then(() => {
+        setActionMsg('Alert closed')
+        // Remove from queue
+        setAlerts(prev => prev.filter(a => a.id !== selectedAlert.id))
+        setSelectedAlert(null)
+        setAnalysis(null)
+        setTimeout(() => setActionMsg(''), 3000)
+      })
+      .catch(() => setActionMsg('Failed to close'))
+      .finally(() => setActionLoading(null))
   }
 
   const filteredAlerts = searchQuery
@@ -260,13 +320,13 @@ export default function InvestigationCopilotPage() {
                 </div>
               )}
 
-              {/* Recommendations */}
+              {/* Recommendations + Action Buttons */}
               <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Sparkles size={14} className="text-green-600" />
                   <h4 className="text-sm font-semibold text-green-800">Recommended Actions</h4>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 mb-3">
                   {analysis.recommendations.map((r: string, i: number) => (
                     <div key={i} className="flex items-start gap-2 text-xs text-green-800">
                       <span className="w-4 h-4 bg-green-200 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">
@@ -275,6 +335,55 @@ export default function InvestigationCopilotPage() {
                       {r}
                     </div>
                   ))}
+                </div>
+
+                {/* One-click action toolbar */}
+                <div className="border-t border-green-200 pt-3 mt-3">
+                  <p className="text-[10px] uppercase font-semibold text-green-700 mb-2">Take action now</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={doPromoteToCase}
+                      disabled={!!actionLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {actionLoading === 'promote' && <Loader2 size={12} className="animate-spin" />}
+                      Create Case
+                    </button>
+                    <button
+                      onClick={doEscalate}
+                      disabled={!!actionLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                    >
+                      {actionLoading === 'escalate' && <Loader2 size={12} className="animate-spin" />}
+                      Escalate
+                    </button>
+                    <button
+                      onClick={doAddNote}
+                      disabled={!!actionLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-600 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50"
+                    >
+                      {actionLoading === 'note' && <Loader2 size={12} className="animate-spin" />}
+                      Add Note
+                    </button>
+                    <button
+                      onClick={() => doCloseAlert('true_positive')}
+                      disabled={!!actionLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {actionLoading === 'close' && <Loader2 size={12} className="animate-spin" />}
+                      Confirm Fraud
+                    </button>
+                    <button
+                      onClick={() => doCloseAlert('false_positive')}
+                      disabled={!!actionLoading}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50"
+                    >
+                      Mark False Alarm
+                    </button>
+                  </div>
+                  {actionMsg && (
+                    <p className="text-xs text-green-800 mt-2 font-medium">{actionMsg}</p>
+                  )}
                 </div>
               </div>
 

@@ -214,7 +214,7 @@ export default function DashboardPage() {
           icon={ArrowUpRight}
           iconColor="text-green-600"
           iconBg="bg-green-50"
-          href="/police-fir"
+          href="/mis-reports"
         />
         <StatCard
           label="Recovery Rate"
@@ -272,7 +272,7 @@ export default function DashboardPage() {
           value={formatNumber(executive?.total_alerts_today ?? 0)}
           icon={Bell}
           iconColor="text-blue-500"
-          href="/alerts?status=new"
+          href="/alerts?date=today"
         />
         <SmallStatCard
           label="Escalation Rate"
@@ -393,9 +393,14 @@ export default function DashboardPage() {
 
         {/* RIGHT (1/3): Risk Appetite Meter */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Gauge size={16} className="text-purple-600" />
-            <h3 className="text-sm font-semibold text-slate-700">Risk Appetite</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Gauge size={16} className="text-purple-600" />
+              <h3 className="text-sm font-semibold text-slate-700">Risk Appetite</h3>
+            </div>
+            <Link to="/risk-appetite" className="text-xs text-blue-600 hover:underline font-medium flex items-center gap-0.5">
+              Breach Detail <ChevronRight size={12} />
+            </Link>
           </div>
 
           {riskAppetite?.metrics ? (
@@ -423,7 +428,12 @@ export default function DashboardPage() {
                 const pct = m.threshold.limit > 0 ? Math.min((m.value / m.threshold.limit) * 100, 120) : 0
                 const barColor = m.status === 'breach' ? '#ef4444' : m.status === 'warning' ? '#f59e0b' : '#10b981'
                 return (
-                  <div key={m.id}>
+                  <Link
+                    to={`/risk-appetite#${m.id}`}
+                    key={m.id}
+                    className="block hover:bg-slate-50 rounded p-1 -m-1 transition-colors"
+                    title={`Click for breach detail. Status: ${m.status.toUpperCase()}`}
+                  >
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs text-slate-600">{m.label}</span>
                       <span className="text-xs font-bold" style={{ color: barColor }}>
@@ -452,7 +462,7 @@ export default function DashboardPage() {
                       <span className="text-[9px] text-slate-400">0</span>
                       <span className="text-[9px] text-red-400">Limit: {m.threshold.limit}{m.unit}</span>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
 

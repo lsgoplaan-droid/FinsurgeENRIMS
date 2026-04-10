@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Clock, AlertTriangle, CheckCircle2, FileText, Timer, Filter, TrendingUp } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Clock, AlertTriangle, CheckCircle2, FileText, Timer, Filter, TrendingUp, X, ExternalLink } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatNumber } from '../utils/formatters'
 
@@ -49,6 +50,7 @@ export default function FilingDeadlinePage() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('')
+  const [selectedFiling, setSelectedFiling] = useState<any>(null)
 
   useEffect(() => {
     api.get('/filing-deadlines/summary')
@@ -172,7 +174,8 @@ export default function FilingDeadlinePage() {
           filtered.map((f: any) => (
             <div
               key={f.id}
-              className={`bg-white rounded-xl shadow-sm border p-4 flex items-center gap-4 ${
+              onClick={() => setSelectedFiling(f)}
+              className={`bg-white rounded-xl shadow-sm border p-4 flex items-center gap-4 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all ${
                 f.urgency === 'overdue' ? 'border-red-200 bg-red-50/30' :
                 f.urgency === 'critical' ? 'border-red-100' :
                 f.urgency === 'warning' ? 'border-amber-100' :
@@ -203,6 +206,63 @@ export default function FilingDeadlinePage() {
           ))
         )}
       </div>
+
+      {/* Filing Detail Modal */}
+      {selectedFiling && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setSelectedFiling(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded ${selectedFiling.type === 'CTR' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                    {selectedFiling.type}
+                  </span>
+                  <h2 className="text-lg font-bold text-slate-800">{selectedFiling.report_number}</h2>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {selectedFiling.type === 'CTR'
+                    ? 'Currency Transaction Report — RBI Master Direction (15 day filing window)'
+                    : 'Suspicious Transaction Report — PMLA Rule 7 (7 day filing window)'}
+                </p>
+              </div>
+              <button onClick={() => setSelectedFiling(null)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              {[
+                ['Customer', selectedFiling.customer_name],
+                ['Amount', formatINR(selectedFiling.amount)],
+                ['Status', (selectedFiling.status || '').replace(/_/g, ' ')],
+                ['Urgency', selectedFiling.urgency?.toUpperCase()],
+                ['Created', selectedFiling.created_at ? new Date(selectedFiling.created_at).toLocaleString('en-IN') : '-'],
+                ['Filing Deadline', selectedFiling.deadline ? new Date(selectedFiling.deadline).toLocaleString('en-IN') : '-'],
+                ['Days Remaining', selectedFiling.days_remaining?.toFixed(1)],
+                ['Linked Case', selectedFiling.case_number || '-'],
+              ].map(([label, value]) => (
+                <div key={label as string}>
+                  <p className="text-[10px] text-slate-500 uppercase font-medium">{label}</p>
+                  <p className="text-sm text-slate-800 font-medium mt-0.5">{value || '-'}</p>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-2">
+              {selectedFiling.case_number && (
+                <Link
+                  to={`/cases?search=${selectedFiling.case_number}`}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50"
+                >
+                  <ExternalLink size={12} /> Open Case
+                </Link>
+              )}
+              <Link
+                to={selectedFiling.type === 'STR' || selectedFiling.type === 'SAR' ? '/compliance/sar' : '/reports'}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              >
+                <ExternalLink size={12} /> View in {selectedFiling.type === 'CTR' ? 'CTR Workbench' : 'STR Workflow'}
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

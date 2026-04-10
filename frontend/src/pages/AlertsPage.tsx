@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Bell, ChevronLeft, ChevronRight, Search, Clock, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Search, Clock, Plus } from 'lucide-react'
 import api from '../config/api'
-import { formatDate, formatINR, timeAgo, priorityColors, statusColors } from '../utils/formatters'
+import { formatINR, priorityColors, statusColors } from '../utils/formatters'
 
 const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>
@@ -26,8 +26,23 @@ function RiskScoreBadge({ score }: { score: number | null | undefined }) {
     score > 70 ? 'text-red-700 bg-red-100 border border-red-200' :
     score > 40 ? 'text-amber-700 bg-amber-100 border border-amber-200' :
     'text-green-700 bg-green-100 border border-green-200'
+  const band =
+    score > 70 ? 'HIGH RISK' :
+    score > 40 ? 'MEDIUM RISK' :
+    'LOW RISK'
+  const tooltip =
+    `Risk Score: ${rounded.toFixed(2)} / 100 (${band})\n\n` +
+    `Computed from a weighted blend of:\n` +
+    `• Rule severity (40%): higher severity rules contribute more\n` +
+    `• Customer base risk (25%): KYC, PEP status, watchlist hits\n` +
+    `• Transaction anomaly (20%): amount, channel, geography deviation\n` +
+    `• Behavioral signals (15%): velocity, time-of-day, network risk\n\n` +
+    `Bands: 0-40 Low | 41-70 Medium | 71-100 High`
   return (
-    <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold ${color}`}>
+    <span
+      title={tooltip}
+      className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-xs font-bold cursor-help ${color}`}
+    >
       {rounded.toFixed(2)}
     </span>
   )
@@ -80,6 +95,11 @@ export default function AlertsPage() {
   const [searchParams] = useSearchParams()
   const initialStatus = searchParams.get('status') || ''
   const initialPriority = searchParams.get('priority') || ''
+  const initialDate = searchParams.get('date') || ''
+  const initialMin = searchParams.get('min_amount') || ''
+  const initialMax = searchParams.get('max_amount') || ''
+  const initialAssigned = searchParams.get('assigned_to') || ''
+  const initialAlertType = searchParams.get('alert_type') || ''
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -90,9 +110,27 @@ export default function AlertsPage() {
   const [total, setTotal] = useState(0)
   const [priorityCounts, setPriorityCounts] = useState<Record<string, number>>({})
   const [priorityFilter, setPriorityFilter] = useState(initialPriority)
+  const [dateFilter, setDateFilter] = useState(initialDate)
+  const [minAmount, setMinAmount] = useState(initialMin)
+  const [maxAmount, setMaxAmount] = useState(initialMax)
+  const [assignedFilter, setAssignedFilter] = useState(initialAssigned)
+  const [alertTypeFilter, setAlertTypeFilter] = useState(initialAlertType)
+  const [users, setUsers] = useState<any[]>([])
   const [showClose, setShowClose] = useState<string | null>(null)
   const [closeDisposition, setCloseDisposition] = useState('closed_false_positive')
   const [closeJustification, setCloseJustification] = useState('')
+  const [closeEvidenceUrl, setCloseEvidenceUrl] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [createForm, setCreateForm] = useState({
+    customer_id: '',
+    title: '',
+    description: '',
+    priority: 'medium',
+    alert_type: 'manual',
+    risk_score: 50,
+  })
+  const [creating, setCreating] = useState(false)
+  const [customerOptions, setCustomerOptions] = useState<any[]>([])
 
   const fetchData = useCallback(() => {
     setLoading(true)
@@ -100,6 +138,11 @@ export default function AlertsPage() {
     if (tab) params.status = tab
     if (search) params.search = search
     if (priorityFilter) params.priority = priorityFilter
+    if (dateFilter) params.date = dateFilter
+    if (minAmount) params.min_amount = Number(minAmount) * 100  // INR → paise
+    if (maxAmount) params.max_amount = Number(maxAmount) * 100
+    if (assignedFilter) params.assigned_to = assignedFilter
+    if (alertTypeFilter) params.alert_type = alertTypeFilter
 
     api.get('/alerts', { params })
       .then(res => {
@@ -111,7 +154,7 @@ export default function AlertsPage() {
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load alerts'))
       .finally(() => setLoading(false))
-  }, [page, tab, search, priorityFilter])
+  }, [page, tab, search, priorityFilter, dateFilter, minAmount, maxAmount, assignedFilter, alertTypeFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -131,6 +174,20 @@ export default function AlertsPage() {
           <h1 className="text-lg font-bold text-slate-800">Alerts</h1>
           <p className="text-xs text-slate-500">{total} total alerts in system</p>
         </div>
+        <button
+          onClick={() => {
+            setShowCreate(true)
+            if (customerOptions.length === 0) {
+              api.get('/customers', { params: { page_size: 50 } })
+                .then(r => setCustomerOptions(r.data.items || r.data.customers || []))
+                .catch(() => {})
+            }
+          }}
+          className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus size={14} />
+          New Alert
+        </button>
       </div>
 
       {/* Tab pills */}
@@ -184,8 +241,167 @@ export default function AlertsPage() {
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
+          <select value={dateFilter} onChange={e => { setDateFilter(e.target.value); setPage(1) }} className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white">
+            <option value="">Any Date</option>
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="week">Last 7 Days</option>
+          </select>
+          <select
+            value={assignedFilter}
+            onChange={e => { setAssignedFilter(e.target.value); setPage(1) }}
+            onFocus={() => {
+              if (users.length === 0) {
+                api.get('/admin/users').then(r => setUsers(r.data || [])).catch(() => {})
+              }
+            }}
+            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white"
+          >
+            <option value="">All Assignees</option>
+            <option value="me">Assigned to Me</option>
+            {users.filter(u => u.is_active).map((u: any) => (
+              <option key={u.id} value={u.id}>{u.full_name}</option>
+            ))}
+          </select>
+          <input
+            type="number"
+            value={minAmount}
+            onChange={e => { setMinAmount(e.target.value); setPage(1) }}
+            placeholder="Min ₹"
+            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white w-24"
+          />
+          <input
+            type="number"
+            value={maxAmount}
+            onChange={e => { setMaxAmount(e.target.value); setPage(1) }}
+            placeholder="Max ₹"
+            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white w-24"
+          />
+          {alertTypeFilter && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+              type: {alertTypeFilter}
+              <button onClick={() => { setAlertTypeFilter(''); setPage(1) }} className="ml-1 hover:text-purple-900">×</button>
+            </span>
+          )}
+          {(dateFilter || minAmount || maxAmount || assignedFilter || alertTypeFilter) && (
+            <button
+              onClick={() => { setDateFilter(''); setMinAmount(''); setMaxAmount(''); setAssignedFilter(''); setAlertTypeFilter(''); setPage(1) }}
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Create Alert Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Create Alert (Manual)</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Customer <span className="text-red-500">*</span></label>
+                <select
+                  value={createForm.customer_id}
+                  onChange={e => setCreateForm(f => ({ ...f, customer_id: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                >
+                  <option value="">Select customer...</option>
+                  {customerOptions.map(c => (
+                    <option key={c.id} value={c.id}>{c.customer_number} — {c.full_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Title <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={createForm.title}
+                  onChange={e => setCreateForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="e.g. Suspicious cash deposit pattern"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea
+                  value={createForm.description}
+                  onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
+                  rows={3}
+                  placeholder="What did you observe? Why is this suspicious?"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Priority</label>
+                  <select
+                    value={createForm.priority}
+                    onChange={e => setCreateForm(f => ({ ...f, priority: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  >
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                  <select
+                    value={createForm.alert_type}
+                    onChange={e => setCreateForm(f => ({ ...f, alert_type: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  >
+                    <option value="manual">Manual</option>
+                    <option value="fraud">Fraud</option>
+                    <option value="aml">AML</option>
+                    <option value="kyc">KYC</option>
+                    <option value="compliance">Compliance</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Risk Score</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={createForm.risk_score}
+                    onChange={e => setCreateForm(f => ({ ...f, risk_score: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                onClick={() => setShowCreate(false)}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={creating || !createForm.customer_id || !createForm.title.trim()}
+                onClick={() => {
+                  setCreating(true)
+                  api.post('/alerts', createForm)
+                    .then(() => {
+                      setShowCreate(false)
+                      setCreateForm({ customer_id: '', title: '', description: '', priority: 'medium', alert_type: 'manual', risk_score: 50 })
+                      fetchData()
+                    })
+                    .catch(err => setError(err.response?.data?.detail || 'Failed to create alert'))
+                    .finally(() => setCreating(false))
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40"
+              >
+                {creating ? 'Creating...' : 'Create Alert'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Close Alert Modal */}
       {showClose && (
@@ -205,19 +421,40 @@ export default function AlertsPage() {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Justification <span className="text-red-500">*</span></label>
                 <textarea value={closeJustification} onChange={e => setCloseJustification(e.target.value)} rows={3} placeholder="Provide justification for closure..." className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Evidence URL <span className="text-slate-400 font-normal">(optional)</span></label>
+                <input
+                  type="url"
+                  value={closeEvidenceUrl}
+                  onChange={e => setCloseEvidenceUrl(e.target.value)}
+                  placeholder="https://docs.bank.intra/case-files/..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Link to supporting documentation in the bank's DMS</p>
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={() => { setShowClose(null); setCloseJustification('') }} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={() => { setShowClose(null); setCloseJustification(''); setCloseEvidenceUrl('') }} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
               <button
                 disabled={!closeJustification.trim()}
                 onClick={() => {
-                  api.put(`/alerts/${showClose}/status`, { status: closeDisposition, notes: closeJustification })
+                  const dispMap: Record<string, string> = {
+                    closed_true_positive: 'true_positive',
+                    closed_false_positive: 'false_positive',
+                    closed_inconclusive: 'inconclusive',
+                  }
+                  api.post(`/alerts/${showClose}/close`, {
+                    disposition: dispMap[closeDisposition] || 'inconclusive',
+                    reason: closeJustification,
+                    evidence_url: closeEvidenceUrl || null,
+                  })
                     .then(() => {
                       if (closeDisposition === 'closed_true_positive') {
                         navigate(`/cases?from_alert=${showClose}`)
                       }
                       setShowClose(null)
                       setCloseJustification('')
+                      setCloseEvidenceUrl('')
                       fetchData()
                     })
                     .catch(() => {})
