@@ -1,0 +1,11 @@
+D:\Claude Projects\EnterpriseRiskSystem\backend\app\api\mis_reports.py:19: FastAPIDeprecationWarning: `regex` has been deprecated, please use `pattern` instead
+  period: str = Query("monthly", regex="^(daily|weekly|monthly)$"),
+INFO:     Started server process [17336]
+INFO:     Waiting for application startup.
+D:\Claude Projects\EnterpriseRiskSystem\backend\main.py:26: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  "timestamp": datetime.utcnow().isoformat(),
+{"timestamp": "2026-04-10T07:47:28.581032", "level": "INFO", "logger": "finsurge", "message": "Database has 8 users \u2014 skipping seed.", "environment": "development"}
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): [winerror 10048] only one usage of each socket address (protocol/network address/port) is normally permitted
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.

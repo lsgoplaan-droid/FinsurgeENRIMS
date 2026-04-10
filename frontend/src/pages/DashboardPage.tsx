@@ -368,7 +368,7 @@ export default function DashboardPage() {
                     ))}
                   </div>
                   <Link
-                    to={`/customers?state=${selectedState.state}&risk_category=high`}
+                    to={`/customers?state=${selectedState.state}&risk_category=high,very_high`}
                     className="inline-flex items-center gap-1 mt-2 text-xs text-blue-700 font-medium hover:underline"
                   >
                     View high-risk customers in {selectedState.state} <ChevronRight size={12} />

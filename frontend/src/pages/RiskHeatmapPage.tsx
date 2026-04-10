@@ -285,7 +285,7 @@ export default function RiskHeatmapPage() {
                 </Link>
                 {selectedState.high_risk_count > 0 && (
                   <Link
-                    to={`/customers?state=${encodeURIComponent(selectedState.state)}&risk_category=high`}
+                    to={`/customers?state=${encodeURIComponent(selectedState.state)}&risk_category=high,very_high`}
                     className="inline-flex items-center gap-1 text-xs text-red-700 font-medium hover:underline"
                   >
                     {selectedState.high_risk_count} high-risk only <ChevronRight size={12} />

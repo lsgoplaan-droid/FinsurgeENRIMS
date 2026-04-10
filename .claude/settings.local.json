@@ -24,7 +24,11 @@
       "Bash(ls -lh FinsurgeENRIMS_Features*.pptx)",
       "Bash(python generate_docx.py)",
       "Bash(xargs grep:*)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "Bash(pkill -f \"python.*main.py\")",
+      "Bash(curl -s http://localhost:8000/api/v1/health)",
+      "Bash(lsof -ti:8000)",
+      "Bash(xargs kill:*)"
     ]
   }
 }
