@@ -26,11 +26,10 @@ export default function InvestigationCopilotPage() {
   const [actionMsg, setActionMsg] = useState('')
 
   useEffect(() => {
-    api.get('/alerts', { params: { page_size: 50 } })
+    api.get('/alerts', { params: { status: 'new', page_size: 50 } })
       .then(res => {
-        const all = res.data?.items || res.data?.alerts || []
-        const open = all.filter((a: any) => !a.status?.startsWith('closed'))
-        setAlerts(open)
+        const alerts = res.data?.items || res.data?.alerts || []
+        setAlerts(alerts)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -160,7 +159,7 @@ export default function InvestigationCopilotPage() {
           <Brain size={20} className="text-purple-600" />
           Investigation Copilot
         </h1>
-        <p className="text-xs text-slate-500">AI-powered alert analysis — click any alert to auto-investigate</p>
+        <p className="text-xs text-slate-500">AI-powered analysis of new alerts — click to investigate and take action</p>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -178,7 +177,7 @@ export default function InvestigationCopilotPage() {
             />
           </div>
 
-          <div className="text-xs text-slate-500">{filteredAlerts.length} open alerts</div>
+          <div className="text-xs text-slate-500">{filteredAlerts.length} new alerts awaiting investigation</div>
 
           <div className="space-y-1.5 max-h-[600px] overflow-y-auto">
             {loading ? (
