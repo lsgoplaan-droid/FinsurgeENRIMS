@@ -26,7 +26,7 @@ function getHighRiskRelations(networkData: any, centerId: string) {
     .filter((entity: any) => entity && (entity.risk_category === 'high' || entity.risk_category === 'very_high'))
 }
 
-type Tab = 'overview' | 'transactions' | 'alerts' | 'audit'
+type Tab = 'overview' | 'transactions' | 'alerts' | 'network' | 'audit'
 
 // Enhanced Circular gauge SVG with tooltip
 function RiskGauge({ score, customer }: { score: number; customer?: any }) {
@@ -192,6 +192,7 @@ export default function Customer360Page() {
   const tabs: { key: Tab; label: string; icon: typeof User }[] = [
     { key: 'overview', label: 'Overview', icon: User },
     { key: 'transactions', label: 'Transactions', icon: CreditCard },
+    { key: 'network', label: 'Network Analysis', icon: Building },
     { key: 'alerts', label: 'Alerts & Cases', icon: Bell },
     { key: 'audit', label: 'Audit Trail', icon: History },
   ]
@@ -484,6 +485,150 @@ export default function Customer360Page() {
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Network Analysis */}
+      {tab === 'network' && (
+        <div className="space-y-4">
+          {networkLoading ? (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 py-8 text-center text-slate-400">
+              Loading network data...
+            </div>
+          ) : networkData ? (
+            <>
+              {/* Network Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                  <div className="text-sm text-slate-500 mb-1">Total Entities</div>
+                  <div className="text-2xl font-bold text-slate-800">{networkData.nodes?.length || 0}</div>
+                  <div className="text-xs text-slate-400 mt-1">in network</div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                  <div className="text-sm text-slate-500 mb-1">Direct Connections</div>
+                  <div className="text-2xl font-bold text-slate-800">{networkData.edges?.length || 0}</div>
+                  <div className="text-xs text-slate-400 mt-1">relationships</div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                  <div className="text-sm text-slate-500 mb-1">High Risk</div>
+                  <div className="text-2xl font-bold text-red-600">{
+                    networkData.nodes?.filter((n: any) =>
+                      n.risk_category === 'high' || n.risk_category === 'very_high'
+                    ).length || 0
+                  }</div>
+                  <div className="text-xs text-slate-400 mt-1">entities</div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                  <div className="text-sm text-slate-500 mb-1">Avg Risk Score</div>
+                  <div className="text-2xl font-bold text-slate-800">{
+                    networkData.nodes?.length > 0
+                      ? (networkData.nodes.reduce((sum: number, n: any) => sum + (n.risk_score || 0), 0) / networkData.nodes.length).toFixed(0)
+                      : 0
+                  }</div>
+                  <div className="text-xs text-slate-400 mt-1">in network</div>
+                </div>
+              </div>
+
+              {/* Relationship Types */}
+              {(() => {
+                const relationshipTypes: Record<string, any[]> = {}
+                networkData.edges?.forEach((edge: any) => {
+                  const type = edge.relationship || 'other'
+                  if (!relationshipTypes[type]) relationshipTypes[type] = []
+                  const relatedId = edge.source === id ? edge.target : edge.source
+                  const relatedNode = networkData.nodes.find((n: any) => n.id === relatedId)
+                  if (relatedNode) {
+                    relationshipTypes[type].push({ ...relatedNode, relationship: type })
+                  }
+                })
+
+                return Object.entries(relationshipTypes).map(([relType, entities]) => (
+                  <div key={relType} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <h3 className="text-sm font-semibold text-slate-700 mb-3 capitalize">
+                      {relType.replace(/_/g, ' ')} ({entities.length})
+                    </h3>
+                    <div className="space-y-2">
+                      {entities.map((entity: any) => (
+                        <div
+                          key={entity.id}
+                          className="flex items-start justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-800">{entity.name || entity.full_name || entity.label}</div>
+                            <div className="text-xs text-slate-500 mt-1">
+                              {entity.customer_type && <span className="capitalize">{entity.customer_type.replace(/_/g, ' ')}</span>}
+                              {entity.occupation && <span className="ml-2">• {entity.occupation}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 ml-4 flex-shrink-0">
+                            <div className="text-right">
+                              {entity.risk_score != null && (
+                                <div className="text-sm font-bold" style={{
+                                  color: entity.risk_score >= 75 ? '#ef4444' :
+                                         entity.risk_score >= 50 ? '#f97316' :
+                                         entity.risk_score >= 25 ? '#f59e0b' : '#10b981'
+                                }}>
+                                  {entity.risk_score}
+                                </div>
+                              )}
+                              <div className="text-xs text-slate-400">Risk</div>
+                            </div>
+                            <Badge
+                              text={entity.risk_category || '-'}
+                              colors={riskColors[entity.risk_category] || 'bg-gray-100 text-gray-800'}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              })()}
+
+              {/* Network Risk Summary */}
+              {(() => {
+                const allEntities = networkData.nodes || []
+                const highRiskEntities = allEntities.filter((n: any) =>
+                  n.risk_category === 'high' || n.risk_category === 'very_high'
+                )
+                const pepEntities = allEntities.filter((n: any) => n.pep_status || n.is_pep)
+                const sanctionsMatches = allEntities.filter((n: any) => n.sanctions_match)
+
+                if (highRiskEntities.length > 0 || pepEntities.length > 0 || sanctionsMatches.length > 0) {
+                  return (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+                      <h3 className="text-sm font-semibold text-amber-900 mb-3">⚠️ Network Risk Summary</h3>
+                      <div className="space-y-2 text-sm">
+                        {highRiskEntities.length > 0 && (
+                          <div className="flex items-center gap-2 text-amber-800">
+                            <span className="text-lg">🔴</span>
+                            <span><strong>{highRiskEntities.length}</strong> high/very-high risk entit{highRiskEntities.length === 1 ? 'y' : 'ies'} in network</span>
+                          </div>
+                        )}
+                        {pepEntities.length > 0 && (
+                          <div className="flex items-center gap-2 text-amber-800">
+                            <span className="text-lg">👤</span>
+                            <span><strong>{pepEntities.length}</strong> Politically Exposed Person (PEP) in network</span>
+                          </div>
+                        )}
+                        {sanctionsMatches.length > 0 && (
+                          <div className="flex items-center gap-2 text-amber-800">
+                            <span className="text-lg">⛔</span>
+                            <span><strong>{sanctionsMatches.length}</strong> sanctions matches in network</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                }
+                return null
+              })()}
+            </>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 py-8 text-center text-slate-400">
+              No network data available
+            </div>
+          )}
         </div>
       )}
 
