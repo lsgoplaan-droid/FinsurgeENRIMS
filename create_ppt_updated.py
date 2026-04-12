@@ -219,7 +219,7 @@ add_title_slide(prs, "FinsurgeENRIMS", "Real-Time Fraud Detection & Risk Managem
 # Slide 2: System Overview
 add_content_slide(prs, "System Overview", [
     "Real-time detection of fraud, cyber attacks, and regulatory violations for Indian banks",
-    "92 detection rules organized into 22 detection scenarios covering:",
+    "77 detection rules organized into 17 detection scenarios covering:",
     "    Fraud patterns (card fraud, account takeover, behavioral anomalies, mule accounts)",
     "    Cyber threats (SIM swap, phishing, UPI fraud, digital channel attacks)",
     "    Advanced fraud (AI deepfakes, synthetic identities, bot detection)",
@@ -244,19 +244,19 @@ add_content_slide(prs, "Investigation Copilot", [
 # Slide 4: Detection Scenarios
 add_content_slide(prs, "Detection Scenarios — Read-Only Framework", [
     "Detection Scenarios are read-only templates that group related rules by fraud/risk type",
-    "22 Pre-Built Scenarios (not editable via UI):",
-    "    Fraud: Card Fraud (3 rules), Account Takeover (3), Behavioral Anomaly (5), Mule Accounts (3)",
-    "    Cyber: SIM Swap/Phishing (3), Digital Channel Attacks (4), UPI Fraud (3)",
+    "17 Pre-Built Scenarios (not editable via UI):",
+    "    Fraud: Card Fraud (3 rules), Account Takeover (3), Wire Fraud (3)",
+    "    Cyber: SIM Swap/Phishing (3), Digital Channel Attacks (4), UPI/Instant Payment (3)",
     "    Advanced: Deepfake/Synthetic ID (5), Bot Detection (3)",
     "    Internal: Employee Abuse (7 rules), Data Theft (3)",
-    "    Operational: Transaction Risk (5), Unusual Activity (4), Risk Escalation (3)",
+    "    Compliance: Dormant Account (1), Beneficiary Risk (1)",
     "Scenario Metrics: Detection count, last triggered date, constituent rules status",
     "Purpose: Provide investigators immediate context about fraud pattern types without manual setup"
 ], logo_path)
 
 # Slide 5: Rules Engine
 add_content_slide(prs, "Rules Engine — Transaction Evaluation", [
-    "Real-time evaluation of 92 enabled detection rules against every customer transaction",
+    "Real-time evaluation of 77 enabled detection rules against every customer transaction",
     "Rule Architecture",
     "    Conditions: JSON-based logic trees (e.g., IF age > 30 AND amount > 10L, THEN flag)",
     "    Actions: Create alert, flag transaction, adjust customer risk score, notify compliance",

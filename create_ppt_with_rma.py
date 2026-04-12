@@ -145,7 +145,7 @@ add_title_slide(prs, "FinsurgeENRIMS", "Real-Time Fraud Detection & Risk Managem
 # Slide 2: System Overview
 add_content_slide(prs, "System Overview", [
     "Real-time detection of fraud, cyber attacks, and regulatory violations for Indian & Bhutanese banks",
-    "92 detection rules organized into 22 detection scenarios covering:",
+    "77 detection rules organized into 17 detection scenarios covering:",
     "    Fraud patterns (card fraud, account takeover, behavioral anomalies, mule accounts)",
     "    Cyber threats (SIM swap, phishing, UPI fraud, digital channel attacks)",
     "    Advanced fraud (AI deepfakes, synthetic identities, bot detection)",
