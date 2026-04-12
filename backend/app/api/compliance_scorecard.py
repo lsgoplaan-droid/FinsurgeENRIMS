@@ -403,6 +403,36 @@ def compliance_summary(
     not_impl = sum(1 for r in all_reqs if r["status"] == "not_implemented")
     avg_coverage = round(sum(r["coverage"] for r in all_reqs) / total_reqs, 1) if total_reqs else 0
 
+    # Separate metrics for RBI and RMA
+    rbi_sections = [s for s in sections if not s["id"].startswith("rma_")]
+    rma_sections = [s for s in sections if s["id"].startswith("rma_")]
+
+    rbi_reqs = [r for s in rbi_sections for r in s["requirements"]]
+    rma_reqs = [r for s in rma_sections for r in s["requirements"]]
+
+    def calc_section_metrics(reqs):
+        if not reqs:
+            return {"total": 0, "compliant": 0, "partial": 0, "at_risk": 0, "not_implemented": 0, "score": 0, "coverage": 0}
+        total = len(reqs)
+        compliant_count = sum(1 for r in reqs if r["status"] == "compliant")
+        partial_count = sum(1 for r in reqs if r["status"] == "partial")
+        at_risk_count = sum(1 for r in reqs if r["status"] == "at_risk")
+        not_impl_count = sum(1 for r in reqs if r["status"] == "not_implemented")
+        coverage = round(sum(r["coverage"] for r in reqs) / total, 1) if total else 0
+        score = round(compliant_count / total * 100, 1) if total else 0
+        return {
+            "total": total,
+            "compliant": compliant_count,
+            "partial": partial_count,
+            "at_risk": at_risk_count,
+            "not_implemented": not_impl_count,
+            "score": score,
+            "coverage": coverage
+        }
+
+    rbi_metrics = calc_section_metrics(rbi_reqs)
+    rma_metrics = calc_section_metrics(rma_reqs)
+
     return {
         "sections": sections,
         "summary": {
@@ -414,5 +444,25 @@ def compliance_summary(
             "overall_score": round(compliant / total_reqs * 100, 1) if total_reqs else 0,
             "avg_coverage": avg_coverage,
             "last_assessed": now.isoformat(),
+        },
+        "rbi_summary": {
+            "title": "RBI (India)",
+            "total_requirements": rbi_metrics["total"],
+            "compliant": rbi_metrics["compliant"],
+            "partial": rbi_metrics["partial"],
+            "at_risk": rbi_metrics["at_risk"],
+            "not_implemented": rbi_metrics["not_implemented"],
+            "score": rbi_metrics["score"],
+            "avg_coverage": rbi_metrics["coverage"],
+        },
+        "rma_summary": {
+            "title": "RMA (Bhutan)",
+            "total_requirements": rma_metrics["total"],
+            "compliant": rma_metrics["compliant"],
+            "partial": rma_metrics["partial"],
+            "at_risk": rma_metrics["at_risk"],
+            "not_implemented": rma_metrics["not_implemented"],
+            "score": rma_metrics["score"],
+            "avg_coverage": rma_metrics["coverage"],
         },
     }

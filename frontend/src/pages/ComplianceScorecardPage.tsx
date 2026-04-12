@@ -76,7 +76,7 @@ export default function ComplianceScorecardPage() {
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className={`text-2xl font-bold ${scoreColor}`}>{summary.overall_score}%</span>
-                <span className="text-[9px] text-slate-400">Score</span>
+                <span className="text-[9px] text-slate-400">Overall</span>
               </div>
             </div>
             <div>
@@ -116,8 +116,49 @@ export default function ComplianceScorecardPage() {
         </div>
       </div>
 
-      {/* Sections */}
-      {sections.map((section: any) => {
+      {/* Regulator-Specific Scores */}
+      {data.rbi_summary && data.rma_summary && (
+        <div className="grid grid-cols-2 gap-4">
+          {[data.rbi_summary, data.rma_summary].map((reg: any) => {
+            const regScore = reg.score
+            const regColor = regScore >= 70 ? 'text-green-600' : regScore >= 50 ? 'text-amber-600' : 'text-red-600'
+            return (
+              <div key={reg.title} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-slate-800">{reg.title}</h3>
+                  <span className={`text-2xl font-bold ${regColor}`}>{reg.score}%</span>
+                </div>
+                <p className="text-xs text-slate-500 mb-3">
+                  {reg.total_requirements} requirements — Coverage: {reg.avg_coverage}%
+                </p>
+                <div className="flex items-center gap-2 text-[10px]">
+                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${reg.score}%`,
+                        backgroundColor: reg.score >= 70 ? '#22c55e' : reg.score >= 50 ? '#f59e0b' : '#ef4444',
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-2 text-[9px]">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" />{reg.compliant}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" />{reg.partial}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" />{reg.at_risk}</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" />{reg.not_implemented}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* RBI Sections */}
+      {sections.filter((s: any) => !s.id.startsWith('rma_')).length > 0 && (
+        <div>
+          <h2 className="text-sm font-bold text-slate-700 mb-3 px-1">RBI Requirements (India)</h2>
+          {sections.filter((s: any) => !s.id.startsWith('rma_')).map((section: any) => {
         const isExpanded = expandedSections.has(section.id)
         const sectionCompliant = section.requirements.filter((r: any) => r.status === 'compliant').length
         const sectionTotal = section.requirements.length
@@ -201,7 +242,101 @@ export default function ComplianceScorecardPage() {
             )}
           </div>
         )
-      })}
+          })}
+        </div>
+      )}
+
+      {/* RMA Sections */}
+      {sections.filter((s: any) => s.id.startsWith('rma_')).length > 0 && (
+        <div>
+          <h2 className="text-sm font-bold text-slate-700 mb-3 px-1">RMA Requirements (Bhutan)</h2>
+          {sections.filter((s: any) => s.id.startsWith('rma_')).map((section: any) => {
+        const isExpanded = expandedSections.has(section.id)
+        const sectionCompliant = section.requirements.filter((r: any) => r.status === 'compliant').length
+        const sectionTotal = section.requirements.length
+        const sectionScore = Math.round((sectionCompliant / sectionTotal) * 100)
+
+        return (
+          <div key={section.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            {/* Section header */}
+            <button
+              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+              onClick={() => toggleSection(section.id)}
+            >
+              <div className="flex items-center gap-3">
+                {isExpanded ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-slate-800">{section.title}</p>
+                  <p className="text-[10px] text-slate-400">{section.rbi_reference}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  {section.requirements.map((r: any, i: number) => (
+                    <div
+                      key={i}
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        r.status === 'compliant' ? 'bg-green-500' :
+                        r.status === 'partial' ? 'bg-amber-500' :
+                        r.status === 'at_risk' ? 'bg-orange-500' : 'bg-red-500'
+                      }`}
+                      title={r.requirement}
+                    />
+                  ))}
+                </div>
+                <span className={`text-sm font-bold ${sectionScore >= 70 ? 'text-green-600' : sectionScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                  {sectionCompliant}/{sectionTotal}
+                </span>
+              </div>
+            </button>
+
+            {/* Requirements */}
+            {isExpanded && (
+              <div className="border-t border-slate-100">
+                {section.requirements.map((req: any) => {
+                  const cfg = statusConfig[req.status] || statusConfig.not_implemented
+                  const Icon = cfg.icon
+                  return (
+                    <div key={req.id} className="flex items-start gap-3 px-5 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                      <div className={`w-7 h-7 ${cfg.bg} rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                        <Icon className={cfg.color} size={14} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-medium text-slate-800">{req.requirement}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{req.description}</p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${cfg.bg} ${cfg.color}`}>
+                            {cfg.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 mt-2">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all"
+                                style={{
+                                  width: `${req.coverage}%`,
+                                  backgroundColor: req.coverage >= 90 ? '#22c55e' : req.coverage >= 50 ? '#f59e0b' : '#ef4444',
+                                }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-slate-500">{req.coverage}%</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400">{req.evidence}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+          })}
+        </div>
+      )}
 
       {/* Assessment info */}
       <div className="flex items-center justify-between text-xs text-slate-400 px-1">
