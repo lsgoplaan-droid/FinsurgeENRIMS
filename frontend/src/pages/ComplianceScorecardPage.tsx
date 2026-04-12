@@ -12,10 +12,13 @@ const statusConfig: Record<string, { label: string; color: string; bg: string; i
   not_implemented: { label: 'Not Implemented', color: 'text-red-700', bg: 'bg-red-100', icon: XCircle },
 }
 
+type RegulatorTab = 'rbi' | 'rma'
+
 export default function ComplianceScorecardPage() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+  const [activeTab, setActiveTab] = useState<RegulatorTab>('rbi')
 
   useEffect(() => {
     api.get('/compliance-scorecard/summary')
@@ -52,6 +55,8 @@ export default function ComplianceScorecardPage() {
 
   const rbiSections = sections.filter((s: any) => !s.id.startsWith('rma_'))
   const rmaSections = sections.filter((s: any) => s.id.startsWith('rma_'))
+  const currentSections = activeTab === 'rbi' ? rbiSections : rmaSections
+  const currentSummary = activeTab === 'rbi' ? data.rbi_summary : data.rma_summary
 
   const SectionCard = ({ section }: { section: any }) => {
     const isExpanded = expandedSections.has(section.id)
@@ -199,63 +204,93 @@ export default function ComplianceScorecardPage() {
         </div>
       </div>
 
-      {/* Regulator-Specific Scores */}
-      {data.rbi_summary && data.rma_summary && (
-        <div className="grid grid-cols-2 gap-4">
-          {[data.rbi_summary, data.rma_summary].map((reg: any) => {
-            const regScore = reg.score
-            const regColor = regScore >= 70 ? 'text-green-600' : regScore >= 50 ? 'text-amber-600' : 'text-red-600'
-            return (
-              <div key={reg.title} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-slate-800">{reg.title}</h3>
-                  <span className={`text-2xl font-bold ${regColor}`}>{reg.score}%</span>
-                </div>
-                <p className="text-xs text-slate-500 mb-3">
-                  {reg.total_requirements} requirements — Coverage: {reg.avg_coverage}%
-                </p>
-                <div className="flex items-center gap-2 text-[10px]">
-                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${reg.score}%`,
-                        backgroundColor: reg.score >= 70 ? '#22c55e' : reg.score >= 50 ? '#f59e0b' : '#ef4444',
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-2 text-[9px]">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" />{reg.compliant}</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" />{reg.partial}</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-500" />{reg.at_risk}</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" />{reg.not_implemented}</span>
-                </div>
+      {/* Tabs */}
+      <div className="flex gap-4 border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('rbi')}
+          className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
+            activeTab === 'rbi'
+              ? 'text-blue-600 border-blue-600'
+              : 'text-slate-600 border-transparent hover:text-slate-800'
+          }`}
+        >
+          RBI (India) — {data.rbi_summary.total_requirements} Requirements
+        </button>
+        <button
+          onClick={() => setActiveTab('rma')}
+          className={`px-4 py-3 font-medium text-sm transition-colors border-b-2 ${
+            activeTab === 'rma'
+              ? 'text-blue-600 border-blue-600'
+              : 'text-slate-600 border-transparent hover:text-slate-800'
+          }`}
+        >
+          RMA (Bhutan) — {data.rma_summary.total_requirements} Requirements
+        </button>
+      </div>
+
+      {/* Tab Content - Regulator Score Card */}
+      {currentSummary && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">{currentSummary.title}</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                {currentSummary.total_requirements} requirements — Coverage: {currentSummary.avg_coverage}%
+              </p>
+            </div>
+            <div className="text-right">
+              <div className={`text-4xl font-bold ${
+                currentSummary.score >= 70 ? 'text-green-600' :
+                currentSummary.score >= 50 ? 'text-amber-600' : 'text-red-600'
+              }`}>
+                {currentSummary.score}%
               </div>
-            )
-          })}
+            </div>
+          </div>
+
+          {/* Status breakdown */}
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            {[
+              { label: 'Compliant', value: currentSummary.compliant, color: 'bg-green-100 text-green-700' },
+              { label: 'Partial', value: currentSummary.partial, color: 'bg-amber-100 text-amber-700' },
+              { label: 'At Risk', value: currentSummary.at_risk, color: 'bg-orange-100 text-orange-700' },
+              { label: 'Not Impl.', value: currentSummary.not_implemented, color: 'bg-red-100 text-red-700' },
+            ].map(s => (
+              <div key={s.label} className={`p-3 rounded-lg ${s.color} text-center`}>
+                <p className="text-2xl font-bold">{s.value}</p>
+                <p className="text-[10px] mt-1">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Progress bar */}
+          <div className="flex h-2 rounded-full overflow-hidden bg-slate-100">
+            <div
+              className="bg-green-500 transition-all"
+              style={{ width: `${(currentSummary.compliant / currentSummary.total_requirements) * 100}%` }}
+            />
+            <div
+              className="bg-amber-500 transition-all"
+              style={{ width: `${(currentSummary.partial / currentSummary.total_requirements) * 100}%` }}
+            />
+            <div
+              className="bg-orange-500 transition-all"
+              style={{ width: `${(currentSummary.at_risk / currentSummary.total_requirements) * 100}%` }}
+            />
+            <div
+              className="bg-red-500 transition-all"
+              style={{ width: `${(currentSummary.not_implemented / currentSummary.total_requirements) * 100}%` }}
+            />
+          </div>
         </div>
       )}
 
-      {/* RBI Sections */}
-      {rbiSections.length > 0 && (
-        <div>
-          <h2 className="text-sm font-bold text-slate-700 mb-3 px-1">RBI Requirements (India)</h2>
-          {rbiSections.map((section: any) => (
-            <SectionCard key={section.id} section={section} />
-          ))}
-        </div>
-      )}
-
-      {/* RMA Sections */}
-      {rmaSections.length > 0 && (
-        <div>
-          <h2 className="text-sm font-bold text-slate-700 mb-3 px-1">RMA Requirements (Bhutan)</h2>
-          {rmaSections.map((section: any) => (
-            <SectionCard key={section.id} section={section} />
-          ))}
-        </div>
-      )}
+      {/* Tab Content - Sections */}
+      <div className="space-y-3">
+        {currentSections.map((section: any) => (
+          <SectionCard key={section.id} section={section} />
+        ))}
+      </div>
 
       {/* Assessment info */}
       <div className="flex items-center justify-between text-xs text-slate-400 px-1">
