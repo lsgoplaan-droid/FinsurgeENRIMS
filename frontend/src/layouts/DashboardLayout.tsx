@@ -53,7 +53,7 @@ const navGroups: NavGroup[] = [
   {
     title: 'Compliance & Reporting',
     items: [
-      { path: '/compliance-scorecard', label: 'RBI Scorecard', icon: CheckSquare },
+      { path: '/compliance-scorecard', label: 'Compliance Scorecard', icon: CheckSquare },
       { path: '/filing-deadlines', label: 'Filing Deadlines', icon: Clock },
       { path: '/compliance-sar', label: 'Compliance / SAR', icon: ShieldCheck },
       { path: '/police-fir', label: 'Police / FIR', icon: Scale },
