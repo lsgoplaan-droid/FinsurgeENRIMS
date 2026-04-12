@@ -21,7 +21,6 @@ export default function ComplianceScorecardPage() {
     api.get('/compliance-scorecard/summary')
       .then(res => {
         setData(res.data)
-        // Expand all sections by default
         const ids = new Set<string>((res.data.sections || []).map((s: any) => s.id))
         setExpandedSections(ids)
       })
@@ -51,6 +50,93 @@ export default function ComplianceScorecardPage() {
     setExpandedSections(next)
   }
 
+  const rbiSections = sections.filter((s: any) => !s.id.startsWith('rma_'))
+  const rmaSections = sections.filter((s: any) => s.id.startsWith('rma_'))
+
+  const SectionCard = ({ section }: { section: any }) => {
+    const isExpanded = expandedSections.has(section.id)
+    const sectionCompliant = section.requirements.filter((r: any) => r.status === 'compliant').length
+    const sectionTotal = section.requirements.length
+    const sectionScore = Math.round((sectionCompliant / sectionTotal) * 100)
+
+    return (
+      <div key={section.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+          onClick={() => toggleSection(section.id)}
+        >
+          <div className="flex items-center gap-3">
+            {isExpanded ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
+            <div className="text-left">
+              <p className="text-sm font-semibold text-slate-800">{section.title}</p>
+              <p className="text-[10px] text-slate-400">{section.rbi_reference}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              {section.requirements.map((r: any, i: number) => (
+                <div
+                  key={i}
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    r.status === 'compliant' ? 'bg-green-500' :
+                    r.status === 'partial' ? 'bg-amber-500' :
+                    r.status === 'at_risk' ? 'bg-orange-500' : 'bg-red-500'
+                  }`}
+                  title={r.requirement}
+                />
+              ))}
+            </div>
+            <span className={`text-sm font-bold ${sectionScore >= 70 ? 'text-green-600' : sectionScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+              {sectionCompliant}/{sectionTotal}
+            </span>
+          </div>
+        </button>
+
+        {isExpanded && (
+          <div className="border-t border-slate-100">
+            {section.requirements.map((req: any) => {
+              const cfg = statusConfig[req.status] || statusConfig.not_implemented
+              const Icon = cfg.icon
+              return (
+                <div key={req.id} className="flex items-start gap-3 px-5 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
+                  <div className={`w-7 h-7 ${cfg.bg} rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                    <Icon className={cfg.color} size={14} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">{req.requirement}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{req.description}</p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${cfg.bg} ${cfg.color}`}>
+                        {cfg.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 mt-2">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${req.coverage}%`,
+                              backgroundColor: req.coverage >= 90 ? '#22c55e' : req.coverage >= 50 ? '#f59e0b' : '#ef4444',
+                            }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-slate-500">{req.coverage}%</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400">{req.evidence}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -63,7 +149,6 @@ export default function ComplianceScorecardPage() {
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-5">
-            {/* Score ring */}
             <div className="relative w-24 h-24">
               <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
                 <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" strokeWidth="8" />
@@ -82,12 +167,11 @@ export default function ComplianceScorecardPage() {
             <div>
               <p className="text-lg font-bold text-slate-800">Overall Compliance</p>
               <p className="text-xs text-slate-500 mt-0.5">
-                {summary.total_requirements} requirements assessed &mdash; Average coverage: {summary.avg_coverage}%
+                {summary.total_requirements} requirements assessed — Average coverage: {summary.avg_coverage}%
               </p>
             </div>
           </div>
 
-          {/* Status distribution */}
           <div className="flex items-center gap-3">
             {[
               { label: 'Compliant', value: summary.compliant, color: 'bg-green-500' },
@@ -105,7 +189,6 @@ export default function ComplianceScorecardPage() {
           </div>
         </div>
 
-        {/* Progress bar */}
         <div className="mt-4">
           <div className="flex h-3 rounded-full overflow-hidden bg-slate-100">
             <div className="bg-green-500 transition-all" style={{ width: `${(summary.compliant / summary.total_requirements) * 100}%` }} />
@@ -155,186 +238,22 @@ export default function ComplianceScorecardPage() {
       )}
 
       {/* RBI Sections */}
-      {sections.filter((s: any) => !s.id.startsWith('rma_')).length > 0 && (
+      {rbiSections.length > 0 && (
         <div>
           <h2 className="text-sm font-bold text-slate-700 mb-3 px-1">RBI Requirements (India)</h2>
-          {sections.filter((s: any) => !s.id.startsWith('rma_')).map((section: any) => {
-        const isExpanded = expandedSections.has(section.id)
-        const sectionCompliant = section.requirements.filter((r: any) => r.status === 'compliant').length
-        const sectionTotal = section.requirements.length
-        const sectionScore = Math.round((sectionCompliant / sectionTotal) * 100)
-
-        return (
-          <div key={section.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            {/* Section header */}
-            <button
-              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
-              onClick={() => toggleSection(section.id)}
-            >
-              <div className="flex items-center gap-3">
-                {isExpanded ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
-                <div className="text-left">
-                  <p className="text-sm font-semibold text-slate-800">{section.title}</p>
-                  <p className="text-[10px] text-slate-400">{section.rbi_reference}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  {section.requirements.map((r: any, i: number) => (
-                    <div
-                      key={i}
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        r.status === 'compliant' ? 'bg-green-500' :
-                        r.status === 'partial' ? 'bg-amber-500' :
-                        r.status === 'at_risk' ? 'bg-orange-500' : 'bg-red-500'
-                      }`}
-                      title={r.requirement}
-                    />
-                  ))}
-                </div>
-                <span className={`text-sm font-bold ${sectionScore >= 70 ? 'text-green-600' : sectionScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
-                  {sectionCompliant}/{sectionTotal}
-                </span>
-              </div>
-            </button>
-
-            {/* Requirements */}
-            {isExpanded && (
-              <div className="border-t border-slate-100">
-                {section.requirements.map((req: any) => {
-                  const cfg = statusConfig[req.status] || statusConfig.not_implemented
-                  const Icon = cfg.icon
-                  return (
-                    <div key={req.id} className="flex items-start gap-3 px-5 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                      <div className={`w-7 h-7 ${cfg.bg} rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                        <Icon className={cfg.color} size={14} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-medium text-slate-800">{req.requirement}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">{req.description}</p>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${cfg.bg} ${cfg.color}`}>
-                            {cfg.label}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all"
-                                style={{
-                                  width: `${req.coverage}%`,
-                                  backgroundColor: req.coverage >= 90 ? '#22c55e' : req.coverage >= 50 ? '#f59e0b' : '#ef4444',
-                                }}
-                              />
-                            </div>
-                            <span className="text-[10px] text-slate-500">{req.coverage}%</span>
-                          </div>
-                          <p className="text-[10px] text-slate-400">{req.evidence}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )
-          })}
+          {rbiSections.map((section: any) => (
+            <SectionCard key={section.id} section={section} />
+          ))}
         </div>
       )}
 
       {/* RMA Sections */}
-      {sections.filter((s: any) => s.id.startsWith('rma_')).length > 0 && (
+      {rmaSections.length > 0 && (
         <div>
           <h2 className="text-sm font-bold text-slate-700 mb-3 px-1">RMA Requirements (Bhutan)</h2>
-          {sections.filter((s: any) => s.id.startsWith('rma_')).map((section: any) => {
-        const isExpanded = expandedSections.has(section.id)
-        const sectionCompliant = section.requirements.filter((r: any) => r.status === 'compliant').length
-        const sectionTotal = section.requirements.length
-        const sectionScore = Math.round((sectionCompliant / sectionTotal) * 100)
-
-        return (
-          <div key={section.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            {/* Section header */}
-            <button
-              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
-              onClick={() => toggleSection(section.id)}
-            >
-              <div className="flex items-center gap-3">
-                {isExpanded ? <ChevronDown size={16} className="text-slate-400" /> : <ChevronRight size={16} className="text-slate-400" />}
-                <div className="text-left">
-                  <p className="text-sm font-semibold text-slate-800">{section.title}</p>
-                  <p className="text-[10px] text-slate-400">{section.rbi_reference}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1">
-                  {section.requirements.map((r: any, i: number) => (
-                    <div
-                      key={i}
-                      className={`w-2.5 h-2.5 rounded-full ${
-                        r.status === 'compliant' ? 'bg-green-500' :
-                        r.status === 'partial' ? 'bg-amber-500' :
-                        r.status === 'at_risk' ? 'bg-orange-500' : 'bg-red-500'
-                      }`}
-                      title={r.requirement}
-                    />
-                  ))}
-                </div>
-                <span className={`text-sm font-bold ${sectionScore >= 70 ? 'text-green-600' : sectionScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
-                  {sectionCompliant}/{sectionTotal}
-                </span>
-              </div>
-            </button>
-
-            {/* Requirements */}
-            {isExpanded && (
-              <div className="border-t border-slate-100">
-                {section.requirements.map((req: any) => {
-                  const cfg = statusConfig[req.status] || statusConfig.not_implemented
-                  const Icon = cfg.icon
-                  return (
-                    <div key={req.id} className="flex items-start gap-3 px-5 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                      <div className={`w-7 h-7 ${cfg.bg} rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                        <Icon className={cfg.color} size={14} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-medium text-slate-800">{req.requirement}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">{req.description}</p>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${cfg.bg} ${cfg.color}`}>
-                            {cfg.label}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="flex items-center gap-1.5">
-                            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all"
-                                style={{
-                                  width: `${req.coverage}%`,
-                                  backgroundColor: req.coverage >= 90 ? '#22c55e' : req.coverage >= 50 ? '#f59e0b' : '#ef4444',
-                                }}
-                              />
-                            </div>
-                            <span className="text-[10px] text-slate-500">{req.coverage}%</span>
-                          </div>
-                          <p className="text-[10px] text-slate-400">{req.evidence}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )
-          })}
+          {rmaSections.map((section: any) => (
+            <SectionCard key={section.id} section={section} />
+          ))}
         </div>
       )}
 
