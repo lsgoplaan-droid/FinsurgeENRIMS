@@ -138,14 +138,6 @@ def seed_customers(db: Session) -> list:
 
     # Define crafted personas
     personas = [
-        # Group 1: The Structurer (AML)
-        {"num": "CIF-1001", "type": "individual", "first": "Rajesh", "last": "Mehta", "gender": "M", "city": "Mumbai", "state": "Maharashtra", "occupation": "Jeweller", "income": 2500000_00, "risk": "high", "score": 78.5, "pep": False, "kyc": "approved"},
-        {"num": "CIF-1002", "type": "individual", "first": "Priya", "last": "Mehta", "gender": "F", "city": "Mumbai", "state": "Maharashtra", "occupation": "Homemaker", "income": 0, "risk": "medium", "score": 45.0, "pep": False, "kyc": "approved"},
-        # Group 2: The Layerer (AML)
-        {"num": "CIF-1003", "type": "corporate", "company": "Hassan Trading LLC", "city": "Delhi", "state": "Delhi", "occupation": "Import/Export Trader", "income": 50000000_00, "risk": "very_high", "score": 92.0, "pep": False, "kyc": "approved"},
-        {"num": "CIF-1004", "type": "corporate", "company": "Zenith Enterprises Pvt Ltd", "city": "Delhi", "state": "Delhi", "occupation": "Business Owner", "income": 10000000_00, "risk": "high", "score": 71.0, "pep": False, "kyc": "approved"},
-        {"num": "CIF-1005", "type": "corporate", "company": "Global Commodities Trading", "city": "Mumbai", "state": "Maharashtra", "occupation": "Import/Export Trader", "income": 25000000_00, "risk": "high", "score": 68.0, "pep": False, "kyc": "approved"},
-        {"num": "CIF-1006", "type": "corporate", "company": "Pacific Imports Ltd", "city": "Chennai", "state": "Tamil Nadu", "occupation": "Import/Export Trader", "income": 15000000_00, "risk": "high", "score": 65.0, "pep": False, "kyc": "expired"},
         # Group 3: Round-tripper
         {"num": "CIF-1007", "type": "corporate", "company": "Vikram Enterprises", "city": "Bangalore", "state": "Karnataka", "occupation": "Business Owner", "income": 80000000_00, "risk": "high", "score": 74.0, "pep": False, "kyc": "approved"},
         # Group 4: Card fraud victim
@@ -318,27 +310,8 @@ def seed_transactions(db: Session, customers: list, acct_map: dict) -> list:
             flag_reason = None
             risk = random.uniform(0, 20)
 
-            # ── Structuring pattern (Rajesh Mehta CIF-1001) ──
-            if c.customer_number == "CIF-1001" and random.random() < 0.3:
-                amount = random.randint(900000_00, 999000_00)  # Just below 10L
-                method = "cash_deposit"
-                channel = "branch"
-                city = random.choice(["Mumbai", "Pune", "Thane"])
-                txn_type = "credit"
-                risk = random.uniform(60, 85)
-                flagged = True
-                flag_reason = "Potential structuring - amount below CTR threshold"
-            # ── Layering pattern (Hassan Trading CIF-1003) ──
-            elif c.customer_number == "CIF-1003" and random.random() < 0.25:
-                amount = random.randint(5000000_00, 20000000_00)
-                method = random.choice(["rtgs", "neft", "swift"])
-                channel = random.choice(["internet_banking", "swift"])
-                txn_type = random.choice(["credit", "debit"])
-                risk = random.uniform(70, 95)
-                flagged = True
-                flag_reason = "Rapid high-value transfers - layering pattern"
             # ── Card fraud (Ananya Sharma CIF-1010) ──
-            elif c.customer_number == "CIF-1010" and random.random() < 0.15:
+            if c.customer_number == "CIF-1010" and random.random() < 0.15:
                 amount = random.randint(5000_00, 100000_00)
                 method = "card_payment"
                 channel = "pos"
@@ -428,69 +401,6 @@ def seed_rules(db: Session) -> list:
     rules = []
 
     rules_data = [
-        # AML - Structuring
-        ("AML-STR-001", "Single Cash Transaction Above CTR Threshold", "aml", "structuring", "high",
-         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than_or_equal", "value": 1000000_00}, {"field": "transaction.transaction_method", "operator": "in", "value": ["cash_deposit", "cash_withdrawal"]}]},
-         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "aml"}}, {"action": "generate_ctr", "params": {}}],
-         None, 1000000_00, None),
-
-        ("AML-STR-002", "Multiple Cash Deposits Below Threshold in 24h", "aml", "structuring", "critical",
-         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "cash_deposit"}, {"field": "aggregate.cash_transaction_sum", "operator": "greater_than", "value": 1000000_00, "time_window": "24h"}, {"field": "aggregate.cash_transaction_count", "operator": "greater_than", "value": 2, "time_window": "24h"}]},
-         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "aml"}}, {"action": "flag_transaction", "params": {"reason": "Structuring pattern"}}],
-         "24h", None, 2),
-
-        ("AML-STR-003", "Cash Deposits Just Below Threshold Pattern", "aml", "structuring", "critical",
-         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "between", "value": [900000_00, 999999_00]}, {"field": "transaction.transaction_method", "operator": "equals", "value": "cash_deposit"}, {"field": "aggregate.transaction_count", "operator": "greater_than", "value": 2, "time_window": "7d"}]},
-         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "aml"}}, {"action": "adjust_risk_score", "params": {"adjustment": 20, "direction": "increase"}}],
-         "7d", 900000_00, 2),
-
-        ("AML-STR-004", "Cash Deposits From Multiple Branches", "aml", "structuring", "high",
-         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "in", "value": ["cash_deposit"]}, {"field": "aggregate.unique_locations", "operator": "greater_than", "value": 2, "time_window": "24h"}]},
-         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "aml"}}],
-         "24h", None, None),
-
-        ("AML-STR-005", "Round Amount Cash Deposits Pattern", "aml", "structuring", "medium",
-         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "in", "value": ["cash_deposit"]}, {"field": "aggregate.round_amount_count", "operator": "greater_than", "value": 3, "time_window": "7d"}]},
-         [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "aml"}}],
-         "7d", None, 3),
-
-        # AML - Layering
-        ("AML-LAY-001", "Rapid Fund Transfers Through Multiple Accounts", "aml", "layering", "critical",
-         {"logic": "AND", "conditions": [{"field": "aggregate.unique_counterparties", "operator": "greater_than", "value": 3, "time_window": "24h"}, {"field": "aggregate.transaction_sum", "operator": "greater_than", "value": 5000000_00, "time_window": "24h"}]},
-         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "aml"}}, {"action": "flag_transaction", "params": {"reason": "Layering pattern"}}],
-         "24h", 5000000_00, None),
-
-        ("AML-LAY-002", "High Value Transfer Followed by Immediate Withdrawal", "aml", "layering", "high",
-         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than", "value": 2000000_00}, {"field": "transaction.transaction_type", "operator": "equals", "value": "debit"}, {"field": "aggregate.transaction_count", "operator": "greater_than", "value": 3, "time_window": "1h"}]},
-         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "aml"}}],
-         "1h", 2000000_00, 3),
-
-        ("AML-LAY-003", "Rapid Incoming and Outgoing Transfers", "aml", "layering", "high",
-         {"logic": "AND", "conditions": [{"field": "aggregate.transaction_count", "operator": "greater_than", "value": 5, "time_window": "1h"}, {"field": "aggregate.transaction_sum", "operator": "greater_than", "value": 2000000_00, "time_window": "1h"}]},
-         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "aml"}}],
-         "1h", None, 5),
-
-        ("AML-LAY-004", "Multiple Small Transfers to Single Beneficiary", "aml", "layering", "medium",
-         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "less_than", "value": 200000_00}, {"field": "aggregate.transaction_count", "operator": "greater_than", "value": 5, "time_window": "24h"}]},
-         [{"action": "create_alert", "params": {"priority": "medium", "alert_type": "aml"}}],
-         "24h", None, 5),
-
-        # AML - Geographic
-        ("AML-GEO-001", "Transaction From High Risk Country", "aml", "geographic", "high",
-         {"logic": "AND", "conditions": [{"field": "transaction.location_country", "operator": "in", "value": ["AF", "IR", "KP", "SY", "YE", "MM"]}]},
-         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "aml"}}, {"action": "flag_transaction", "params": {"reason": "High-risk country"}}],
-         None, None, None),
-
-        ("AML-GEO-002", "Sudden International Wire From Domestic Account", "aml", "geographic", "high",
-         {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "swift"}, {"field": "transaction.amount", "operator": "greater_than", "value": 500000_00}]},
-         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "aml"}}],
-         None, 500000_00, None),
-
-        ("AML-GEO-003", "Transactions From Multiple Countries in 24h", "aml", "geographic", "critical",
-         {"logic": "AND", "conditions": [{"field": "aggregate.unique_locations", "operator": "greater_than", "value": 2, "time_window": "24h"}]},
-         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "aml"}}],
-         "24h", None, None),
-
         # Fraud - Card
         ("FRD-CRD-001", "Card Used in Multiple Countries Within 6h", "fraud", "card", "critical",
          {"logic": "AND", "conditions": [{"field": "transaction.transaction_method", "operator": "equals", "value": "card_payment"}, {"field": "aggregate.unique_locations", "operator": "greater_than", "value": 1, "time_window": "6h"}]},
@@ -610,22 +520,6 @@ def seed_rules(db: Session) -> list:
          {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than", "value": 50000_00}, {"field": "transaction.channel", "operator": "in", "value": ["mobile_banking", "internet_banking"]}]},
          [{"action": "create_alert", "params": {"priority": "high", "alert_type": "fraud"}}, {"action": "flag_transaction", "params": {"reason": "New device login + fund transfer within 15 min"}}],
          None, 50000_00, None),
-
-        # KYC/CDD
-        ("KYC-001", "Expired KYC Customer Transaction", "kyc", "compliance", "high",
-         {"logic": "AND", "conditions": [{"field": "customer.kyc_status", "operator": "equals", "value": "expired"}]},
-         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "kyc"}}, {"action": "trigger_edd", "params": {"reason": "KYC expired"}}],
-         None, None, None),
-
-        ("KYC-002", "Transaction Inconsistent With Income", "kyc", "compliance", "high",
-         {"logic": "AND", "conditions": [{"field": "transaction.amount", "operator": "greater_than", "value": 1000000_00}]},
-         [{"action": "create_alert", "params": {"priority": "high", "alert_type": "kyc"}}],
-         None, 1000000_00, None),
-
-        ("KYC-003", "PEP Customer Large Cash Transaction", "kyc", "pep", "critical",
-         {"logic": "AND", "conditions": [{"field": "customer.pep_status", "operator": "equals", "value": True}, {"field": "transaction.transaction_method", "operator": "in", "value": ["cash_deposit", "cash_withdrawal"]}, {"field": "transaction.amount", "operator": "greater_than", "value": 200000_00}]},
-         [{"action": "create_alert", "params": {"priority": "critical", "alert_type": "kyc"}}, {"action": "trigger_edd", "params": {"reason": "PEP large cash"}}],
-         None, 200000_00, None),
 
         # Compliance
         ("CMP-001", "Dormant Account Reactivation With Large Deposit", "compliance", "dormant", "high",
@@ -946,22 +840,12 @@ def seed_scenarios(db: Session, rules: list):
     rule_by_name = {r.name: r for r in rules}
 
     scenarios_data = [
-        ("Structuring Detection", "Detects cash structuring patterns designed to avoid CTR reporting thresholds", "aml",
-         ["AML-STR-001", "AML-STR-002", "AML-STR-003", "AML-STR-004", "AML-STR-005"]),
-        ("Layering Detection", "Identifies rapid fund movement through multiple accounts to obscure origin", "aml",
-         ["AML-LAY-001", "AML-LAY-002", "AML-LAY-003", "AML-LAY-004"]),
-        ("Geographic Risk", "Monitors transactions involving high-risk jurisdictions", "aml",
-         ["AML-GEO-001", "AML-GEO-002", "AML-GEO-003"]),
         ("Card Fraud Detection", "Real-time card transaction anomaly detection", "fraud",
          ["FRD-CRD-001", "FRD-CRD-002", "FRD-CRD-003"]),
         ("Account Takeover Prevention", "Detects unauthorized account access patterns", "fraud",
          ["FRD-ATO-001", "FRD-ATO-002", "FRD-ATO-003"]),
         ("Wire Fraud Prevention", "Monitors wire transfers for fraudulent patterns", "fraud",
          ["FRD-WIR-001", "FRD-WIR-002", "FRD-WIR-003"]),
-        ("KYC Compliance Monitoring", "Ensures KYC compliance for all customer transactions", "kyc",
-         ["KYC-001", "KYC-002", "KYC-003"]),
-        ("PEP Enhanced Monitoring", "Enhanced monitoring for Politically Exposed Persons", "kyc",
-         ["KYC-003"]),
         ("Dormant Account Monitoring", "Monitors reactivation of dormant accounts", "compliance",
          ["CMP-001"]),
         ("Beneficiary Risk Monitoring", "Tracks unusual beneficiary addition patterns", "compliance",
@@ -1258,14 +1142,7 @@ def seed_network(db: Session, customers: list):
 
     # Explicit relationships
     relationships = [
-        ("CIF-1001", "CIF-1002", "spouse", 0.95),
-        ("CIF-1003", "CIF-1004", "business_partner", 0.8),
-        ("CIF-1003", "CIF-1005", "business_partner", 0.7),
-        ("CIF-1004", "CIF-1006", "business_partner", 0.6),
-        ("CIF-1005", "CIF-1006", "business_partner", 0.65),
-        ("CIF-1003", "CIF-1007", "business_partner", 0.5),
         ("CIF-1053", "CIF-1015", "business_partner", 0.4),
-        ("CIF-1001", "CIF-1052", "business_partner", 0.7),
     ]
 
     for c1_num, c2_num, rel_type, strength in relationships:
@@ -1280,12 +1157,6 @@ def seed_network(db: Session, customers: list):
 
     # Auto-detected links
     links = [
-        ("CIF-1001", "CIF-1002", "shared_address", "42, MG Road, Mumbai"),
-        ("CIF-1001", "CIF-1002", "shared_phone", "+919876543210"),
-        ("CIF-1003", "CIF-1004", "fund_transfer", "Multiple RTGS transfers"),
-        ("CIF-1004", "CIF-1005", "fund_transfer", "NEFT transfers totaling INR 5Cr"),
-        ("CIF-1005", "CIF-1006", "fund_transfer", "SWIFT transfers to overseas"),
-        ("CIF-1003", "CIF-1005", "shared_address", "14, Connaught Place, Delhi"),
         ("CIF-1051", "CIF-1052", "shared_employer", "Diamond Star Group"),
     ]
 
@@ -2397,10 +2268,6 @@ def seed_all(db: Session):
 
     print("  Seeding watchlist...")
     seed_watchlist(db)
-    db.commit()
-
-    print("  Seeding KYC reviews...")
-    seed_kyc(db, customers, user_map)
     db.commit()
 
     print("  Seeding network relationships...")

@@ -101,7 +101,9 @@
       "Bash(timeout 30 python backend/main.py)",
       "Bash(curl -s -H \"Authorization: Bearer test-token\" http://localhost:8000/api/v1/police-fir/list)",
       "Bash(pkill -f \"python backend/main.py\")",
-      "Bash(pkill -9 -f \"python.*main.py\")"
+      "Bash(pkill -9 -f \"python.*main.py\")",
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(python create_ppt_with_rma.py)"
     ]
   }
 }
