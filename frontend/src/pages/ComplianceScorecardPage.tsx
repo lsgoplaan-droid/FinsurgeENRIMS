@@ -55,8 +55,8 @@ export default function ComplianceScorecardPage() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-lg font-bold text-slate-800">RBI Compliance Scorecard</h1>
-        <p className="text-xs text-slate-500">Master Direction requirements mapped to system features — auto-assessed status</p>
+        <h1 className="text-lg font-bold text-slate-800">Multi-Regulator Compliance Scorecard</h1>
+        <p className="text-xs text-slate-500">RBI (India) + RMA (Bhutan) requirements mapped to system features — auto-assessed status</p>
       </div>
 
       {/* Overall Score Banner */}

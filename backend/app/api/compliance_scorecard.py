@@ -283,7 +283,7 @@ def compliance_summary(
                     "description": "Continuous monitoring of customer transactions for suspicious patterns",
                     "status": "compliant",
                     "coverage": 100,
-                    "evidence": f"{screened_txns} transactions screened in 30 days; 92 detection rules deployed",
+                    "evidence": f"{screened_txns} transactions screened in 30 days; {active_rules} detection rules deployed",
                     "implemented": True,
                 },
                 {
