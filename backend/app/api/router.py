@@ -6,7 +6,7 @@ from app.api import (
     board_report, alert_tuning, sla_burndown,
     police_fir, notification_rules, system_monitoring, rules_management,
     compliance_scorecard, filing_deadlines, audit_trail, user_activity,
-    metrics, str_workflow, data_localization, evidence,
+    metrics, str_workflow, data_localization, evidence, sms_approval,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -48,3 +48,4 @@ api_router.include_router(metrics.router)
 api_router.include_router(str_workflow.router)
 api_router.include_router(data_localization.router)
 api_router.include_router(evidence.router)
+api_router.include_router(sms_approval.router)

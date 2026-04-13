@@ -14,6 +14,7 @@ from app.models.employee_activity import EmployeeActivity
 from app.models.police_fir import PoliceFIR, FIRActivity
 from app.models.notification_rule import NotificationRule, NotificationLog
 from app.models.evidence import Evidence, EvidenceType
+from app.models.sms_approval import SMSApproval
 from app.services.maker_checker import PendingAction
 
 
@@ -39,5 +40,6 @@ __all__ = [
     "PoliceFIR", "FIRActivity",
     "NotificationRule", "NotificationLog",
     "Evidence", "EvidenceType",
+    "SMSApproval",
     "PendingAction",
 ]

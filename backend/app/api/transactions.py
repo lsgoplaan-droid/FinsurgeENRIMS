@@ -1,5 +1,6 @@
+import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -7,6 +8,8 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Transaction, Customer, Account, User
 from app.schemas.transaction import TransactionResponse, TransactionCreate, TransactionStats
+
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 router = APIRouter(prefix="/transactions", tags=["Transactions"])
 
@@ -108,9 +111,17 @@ def list_transactions(
 @router.post("")
 def create_transaction(body: TransactionCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Create a new transaction and run it through the rules engine."""
+    from app.services.sms_service import (
+        get_threshold_for_customer, generate_otp, hash_otp,
+        build_sms_message, send_sms, mask_phone, OTP_EXPIRY_MINUTES,
+    )
+    from app.models.sms_approval import SMSApproval
+
     account = db.query(Account).filter(Account.id == body.account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
+
+    customer = db.query(Customer).filter(Customer.id == body.customer_id).first()
 
     now = datetime.utcnow()
     txn = Transaction(
@@ -139,7 +150,68 @@ def create_transaction(body: TransactionCreate, db: Session = Depends(get_db), c
     db.add(txn)
     db.flush()
 
-    # Update account balance
+    # --- SMS Approval gate ---------------------------------------------------
+    # Check threshold BEFORE updating account balance.
+    # For high_risk customers, threshold is 0 (trigger on every transaction).
+    threshold = get_threshold_for_customer(customer) if customer else 5_000_000
+    needs_sms = threshold == 0 or body.amount >= threshold
+
+    if needs_sms:
+        # Hold the transaction — do NOT update account balance yet
+        txn.processing_status = "pending_sms_approval"
+        # balance_after was computed optimistically above; reset to current balance
+        txn.balance_after = account.balance
+
+        otp = generate_otp()
+        otp_hash = hash_otp(otp)
+        phone = (customer.phone if customer else None) or "+91-XXXXXXXXXX"
+        amount_inr = body.amount / 100.0
+        beneficiary = body.counterparty_name or "Beneficiary"
+        msg = build_sms_message(otp, amount_inr, beneficiary)
+        send_result = send_sms(phone, msg)
+
+        approval = SMSApproval(
+            id=str(uuid.uuid4()),
+            transaction_id=txn.id,
+            transaction_ref=txn.transaction_ref,
+            account_id=txn.account_id,
+            customer_id=txn.customer_id,
+            phone_number=phone,
+            amount=txn.amount,
+            otp_hash=otp_hash,
+            otp_expires_at=now + timedelta(minutes=OTP_EXPIRY_MINUTES),
+            status="pending",
+            sms_content=msg,
+            sms_sent_at=now,
+            otp_demo=otp if DEBUG else None,
+        )
+        db.add(approval)
+        db.commit()
+
+        response = {
+            "sms_approval_required": True,
+            "approval_id": approval.id,
+            "message": (
+                f"Transaction held pending SMS OTP approval. "
+                f"OTP sent to {mask_phone(phone)}. Approve within {OTP_EXPIRY_MINUTES} minutes."
+            ),
+            "transaction": TransactionResponse(
+                id=txn.id, transaction_ref=txn.transaction_ref, account_id=txn.account_id,
+                customer_id=txn.customer_id, customer_name=customer.full_name if customer else "",
+                account_number=account.account_number, transaction_type=txn.transaction_type,
+                transaction_method=txn.transaction_method, channel=txn.channel, amount=txn.amount,
+                risk_score=txn.risk_score or 0, is_flagged=txn.is_flagged or False,
+                flag_reason=txn.flag_reason, transaction_date=txn.transaction_date,
+                processing_status=txn.processing_status, created_at=txn.created_at,
+            ),
+            "sms_status": send_result.get("status"),
+        }
+        if DEBUG:
+            response["otp_for_demo"] = otp
+        return response
+    # -------------------------------------------------------------------------
+
+    # Normal path — update account balance immediately
     if body.transaction_type == "credit":
         account.balance += body.amount
     else:
@@ -155,7 +227,6 @@ def create_transaction(body: TransactionCreate, db: Session = Depends(get_db), c
 
     db.commit()
 
-    customer = db.query(Customer).filter(Customer.id == body.customer_id).first()
     return {
         "transaction": TransactionResponse(
             id=txn.id, transaction_ref=txn.transaction_ref, account_id=txn.account_id,

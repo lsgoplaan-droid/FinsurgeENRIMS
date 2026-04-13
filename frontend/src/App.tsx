@@ -41,6 +41,7 @@ import FilingDeadlinePage from './pages/FilingDeadlinePage'
 import AuditTrailPage from './pages/AuditTrailPage'
 import UserActivityPage from './pages/UserActivityPage'
 import InvestigationCopilotPage from './pages/InvestigationCopilotPage'
+import SMSApprovalPage from './pages/SMSApprovalPage'
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'))
@@ -101,6 +102,7 @@ function App() {
           <Route path="/audit-trail" element={<ErrorBoundary><AuditTrailPage /></ErrorBoundary>} />
           <Route path="/user-activity" element={<ErrorBoundary><UserActivityPage /></ErrorBoundary>} />
           <Route path="/investigation-copilot" element={<ErrorBoundary><InvestigationCopilotPage /></ErrorBoundary>} />
+          <Route path="/sms-approvals" element={<ErrorBoundary><SMSApprovalPage /></ErrorBoundary>} />
           <Route path="/admin" element={<ErrorBoundary><AdminPage /></ErrorBoundary>} />
         </Route>
         <Route path="/login" element={<Navigate to="/" />} />

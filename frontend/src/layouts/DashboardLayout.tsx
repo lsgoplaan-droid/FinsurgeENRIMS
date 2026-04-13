@@ -4,7 +4,7 @@ import {
   BookOpen, Network, FileText, Settings, LogOut, ChevronDown, Plug,
   Fingerprint, Brain, BarChart3, ShieldCheck, Layers, Sun, Moon, Radar, Target, Timer,
   Scale, Volume2, Activity, Cog, MapPin, Gauge, FileDown, CheckSquare,
-  Clock, Hash, Eye, Sparkles
+  Clock, Hash, Eye, Sparkles, MessageSquare
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -65,6 +65,7 @@ const navGroups: NavGroup[] = [
       { path: '/compliance-scorecard', label: 'Compliance Scorecard', icon: CheckSquare },
       { path: '/filing-deadlines', label: 'Filing Deadlines', icon: Clock },
       { path: '/mis-reports', label: 'MIS Reports', icon: BarChart3 },
+      { path: '/sms-approvals', label: 'SMS Approvals', icon: MessageSquare },
     ],
   },
   {
