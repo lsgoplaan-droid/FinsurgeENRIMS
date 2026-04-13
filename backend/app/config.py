@@ -2,6 +2,7 @@ import os
 import secrets
 import json
 import logging
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger("finsurge.config")
@@ -29,26 +30,23 @@ _aws_secrets = _load_aws_secrets()
 class Settings(BaseSettings):
     APP_NAME: str = "FinsurgeFRIMS"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    DEBUG: bool = False
+    ENVIRONMENT: str = "development"
 
     # Database — SQLite for dev, PostgreSQL (RDS/Render) for production
-    # Render provides postgres:// URLs; SQLAlchemy 2.x requires postgresql://
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./sentinel.db").replace(
-        "postgres://", "postgresql://", 1
-    )
+    DATABASE_URL: str = "sqlite:///./sentinel.db"
 
     # Redis — ElastiCache for rate limiting + session cache
-    REDIS_URL: str = os.getenv("REDIS_URL", "")
+    REDIS_URL: str = ""
 
     # Auth — from Secrets Manager in prod, auto-generated in dev
-    SECRET_KEY: str = os.getenv("SECRET_KEY", _aws_secrets.get("SECRET_KEY", secrets.token_hex(32)))
+    SECRET_KEY: str = _aws_secrets.get("SECRET_KEY", secrets.token_hex(32))
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("TOKEN_EXPIRE_MINUTES", "30"))
-    REFRESH_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", "1440"))
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 1440
 
-    # CORS — set via env var in production (comma-separated)
-    CORS_ORIGINS: list[str] = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+    # CORS — set via env var in production (comma-separated string or JSON array)
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # Password policy
     PASSWORD_MIN_LENGTH: int = 12
@@ -73,14 +71,28 @@ class Settings(BaseSettings):
     SLA_LOW_HOURS: int = 168
 
     # PII encryption key — from Secrets Manager in prod
-    PII_ENCRYPTION_KEY: str = os.getenv("PII_ENCRYPTION_KEY", _aws_secrets.get("PII_ENCRYPTION_KEY", secrets.token_hex(32)))
+    PII_ENCRYPTION_KEY: str = _aws_secrets.get("PII_ENCRYPTION_KEY", secrets.token_hex(32))
 
     # AWS
-    AWS_REGION: str = os.getenv("AWS_REGION", "ap-south-1")
-    S3_REPORTS_BUCKET: str = os.getenv("S3_REPORTS_BUCKET", "")
+    AWS_REGION: str = "ap-south-1"
+    S3_REPORTS_BUCKET: str = ""
 
     # Seed control — NEVER true in production
-    SEED_ON_STARTUP: bool = os.getenv("SEED_ON_STARTUP", "false").lower() == "true"
+    SEED_ON_STARTUP: bool = False
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def fix_postgres_url(cls, v: str) -> str:
+        # Render provides postgres:// but SQLAlchemy 2.x requires postgresql://
+        return v.replace("postgres://", "postgresql://", 1) if isinstance(v, str) else v
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        # Accept comma-separated string (Render env var) or a list
+        if isinstance(v, str):
+            return [o.strip() for o in v.split(",") if o.strip()]
+        return v
 
     class Config:
         env_file = ".env"
