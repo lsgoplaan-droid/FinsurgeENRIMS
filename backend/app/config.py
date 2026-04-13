@@ -45,8 +45,9 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 1440
 
-    # CORS — set via env var in production (comma-separated string or JSON array)
-    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    # CORS — comma-separated string; split at use site to avoid pydantic-settings
+    # v2 JSON-decoding list[str] env vars before validators can run
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
     # Password policy
     PASSWORD_MIN_LENGTH: int = 12
@@ -85,14 +86,6 @@ class Settings(BaseSettings):
     def fix_postgres_url(cls, v: str) -> str:
         # Render provides postgres:// but SQLAlchemy 2.x requires postgresql://
         return v.replace("postgres://", "postgresql://", 1) if isinstance(v, str) else v
-
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v):
-        # Accept comma-separated string (Render env var) or a list
-        if isinstance(v, str):
-            return [o.strip() for o in v.split(",") if o.strip()]
-        return v
 
     class Config:
         env_file = ".env"

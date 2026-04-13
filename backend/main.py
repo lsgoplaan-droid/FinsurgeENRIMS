@@ -79,7 +79,7 @@ app.add_middleware(AuditMiddleware)
 app.add_middleware(RateLimitMiddleware, login_limit=5, api_limit=100, window=60)
 # CORS: use configured origins (must be set explicitly, even in dev)
 # Default dev origins: localhost:5173 (Vite), localhost:3000 (Node)
-_cors_origins = settings.CORS_ORIGINS  # No wildcard fallback—require explicit config
+_cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
