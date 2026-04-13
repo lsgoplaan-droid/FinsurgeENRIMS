@@ -51,12 +51,19 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    title: 'Regulatory Documents',
+    items: [
+      { path: '/compliance-ctr', label: 'CTR Filing', icon: FileText },
+      { path: '/compliance-sar', label: 'SAR Filing', icon: ShieldCheck },
+      { path: '/compliance-lvtr', label: 'LVTR Filing', icon: FileText },
+      { path: '/police-fir', label: 'Police FIR', icon: Scale },
+    ],
+  },
+  {
     title: 'Compliance & Reporting',
     items: [
       { path: '/compliance-scorecard', label: 'Compliance Scorecard', icon: CheckSquare },
       { path: '/filing-deadlines', label: 'Filing Deadlines', icon: Clock },
-      { path: '/compliance-sar', label: 'Compliance / SAR', icon: ShieldCheck },
-      { path: '/police-fir', label: 'Police / FIR', icon: Scale },
       { path: '/mis-reports', label: 'MIS Reports', icon: BarChart3 },
     ],
   },

@@ -22,7 +22,9 @@ import InternalFraudPage from './pages/InternalFraudPage'
 import FraudScenariosPage from './pages/FraudScenariosPage'
 import AIAgentPage from './pages/AIAgentPage'
 import MISReportsPage from './pages/MISReportsPage'
+import ComplianceCTRPage from './pages/ComplianceCTRPage'
 import ComplianceSARPage from './pages/ComplianceSARPage'
+import ComplianceLVTRPage from './pages/ComplianceLVTRPage'
 import FraudDetectionPage from './pages/FraudDetectionPage'
 import AlertTuningPage from './pages/AlertTuningPage'
 import SLABurndownPage from './pages/SLABurndownPage'
@@ -81,7 +83,9 @@ function App() {
           <Route path="/fraud-scenarios" element={<ErrorBoundary><FraudScenariosPage /></ErrorBoundary>} />
           <Route path="/ai-agent" element={<ErrorBoundary><AIAgentPage /></ErrorBoundary>} />
           <Route path="/mis-reports" element={<ErrorBoundary><MISReportsPage /></ErrorBoundary>} />
+          <Route path="/compliance-ctr" element={<ErrorBoundary><ComplianceCTRPage /></ErrorBoundary>} />
           <Route path="/compliance-sar" element={<ErrorBoundary><ComplianceSARPage /></ErrorBoundary>} />
+          <Route path="/compliance-lvtr" element={<ErrorBoundary><ComplianceLVTRPage /></ErrorBoundary>} />
           <Route path="/alert-tuning" element={<ErrorBoundary><AlertTuningPage /></ErrorBoundary>} />
           <Route path="/sla-burndown" element={<ErrorBoundary><SLABurndownPage /></ErrorBoundary>} />
           <Route path="/police-fir" element={<ErrorBoundary><PoliceFIRPage /></ErrorBoundary>} />

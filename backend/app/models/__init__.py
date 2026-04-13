@@ -7,7 +7,7 @@ from app.models.alert import Alert, AlertNote
 from app.models.case import Case, CaseEvidence, CaseActivity, case_alerts
 from app.models.kyc import KYCReview, KYCDocument, ScreeningResult
 from app.models.watchlist import WatchlistEntry
-from app.models.report import CTRReport, SARReport
+from app.models.report import CTRReport, SARReport, LVTRReport
 from app.models.network import CustomerRelationship, CustomerLink
 from app.models.audit import AuditLog, SystemConfig, Notification
 from app.models.employee_activity import EmployeeActivity
@@ -32,7 +32,7 @@ __all__ = [
     "Case", "CaseEvidence", "CaseActivity", "case_alerts",
     "KYCReview", "KYCDocument", "ScreeningResult",
     "WatchlistEntry",
-    "CTRReport", "SARReport",
+    "CTRReport", "SARReport", "LVTRReport",
     "CustomerRelationship", "CustomerLink",
     "AuditLog", "SystemConfig", "Notification",
     "EmployeeActivity",

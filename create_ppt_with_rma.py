@@ -167,7 +167,35 @@ add_content_slide(prs, "Multi-Regulator Compliance Framework", [
     "Automatic compliance assessment with coverage metrics"
 ], logo_path)
 
-# Slide 4: RMA AML/CFT Controls
+# Slide 4: Investigation Copilot
+add_content_slide(prs, "Investigation Copilot — AI-Powered Analysis", [
+    "AI-assisted investigation platform accelerating alert analysis and case resolution",
+    "Risk Score Transparency",
+    "    Hover tooltips show exact risk score formula: Base Alert + Risk Factors + PEP Flag + Severity",
+    "    Helps investigators understand why alerts are prioritized and which cases need immediate attention",
+    "Ask the Copilot — Conversational Investigation",
+    "    'Why is this customer flagged?' — Copilot explains detection pattern and rule triggers",
+    "    'Show similar cases' — Retrieves historical closed cases with matching characteristics",
+    "    'What are next steps?' — Recommends investigation actions based on alert profile",
+    "Context Integration: Previous cases, activity timeline, related alerts, network relationships in one unified view"
+], logo_path)
+
+# Slide 5: Regulatory Document Generation
+add_content_slide(prs, "Regulatory Document Generation", [
+    "Multi-jurisdictional compliance document automation with format selection",
+    "CTR/LCTR — Cash Transaction Reporting",
+    "    RBI Format: FIU-IND reference, INR 10 Lakh threshold, India compliance",
+    "    RMA Format: FIU-Bhutan reference, Nu. 100,000 threshold, Bhutan AML/CFT Rules 2009",
+    "STR/SAR — Suspicious Transaction Reporting",
+    "    RBI Format: PMLA-compliant STR with principal officer workflow",
+    "    RMA Format: AML/CFT Rules 2009, Section 11, 7-day filing deadline",
+    "LVTR — Large Value Transaction Report (RMA Rule 14)",
+    "    Track Nu. 100,000+ transactions; 7-day filing window; full 5-year audit trail",
+    "FIR — Police First Information Reports",
+    "    India Police (IPC sections); Bhutan Police (BPC 2004 sections with MLPCA/BICMA references)"
+], logo_path)
+
+# Slide 6: RMA AML/CFT Controls
 add_content_slide(prs, "RMA AML/CFT Compliance (Bhutan)", [
     "Comprehensive Anti-Money Laundering & Counter-Financing of Terrorism controls",
     "Customer Due Diligence (CDD) & Enhanced Due Diligence (EDD)",
@@ -180,7 +208,7 @@ add_content_slide(prs, "RMA AML/CFT Compliance (Bhutan)", [
     "Suspicious Transaction Reporting (STR) to FIU-Bhutan within 7 days"
 ], logo_path)
 
-# Slide 5: RMA Regulatory Reporting
+# Slide 7: RMA Regulatory Reporting
 add_content_slide(prs, "RMA Regulatory Reporting & LVTR", [
     "Automated filing with RMA and Financial Intelligence Unit - Bhutan",
     "Suspicious Transaction Reporting (STR)",
@@ -193,7 +221,7 @@ add_content_slide(prs, "RMA Regulatory Reporting & LVTR", [
     "    Board-level reporting with metrics and incident summary"
 ], logo_path)
 
-# Slide 6: Compliance Scorecard Dashboard
+# Slide 8: Compliance Scorecard Dashboard
 add_content_slide(prs, "Compliance Scorecard — Live Metrics", [
     "Real-time compliance tracking with auto-calculated scores",
     "RBI Scorecard: 16 requirements across 4 sections",
@@ -206,7 +234,7 @@ add_content_slide(prs, "Compliance Scorecard — Live Metrics", [
     "    Evidence: Specific data supporting compliance status"
 ], logo_path)
 
-# Slide 7: Alert Management & Investigation
+# Slide 9: Alert Management & Investigation
 add_content_slide(prs, "Investigation & Case Management", [
     "Complete alert lifecycle with SLA enforcement and intelligent routing",
     "Alert States: New → Assigned → Under Review → Escalated → Closed",
@@ -218,7 +246,7 @@ add_content_slide(prs, "Investigation & Case Management", [
     "Dashboard Analytics: New alerts trending, SLA compliance %, closure patterns"
 ], logo_path)
 
-# Slide 8: Case Management & Document Downloads
+# Slide 10: Case Management & Document Downloads
 add_content_slide(prs, "Case Management & Document Downloads", [
     "Consolidate related alerts and evidence into formal investigation cases",
     "Document Generation & Download",
@@ -230,7 +258,7 @@ add_content_slide(prs, "Case Management & Document Downloads", [
     "Case Lifecycle: Open → Assigned → Under Investigation → Escalated → Closed"
 ], logo_path)
 
-# Slide 9: Regulatory Filing & Dashboard
+# Slide 11: Regulatory Filing & Dashboard
 add_content_slide(prs, "Regulatory Filing & Real-Time Monitoring", [
     "Automated filing workflow with document generation and downloads",
     "CTR/SAR Filings: Download reports with complete filing details",
@@ -243,7 +271,7 @@ add_content_slide(prs, "Regulatory Filing & Real-Time Monitoring", [
     "    Team workload and case resolution metrics"
 ], logo_path)
 
-# Slide 10: Audit Trail & Security
+# Slide 12: Audit Trail & Security
 add_content_slide(prs, "Audit Trail, Security & Governance", [
     "Immutable audit logging for regulatory compliance (RBI + RMA requirements)",
     "Audit Coverage",
@@ -260,6 +288,7 @@ add_content_slide(prs, "Audit Trail, Security & Governance", [
 # Save
 prs.save("FinsurgeENRIMS_MultiRegulator_RMA.pptx")
 print("[OK] Multi-regulator PowerPoint created: FinsurgeENRIMS_MultiRegulator_RMA.pptx")
-print("[FEATURE] Added RMA (Bhutan) compliance scorecard")
+print("[FEATURE] Investigation Copilot slide with AI-powered analysis capabilities")
+print("[FEATURE] Regulatory Document Generation slide covering CTR/LCTR, STR/SAR, LVTR, FIR")
 print("[FEATURE] Multi-regulator support: RBI (India) + RMA (Bhutan)")
-print("[UPDATE] 10 slides covering fraud detection + compliance for both jurisdictions")
+print("[UPDATE] 12 slides covering fraud detection, compliance, investigation, and regulatory filings")

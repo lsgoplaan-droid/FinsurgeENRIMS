@@ -9,12 +9,13 @@ from sqlalchemy import func, and_
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import User, Customer, CTRReport, SARReport, Case
+from app.models import User, Customer, CTRReport, SARReport, LVTRReport, Case
 
 router = APIRouter(prefix="/filing-deadlines", tags=["Compliance"])
 
 CTR_DEADLINE_DAYS = 15
 STR_DEADLINE_DAYS = 7
+LVTR_DEADLINE_DAYS = 7  # RMA Rule 14 — 7 days for LVTR (Bhutan)
 
 
 def _deadline_status(days_remaining: float) -> str:
@@ -83,11 +84,37 @@ def filing_summary(
             "deadline_days": STR_DEADLINE_DAYS,
         })
 
-    all_items = sorted(ctr_items + sar_items, key=lambda x: x["days_remaining"])
+    # LVTR reports (Bhutan/RMA)
+    lvtrs = db.query(LVTRReport).filter(LVTRReport.filing_status != "filed").all()
+    lvtr_items = []
+    for lvtr in lvtrs:
+        deadline = (lvtr.created_at or now) + timedelta(days=LVTR_DEADLINE_DAYS)
+        remaining = (deadline - now).total_seconds() / 86400
+        customer = db.query(Customer).filter(Customer.id == lvtr.customer_id).first()
+        amount_nu = (lvtr.transaction_amount or 0) / 100 * 62.5  # Convert paise to Nu.
+        lvtr_items.append({
+            "id": lvtr.id,
+            "report_number": lvtr.report_number,
+            "type": "LVTR",
+            "customer_name": customer.full_name if customer else "-",
+            "customer_id": lvtr.customer_id,
+            "amount": lvtr.transaction_amount or 0,
+            "amount_nu": amount_nu,
+            "transaction_type": lvtr.transaction_type,
+            "created_at": lvtr.created_at.isoformat() if lvtr.created_at else None,
+            "deadline": deadline.isoformat(),
+            "days_remaining": round(remaining, 1),
+            "status": lvtr.filing_status,
+            "urgency": _deadline_status(remaining),
+            "deadline_days": LVTR_DEADLINE_DAYS,
+        })
+
+    all_items = sorted(ctr_items + sar_items + lvtr_items, key=lambda x: x["days_remaining"])
 
     # Filed reports for stats
     ctrs_filed = db.query(func.count(CTRReport.id)).filter(CTRReport.filing_status == "filed").scalar() or 0
     sars_filed = db.query(func.count(SARReport.id)).filter(SARReport.filing_status == "filed").scalar() or 0
+    lvtrs_filed = db.query(func.count(LVTRReport.id)).filter(LVTRReport.filing_status == "filed").scalar() or 0
 
     overdue = [i for i in all_items if i["urgency"] == "overdue"]
     critical = [i for i in all_items if i["urgency"] == "critical"]
@@ -103,8 +130,10 @@ def filing_summary(
             "on_track": len(all_items) - len(overdue) - len(critical) - len(warning),
             "ctrs_pending": len(ctr_items),
             "sars_pending": len(sar_items),
+            "lvtrs_pending": len(lvtr_items),
             "ctrs_filed": ctrs_filed,
             "sars_filed": sars_filed,
-            "total_filed": ctrs_filed + sars_filed,
+            "lvtrs_filed": lvtrs_filed,
+            "total_filed": ctrs_filed + sars_filed + lvtrs_filed,
         },
     }

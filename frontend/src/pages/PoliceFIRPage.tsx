@@ -3,7 +3,7 @@ import {
   Shield, FileText, AlertTriangle, Scale, DollarSign, CheckCircle,
   XCircle, Clock, ChevronRight, Plus, Building2, Phone, User,
   Calendar, Gavel, IndianRupee, ArrowUpRight, Filter, ChevronDown,
-  X, Save, ArrowRight, Flag, Globe, Download
+  X, Save, ArrowRight, Flag, Globe, Download, Eye, Upload
 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
 import api from '../config/api'
@@ -34,6 +34,115 @@ const priorityColors: Record<string, string> = {
 }
 
 const PIE_COLORS = ['#6366f1', '#f59e0b', '#ef4444', '#22c55e', '#8b5cf6', '#3b82f6']
+
+const FIR_FORMAT_SAMPLES = {
+  india: `FIRST INFORMATION REPORT (FIR)
+================================================================
+Jurisdiction:        Republic of India
+Filed with:          Indian Police
+Reference:           Indian Penal Code 1860
+
+FIR Number:          FIR-2026-1005
+Status:              FILED
+Priority:            HIGH
+Bank Case Number:    CASE-2026-156
+
+REPORTED AGAINST (SUBJECT / CUSTOMER)
+================================================================
+Name:                Pradeep Kumar
+Customer ID:         CIF-1025
+PAN:                 AAAPK9876P
+Address:             Delhi, Delhi, INDIA
+
+POLICE STATION & OFFICER DETAILS
+================================================================
+Police Station:      Cyber Crime PS, BKC
+District:            Mumbai
+State:               Maharashtra
+Investigating Officer: Inspector Rajesh Singh
+
+OFFENSE DETAILS
+================================================================
+Offense Type:        Card Fraud
+IPC / Legal Sections: IPC 420, 468, 471
+Fraud Amount:        INR 8,50,000.00
+
+FIR FILING TIMELINE
+================================================================
+Draft Created:       10-Apr-2026 14:30 UTC
+Filed Date:          11-Apr-2026 09:15 UTC
+Acknowledged Date:   11-Apr-2026
+
+INVESTIGATION STATUS
+================================================================
+Charge Sheet Filed:  Not yet filed
+Court Name:          -
+Next Hearing Date:   Not scheduled
+
+RECOVERY & ASSET FREEZING
+================================================================
+Fraud Amount:        INR 8,50,000.00
+Amount Recovered:    INR 2,10,000.00
+Recovery Rate:       24.7%
+Assets Frozen:       YES
+
+REGULATORY REPORTING
+================================================================
+RBI Fraud Reported:  YES - FMR-1 filed
+Cyber Cell Report:   YES
+
+Generated:           12-Apr-2026 10:55 UTC
+================================================================`,
+
+  bhutan: `FIRST INFORMATION REPORT (FIR)
+================================================================
+Jurisdiction:        Kingdom of Bhutan
+Filed with:          Royal Bhutan Police (RBP)
+Reference:           Bhutan Penal Code 2004
+
+FIR Number:          FIR-2026-1005
+Status:              FILED
+Priority:            HIGH
+Bank Case Number:    CASE-2026-156
+
+SUBJECT DETAILS
+================================================================
+Full Name:           Pradeep Kumar
+CID Number:          CIF-1025
+Address:             Thimphu, Bhutan
+
+REPORTING INSTITUTION
+================================================================
+Institution:         FinsurgeFRIMS Demo Bank
+Branch:              Main Branch, Thimphu
+
+OFFENSE DETAILS (BHUTAN PENAL CODE 2004)
+================================================================
+BPC Section(s):      264 (Money Laundering) + MLPCA 2018
+Fraud Amount:        Nu. 53,12,500.00 (INR 8,50,000.00)
+
+FIR FILING TIMELINE
+================================================================
+Draft Created:       10-Apr-2026 14:30 UTC
+Filed Date:          11-Apr-2026 09:15 UTC
+Acknowledged Date:   11-Apr-2026
+
+INVESTIGATION STATUS
+================================================================
+Charge Sheet Filed:  Not yet filed
+Court Name:          -
+Next Hearing Date:   Not scheduled
+
+RECOVERY & ASSET FREEZING
+================================================================
+Fraud Amount:        Nu. 53,12,500.00
+Amount Recovered:    Nu. 13,12,500.00
+Recovery Rate:       24.7%
+Assets Frozen:       YES
+
+Generated:           12-Apr-2026 10:55 UTC
+================================================================`,
+}
 
 function formatINR(paise: number) {
   const inr = paise / 100
@@ -84,6 +193,10 @@ export default function PoliceFIRPage() {
   const [cases, setCases] = useState<any[]>([])
   const [actionLoading, setActionLoading] = useState(false)
   const [actionMsg, setActionMsg] = useState('')
+  const [formatModal, setFormatModal] = useState<{ firId: string; firNumber: string } | null>(null)
+  const [previewModal, setPreviewModal] = useState<{ format: string } | null>(null)
+  const [uploadModal, setUploadModal] = useState<{ fir: any } | null>(null)
+  const [uploading, setUploading] = useState(false)
 
   // Create form state
   const [createForm, setCreateForm] = useState({
@@ -152,15 +265,16 @@ export default function PoliceFIRPage() {
       .finally(() => setDetailLoading(false))
   }
 
-  const downloadFIR = (firId: string, firNumber: string) => {
+  const performDownloadFIR = (firId: string, firNumber: string, format: string) => {
     setDownloading(firId)
-    api.get(`/police-fir/download/${firId}`, { responseType: 'arraybuffer' })
+    api.get(`/police-fir/download/${firId}?format=${format}`, { responseType: 'blob' })
       .then(res => {
-        const blob = new Blob([res.data], { type: 'text/plain;charset=utf-8' })
+        const fmtLabel = format === 'bhutan' ? 'Bhutan-BPC' : 'India-IPC'
+        const blob = new Blob([res.data], { type: 'application/pdf' })
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
-        link.download = `FIR-${firNumber}.txt`
+        link.download = `FIR-${firNumber}-${fmtLabel}.pdf`
         document.body.appendChild(link)
         link.click()
         link.remove()
@@ -170,7 +284,35 @@ export default function PoliceFIRPage() {
         console.error('Download error:', err)
         alert('Failed to download FIR document')
       })
-      .finally(() => setDownloading(null))
+      .finally(() => {
+        setDownloading(null)
+        setFormatModal(null)
+      })
+  }
+
+  const downloadFIR = (firId: string, firNumber: string) => {
+    setFormatModal({ firId, firNumber })
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, format: string) => {
+    const file = e.target.files?.[0]
+    if (!file || !uploadModal) return
+
+    setUploading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      await api.post(`/police-fir/${uploadModal.fir.id}/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      alert('FIR document uploaded successfully')
+      setUploadModal(null)
+    } catch {
+      alert('Failed to upload FIR document')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const handleCreate = () => {
@@ -285,6 +427,128 @@ export default function PoliceFIRPage() {
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-800 flex items-center justify-between">
           <span>{actionMsg}</span>
           <button onClick={() => setActionMsg('')}><X size={14} /></button>
+        </div>
+      )}
+
+      {/* Format Preview Modal */}
+      {previewModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-3xl w-full mx-4 my-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-800">
+                FIR Format — {previewModal.format === 'india' ? 'India Police (IPC)' : 'Bhutan Police (BPC)'}
+              </h2>
+              <button onClick={() => setPreviewModal(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 font-mono text-xs whitespace-pre-wrap overflow-y-auto max-h-96 text-slate-700">
+              {FIR_FORMAT_SAMPLES[previewModal.format as keyof typeof FIR_FORMAT_SAMPLES]}
+            </div>
+            <div className="mt-4 space-y-2">
+              {previewModal.format === 'india' && (
+                <div className="text-xs text-slate-600 bg-blue-50 p-3 rounded">
+                  <p className="font-medium text-blue-900 mb-1">India Police Format</p>
+                  <p>Uses Indian Penal Code (IPC) sections for offense classification. Filed with local police stations under India's jurisdiction.</p>
+                </div>
+              )}
+              {previewModal.format === 'bhutan' && (
+                <div className="text-xs text-slate-600 bg-purple-50 p-3 rounded">
+                  <p className="font-medium text-purple-900 mb-1">Bhutan Police Format</p>
+                  <p>Uses Bhutan Penal Code (BPC) 2004 sections and references MLPCA 2018, BICMA 2018. Filed with Royal Bhutan Police (RBP).</p>
+                </div>
+              )}
+              <p className="text-xs text-slate-500">This is a sample document format. Actual documents will include your specific FIR data.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      {uploadModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+            <h2 className="text-lg font-semibold text-slate-800 mb-2">Upload FIR Document</h2>
+            <p className="text-sm text-slate-600 mb-4">
+              Upload PDF documents for {uploadModal.fir.fir_number}
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">India Police Format (PDF)</label>
+                <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-blue-300 rounded-lg cursor-pointer hover:border-blue-400 bg-blue-50">
+                  <div className="text-center">
+                    <Upload size={20} className="mx-auto text-blue-600 mb-1" />
+                    <span className="text-xs text-blue-700 font-medium">Choose PDF or drag here</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => handleFileUpload(e, 'india')}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Bhutan Police Format (PDF)</label>
+                <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-purple-300 rounded-lg cursor-pointer hover:border-purple-400 bg-purple-50">
+                  <div className="text-center">
+                    <Upload size={20} className="mx-auto text-purple-600 mb-1" />
+                    <span className="text-xs text-purple-700 font-medium">Choose PDF or drag here</span>
+                  </div>
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    onChange={(e) => handleFileUpload(e, 'bhutan')}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+              <button
+                onClick={() => setUploadModal(null)}
+                disabled={uploading}
+                className="w-full px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-50 font-medium text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Format selection modal */}
+      {formatModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+            <h2 className="text-lg font-semibold text-slate-800 mb-2">Select FIR Format</h2>
+            <p className="text-sm text-slate-600 mb-4">
+              FIR documents are available for India Police (IPC sections) and Bhutan Police (BPC sections).
+            </p>
+            <div className="space-y-2">
+              <button
+                onClick={() => performDownloadFIR(formatModal.firId, formatModal.firNumber, 'india')}
+                disabled={downloading === formatModal.firId}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+              >
+                {downloading === formatModal.firId ? 'Downloading...' : 'India Police (IPC)'}
+              </button>
+              <button
+                onClick={() => performDownloadFIR(formatModal.firId, formatModal.firNumber, 'bhutan')}
+                disabled={downloading === formatModal.firId}
+                className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+              >
+                {downloading === formatModal.firId ? 'Downloading...' : 'Bhutan Police (BPC)'}
+              </button>
+              <button
+                onClick={() => setFormatModal(null)}
+                disabled={downloading === formatModal.firId}
+                className="w-full px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -427,6 +691,22 @@ export default function PoliceFIRPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPreviewModal({ format: 'india' })}
+                className="px-3 py-1.5 bg-slate-50 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-100 transition-colors flex items-center gap-1"
+                title="View format samples"
+              >
+                <Eye size={14} />
+                Formats
+              </button>
+              <button
+                onClick={() => setUploadModal({ fir: selectedFIR })}
+                className="px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-medium hover:bg-green-100 transition-colors flex items-center gap-1"
+                title="Upload FIR document"
+              >
+                <Upload size={14} />
+                Upload
+              </button>
               <button
                 onClick={() => downloadFIR(selectedFIR.id, selectedFIR.fir_number)}
                 disabled={downloading === selectedFIR.id}

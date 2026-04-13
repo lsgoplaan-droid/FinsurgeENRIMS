@@ -43,3 +43,22 @@ class SARReport(Base):
 
     customer = relationship("Customer")
     case = relationship("Case", foreign_keys=[case_id])
+
+
+class LVTRReport(Base):
+    __tablename__ = "lvtr_reports"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    report_number = Column(String, unique=True, nullable=False, index=True)
+    customer_id = Column(String, ForeignKey("customers.id"), nullable=False)
+    transaction_id = Column(String, ForeignKey("transactions.id"))
+    transaction_amount = Column(Integer)
+    transaction_date = Column(DateTime)
+    transaction_type = Column(String)  # cash_deposit, cash_withdrawal, transfer, etc.
+    reporting_threshold = Column(Integer, default=10000000)  # Nu. 100,000 in paise
+    filing_status = Column(String, default="auto_generated")  # auto_generated, pending_review, filed, amended
+    filed_by = Column(String, ForeignKey("users.id"))
+    filed_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    customer = relationship("Customer")

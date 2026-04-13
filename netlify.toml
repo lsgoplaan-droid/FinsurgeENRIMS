@@ -12,9 +12,9 @@ VITE_API_URL = "/api/v1"
 # Redirect API calls to backend
 [[redirects]]
 from = "/api/v1/*"
-to = "https://staging-backend.onrender.com/api/v1/:splat"
+to = "https://finsurge-enrims-backend.onrender.com/api/v1/:splat"
 status = 200
-force = false
+force = true
 
 # Redirect root to index.html for React Router
 [[redirects]]

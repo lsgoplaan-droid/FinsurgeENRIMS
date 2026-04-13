@@ -27,7 +27,7 @@ from app.models import (
     Case, CaseActivity, CaseEvidence, case_alerts,
     KYCReview, KYCDocument, ScreeningResult,
     WatchlistEntry,
-    CTRReport, SARReport,
+    CTRReport, SARReport, LVTRReport,
     CustomerRelationship, CustomerLink,
     AuditLog, SystemConfig,
     EmployeeActivity,
@@ -1215,6 +1215,24 @@ def seed_reports(db: Session, customers: list, cases: list, user_map: dict):
             regulatory_reference=f"FIU-IND-{dt.strftime('%Y')}-{random.randint(10000, 99999)}" if random.random() < 0.3 else None,
         )
         db.add(sar)
+
+    # LVTR reports (Bhutan/RMA — Large Value Transaction Reports)
+    for i in range(5):
+        customer = random.choice(high_cash_customers)
+        dt = _random_date(50, 0)
+        lvtr = LVTRReport(
+            id=_uid(),
+            report_number=f"LVTR-{dt.strftime('%Y%m%d')}-{i+1:04d}",
+            customer_id=customer.id,
+            transaction_amount=random.randint(10000000, 50000000),  # Nu. 100,000 to Nu. 500,000 in paise
+            transaction_date=dt,
+            transaction_type=random.choice(["cash_deposit", "cash_withdrawal", "transfer", "remittance"]),
+            reporting_threshold=10000000,  # Nu. 100,000 in paise
+            filing_status=random.choice(["auto_generated", "pending_review", "filed"]),
+            filed_by=filer.id if random.random() < 0.4 else None,
+            filed_at=dt + timedelta(days=1) if random.random() < 0.4 else None,
+        )
+        db.add(lvtr)
 
     db.flush()
 

@@ -4,8 +4,9 @@ recovery, and RBI fraud reporting (FMR-1/FMR-2).
 """
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from app.utils.pdf_gen import generate_fir_pdf
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from pydantic import BaseModel
@@ -95,86 +96,69 @@ def _gen_fir_number():
     return f"FIR-{d}-{uuid.uuid4().hex[:4].upper()}"
 
 
-@router.get("/download/{fir_id}", response_class=PlainTextResponse)
+@router.get("/download/{fir_id}")
 def download_fir(
     fir_id: str,
+    format: str = Query("india", pattern="^(india|bhutan)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Download Police FIR document with all details."""
+    """Download Police FIR as a PDF.
+
+    `format` can be 'india' (IPC sections, INR) or 'bhutan' (BPC 2004, Nu. amounts).
+    """
     fir = db.query(PoliceFIR).filter(PoliceFIR.id == fir_id).first()
     if not fir:
         raise HTTPException(status_code=404, detail="FIR not found")
 
-    case = db.query(Case).filter(Case.id == fir.case_id).first() if fir.case_id else None
     customer = db.query(Customer).filter(Customer.id == fir.customer_id).first() if fir.customer_id else None
-    creator = db.query(User).filter(User.id == fir.created_by).first() if fir.created_by else None
-    filer = db.query(User).filter(User.id == fir.filed_by).first() if fir.filed_by else None
 
     fraud_amount_inr = (fir.fraud_amount or 0) / 100
-    recovered_amount_inr = (fir.amount_recovered or 0) / 100
+    fraud_amount_nu = fraud_amount_inr * 62.5
+    now_str = datetime.utcnow().strftime("%d-%b-%Y %H:%M UTC")
 
-    document = f"""FIRST INFORMATION REPORT (FIR)
-================================================================
-FIR Number:          {fir.fir_number}
-Status:              {(fir.status or 'DRAFT').upper()}
-Priority:            {(fir.priority or 'MEDIUM').upper()}
-Bank Case Number:    {case.case_number if case else '-'}
+    bpc_mapping = {
+        "cheating": "178 (Cheating)",
+        "forgery": "179 (Forgery)",
+        "cyber_fraud": "BICMA 2018 (Cyber Fraud)",
+        "money_laundering": "264 (Money Laundering) + MLPCA 2018",
+        "identity_theft": "253 (Identity Theft)",
+        "card_fraud": "178 (Cheating) + BICMA 2018",
+        "upi_fraud": "178 (Cheating) + BICMA 2018",
+        "loan_fraud": "178 (Cheating)",
+        "insider_fraud": "172 (Abuse of authority)",
+        "phishing": "BICMA 2018 (Cyber Fraud)",
+        "sim_swap": "253 (Identity Theft) + BICMA 2018",
+        "account_takeover": "253 (Identity Theft) + BICMA 2018",
+    }
 
-REPORTED AGAINST (SUBJECT / CUSTOMER)
-================================================================
-Name:                {customer.full_name if customer else '-'}
-Customer ID:         {customer.customer_number if customer else '-'}
-PAN:                 {customer.pan_number if customer and customer.pan_number else 'Not on file'}
-Address:             {(customer.city if customer else '-')}, {(customer.state if customer else '-')}, INDIA
+    pdf_data = generate_fir_pdf({
+        "fir_number": fir.fir_number,
+        "status": fir.status or "draft",
+        "filed_date": fir.filed_at.strftime("%d-%b-%Y") if fir.filed_at else "PENDING",
+        "generated": now_str,
+        "jurisdiction": f"{fir.police_district or '-'}, {fir.police_state or '-'}, India",
+        "ipc_section": fir.ipc_sections or "-",
+        "law_ref": bpc_mapping.get(fir.offense_type or "", "178 (General Cheating)"),
+        "branch": fir.police_station or "-",
+        "reported_by": current_user.full_name,
+        "customer_name": customer.full_name if customer else "-",
+        "customer_id": customer.customer_number if customer else "-",
+        "offense_type": (fir.offense_type or "-").replace("_", " ").title(),
+        "description": fir.offense_description or "-",
+        "amount_inr": fraud_amount_inr,
+        "amount_nu": fraud_amount_nu,
+        "offense_date": fir.offense_date.strftime("%d-%b-%Y") if fir.offense_date else "-",
+        "downloaded_by": current_user.full_name,
+        "download_time": now_str,
+    }, format)
 
-POLICE STATION & OFFICER DETAILS
-================================================================
-Police Station:      {fir.police_station}
-District:            {fir.police_district or '-'}
-State:               {fir.police_state or '-'}
-Investigating Off.   {fir.investigating_officer or 'To be assigned'}
-
-OFFENSE DETAILS
-================================================================
-Offense Type:        {fir.offense_type}
-IPC / Legal Sections: {fir.ipc_sections or '-'}
-Fraud Amount:        INR {fraud_amount_inr:,.2f}
-
-FIR FILING TIMELINE
-================================================================
-Draft Created:       {fir.created_at.strftime('%d-%b-%Y %H:%M UTC') if fir.created_at else '-'}
-Filed Date:          {fir.filed_at.strftime('%d-%b-%Y %H:%M UTC') if fir.filed_at else 'PENDING'}
-Acknowledged Date:   {fir.acknowledged_at.strftime('%d-%b-%Y') if fir.acknowledged_at else 'Pending'}
-
-INVESTIGATION STATUS
-================================================================
-Charge Sheet Filed:  {fir.charge_sheet_date.strftime('%d-%b-%Y') if fir.charge_sheet_date else 'Not yet filed'}
-Court Name:          {fir.court_name or '-'}
-Next Hearing Date:   {fir.next_hearing_date.strftime('%d-%b-%Y') if fir.next_hearing_date else 'Not scheduled'}
-
-RECOVERY & ASSET FREEZING
-================================================================
-Fraud Amount:        INR {fraud_amount_inr:,.2f}
-Amount Recovered:    INR {recovered_amount_inr:,.2f}
-Recovery Rate:       {round((recovered_amount_inr/fraud_amount_inr*100) if fraud_amount_inr > 0 else 0, 1)}%
-Assets Frozen:       {'YES' if fir.assets_frozen else 'No'}
-
-REGULATORY REPORTING
-================================================================
-RBI Fraud Reported:  {'YES - FMR-1 filed' if fir.rbi_fraud_reported else 'No'}
-Cyber Cell Report:   {'YES' if fir.cyber_cell_reported else 'No'}
-
-Generated:           {datetime.utcnow().strftime('%d-%b-%Y %H:%M UTC')}
-Downloaded by:       {current_user.full_name}
-================================================================
-"""
-
-    return PlainTextResponse(
-        content=document,
-        headers={
-            "Content-Disposition": f"attachment; filename=FIR-{fir.fir_number}.txt"
-        }
+    fmt_label = "Bhutan-BPC" if format == "bhutan" else "India-IPC"
+    filename = f"FIR-{fir.fir_number}-{fmt_label}.pdf"
+    return Response(
+        content=pdf_data,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

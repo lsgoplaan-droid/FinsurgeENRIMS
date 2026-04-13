@@ -126,6 +126,10 @@ Instrumentator(
 
 app.include_router(api_router)
 
+# ── Diagnostic logging ──────────────────────────────────────────────────────
+if settings.DEBUG:
+    compliance_routes = [r.path for r in app.routes if hasattr(r, 'path') and 'compliance' in r.path]
+    logger.info(f"Registered {len(compliance_routes)} compliance routes: {sorted(compliance_routes)}")
 
 @app.api_route("/", methods=["GET", "HEAD"])
 def root():
