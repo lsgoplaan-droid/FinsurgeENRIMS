@@ -1,7 +1,7 @@
 services:
   # FinsurgeENRIMS Backend API
   - type: web
-    name: finsurge-enrims-backend
+    name: finsurgeenrims
     runtime: python
     plan: free  # Use 'standard' for production
 
