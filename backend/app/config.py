@@ -32,8 +32,11 @@ class Settings(BaseSettings):
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
-    # Database — SQLite for dev, PostgreSQL (RDS) for production
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./sentinel.db")
+    # Database — SQLite for dev, PostgreSQL (RDS/Render) for production
+    # Render provides postgres:// URLs; SQLAlchemy 2.x requires postgresql://
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./sentinel.db").replace(
+        "postgres://", "postgresql://", 1
+    )
 
     # Redis — ElastiCache for rate limiting + session cache
     REDIS_URL: str = os.getenv("REDIS_URL", "")
