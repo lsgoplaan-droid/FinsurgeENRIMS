@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, User, CreditCard, Bell, Shield, MapPin, Phone, Mail, Building, AlertCircle, History } from 'lucide-react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, User, CreditCard, Bell, Shield, MapPin, Phone, Mail, Building, AlertCircle, History, Users } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDate, formatDateTime, timeAgo, priorityColors, statusColors, riskColors } from '../utils/formatters'
 
@@ -26,7 +26,7 @@ function getHighRiskRelations(networkData: any, centerId: string) {
     .filter((entity: any) => entity && (entity.risk_category === 'high' || entity.risk_category === 'very_high'))
 }
 
-type Tab = 'overview' | 'transactions' | 'alerts' | 'network' | 'audit'
+type Tab = 'overview' | 'transactions' | 'alerts' | 'network' | 'audit' | 'ubo'
 
 // Enhanced Circular gauge SVG with tooltip
 function RiskGauge({ score, customer }: { score: number; customer?: any }) {
@@ -136,6 +136,7 @@ function RiskGauge({ score, customer }: { score: number; customer?: any }) {
 
 export default function Customer360Page() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -144,6 +145,12 @@ export default function Customer360Page() {
   const [networkLoading, setNetworkLoading] = useState(false)
   const [auditEntries, setAuditEntries] = useState<any[]>([])
   const [auditLoading, setAuditLoading] = useState(false)
+  const [uboRecords, setUboRecords] = useState<any[]>([])
+  const [uboLoading, setUboLoading] = useState(false)
+  const [uboModalOpen, setUboModalOpen] = useState(false)
+  const [uboEditRecord, setUboEditRecord] = useState<any>(null)
+  const [uboForm, setUboForm] = useState({ ubo_name: '', ownership_percentage: '', nationality: 'IN', date_of_birth: '', id_type: 'pan', id_number: '', relationship_type: 'director' })
+  const [uboSaving, setUboSaving] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -178,6 +185,78 @@ export default function Customer360Page() {
     if (tab === 'audit' && id) fetchAuditTrail()
   }, [tab, id])
 
+  const fetchUboRecords = () => {
+    if (!id) return
+    setUboLoading(true)
+    api.get(`/ubo/${id}`)
+      .then(res => setUboRecords(res.data))
+      .catch(() => setUboRecords([]))
+      .finally(() => setUboLoading(false))
+  }
+
+  useEffect(() => {
+    if (tab === 'ubo' && id) fetchUboRecords()
+  }, [tab, id])
+
+  const openUboAdd = () => {
+    setUboEditRecord(null)
+    setUboForm({ ubo_name: '', ownership_percentage: '', nationality: 'IN', date_of_birth: '', id_type: 'pan', id_number: '', relationship_type: 'director' })
+    setUboModalOpen(true)
+  }
+
+  const openUboEdit = (record: any) => {
+    setUboEditRecord(record)
+    setUboForm({
+      ubo_name: record.ubo_name,
+      ownership_percentage: String(record.ownership_percentage),
+      nationality: record.nationality || 'IN',
+      date_of_birth: record.date_of_birth || '',
+      id_type: record.id_type || 'pan',
+      id_number: record.id_number || '',
+      relationship_type: record.relationship_type || 'director',
+    })
+    setUboModalOpen(true)
+  }
+
+  const saveUbo = async () => {
+    if (!id) return
+    setUboSaving(true)
+    const payload = {
+      ubo_name: uboForm.ubo_name,
+      ownership_percentage: parseFloat(uboForm.ownership_percentage),
+      nationality: uboForm.nationality,
+      date_of_birth: uboForm.date_of_birth || undefined,
+      id_type: uboForm.id_type,
+      id_number: uboForm.id_number || undefined,
+      relationship_type: uboForm.relationship_type,
+    }
+    try {
+      if (uboEditRecord) {
+        await api.put(`/ubo/${id}/${uboEditRecord.id}`, payload)
+      } else {
+        await api.post(`/ubo/${id}`, payload)
+      }
+      setUboModalOpen(false)
+      fetchUboRecords()
+    } catch {
+      // keep modal open on error
+    } finally {
+      setUboSaving(false)
+    }
+  }
+
+  const deleteUbo = async (uboId: string) => {
+    if (!id || !confirm('Delete this UBO record?')) return
+    await api.delete(`/ubo/${id}/${uboId}`)
+    fetchUboRecords()
+  }
+
+  const verifyUbo = async (uboId: string) => {
+    if (!id) return
+    await api.post(`/ubo/${id}/${uboId}/verify`)
+    fetchUboRecords()
+  }
+
   if (loading) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
   if (error) return <div className="flex items-center justify-center h-full text-red-500">{error}</div>
   if (!data) return <div className="flex items-center justify-center h-full text-slate-400">Customer not found</div>
@@ -188,6 +267,9 @@ export default function Customer360Page() {
   const alerts = data.alerts || data.recent_alerts || []
   const cases = data.cases || customer.cases || []
   const kycInfo = data.kyc || customer.kyc || null
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+  const canManageUbo = ['admin', 'compliance_officer'].some(r => currentUser.roles?.includes(r))
+  const isCorporate = customer?.customer_type === 'corporate'
 
   const tabs: { key: Tab; label: string; icon: typeof User }[] = [
     { key: 'overview', label: 'Overview', icon: User },
@@ -195,13 +277,14 @@ export default function Customer360Page() {
     { key: 'network', label: 'Network Analysis', icon: Building },
     { key: 'alerts', label: 'Alerts & Cases', icon: Bell },
     { key: 'audit', label: 'Audit Trail', icon: History },
+    ...(isCorporate ? [{ key: 'ubo' as Tab, label: 'UBO / Beneficial Owners', icon: Users }] : []),
   ]
 
   return (
     <div className="space-y-6">
-      <Link to="/customers" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors">
-        <ArrowLeft size={16} /> Back to Customers
-      </Link>
+      <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors">
+        <ArrowLeft size={16} /> Back
+      </button>
 
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -688,6 +771,215 @@ export default function Customer360Page() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* UBO / Beneficial Owners Tab */}
+      {tab === 'ubo' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-700">Beneficial Owners ({uboRecords.length})</h3>
+              {canManageUbo && (
+                <button
+                  onClick={openUboAdd}
+                  className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  + Add UBO
+                </button>
+              )}
+            </div>
+
+            {uboLoading ? (
+              <div className="py-8 text-center text-slate-400">Loading UBO records...</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="text-left py-2.5 px-3 font-medium text-slate-600">UBO Name</th>
+                      <th className="text-left py-2.5 px-3 font-medium text-slate-600">Relationship</th>
+                      <th className="text-right py-2.5 px-3 font-medium text-slate-600">Ownership %</th>
+                      <th className="text-left py-2.5 px-3 font-medium text-slate-600">Nationality</th>
+                      <th className="text-left py-2.5 px-3 font-medium text-slate-600">ID Type</th>
+                      <th className="text-left py-2.5 px-3 font-medium text-slate-600">ID Number</th>
+                      <th className="text-left py-2.5 px-3 font-medium text-slate-600">Verified</th>
+                      <th className="text-left py-2.5 px-3 font-medium text-slate-600">Verified At</th>
+                      {canManageUbo && <th className="text-left py-2.5 px-3 font-medium text-slate-600">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {uboRecords.map((r: any) => {
+                      const pct = r.ownership_percentage ?? 0
+                      const pctColors = pct >= 25
+                        ? 'bg-red-100 text-red-800'
+                        : pct >= 10
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-slate-100 text-slate-700'
+                      const idMasked = r.id_number
+                        ? r.id_number.length > 4
+                          ? `${'*'.repeat(r.id_number.length - 4)}${r.id_number.slice(-4)}`
+                          : '****'
+                        : '-'
+                      return (
+                        <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
+                          <td className="py-2.5 px-3 font-medium text-slate-800">{r.ubo_name}</td>
+                          <td className="py-2.5 px-3 text-slate-600 capitalize">{(r.relationship_type || '-').replace(/_/g, ' ')}</td>
+                          <td className="py-2.5 px-3 text-right">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${pctColors}`}>
+                              {pct.toFixed(1)}%
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-600">{r.nationality || '-'}</td>
+                          <td className="py-2.5 px-3 text-slate-600 uppercase">{r.id_type || '-'}</td>
+                          <td className="py-2.5 px-3 font-mono text-xs text-slate-500">{idMasked}</td>
+                          <td className="py-2.5 px-3">
+                            {r.verified ? (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Verified</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Pending</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-xs text-slate-500">{r.verified_at ? formatDateTime(r.verified_at) : '-'}</td>
+                          {canManageUbo && (
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => openUboEdit(r)} className="text-xs text-blue-600 hover:underline">Edit</button>
+                                {!r.verified && (
+                                  <button onClick={() => verifyUbo(r.id)} className="text-xs text-green-600 hover:underline">Verify</button>
+                                )}
+                                <button onClick={() => deleteUbo(r.id)} className="text-xs text-red-500 hover:underline">Delete</button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                    {uboRecords.length === 0 && (
+                      <tr><td colSpan={canManageUbo ? 9 : 8} className="py-10 text-center text-slate-400">No UBO records found</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Regulatory note */}
+          <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
+            <Shield size={14} className="mt-0.5 flex-shrink-0 text-blue-600" />
+            <span>
+              <strong>FATF R.24 / RBI KYC Master Direction 2023</strong> — UBOs with &ge;25% ownership require enhanced due diligence (EDD).
+              Red badge = controlling interest (&ge;25%). Amber = significant holding (10–24%). Slate = minority (&lt;10%).
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* UBO Add / Edit Modal */}
+      {uboModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md mx-4 p-6">
+            <h3 className="text-base font-semibold text-slate-800 mb-4">
+              {uboEditRecord ? 'Edit UBO Record' : 'Add Beneficial Owner'}
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Full Name *</label>
+                <input
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={uboForm.ubo_name}
+                  onChange={e => setUboForm(f => ({ ...f, ubo_name: e.target.value }))}
+                  placeholder="e.g. Rajesh Kumar Mehta"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Ownership % *</label>
+                  <input
+                    type="number" min="0" max="100" step="0.1"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={uboForm.ownership_percentage}
+                    onChange={e => setUboForm(f => ({ ...f, ownership_percentage: e.target.value }))}
+                    placeholder="e.g. 51.0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Nationality</label>
+                  <input
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={uboForm.nationality}
+                    onChange={e => setUboForm(f => ({ ...f, nationality: e.target.value }))}
+                    placeholder="IN"
+                    maxLength={2}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ID Type</label>
+                  <select
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={uboForm.id_type}
+                    onChange={e => setUboForm(f => ({ ...f, id_type: e.target.value }))}
+                  >
+                    <option value="pan">PAN</option>
+                    <option value="passport">Passport</option>
+                    <option value="aadhaar">Aadhaar</option>
+                    <option value="cin">CIN</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">ID Number</label>
+                  <input
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={uboForm.id_number}
+                    onChange={e => setUboForm(f => ({ ...f, id_number: e.target.value }))}
+                    placeholder="e.g. ABCDE1234F"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Relationship</label>
+                  <select
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={uboForm.relationship_type}
+                    onChange={e => setUboForm(f => ({ ...f, relationship_type: e.target.value }))}
+                  >
+                    <option value="director">Director</option>
+                    <option value="shareholder">Shareholder</option>
+                    <option value="promoter">Promoter</option>
+                    <option value="trustee">Trustee</option>
+                    <option value="ubo">UBO</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Date of Birth</label>
+                  <input
+                    type="date"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={uboForm.date_of_birth}
+                    onChange={e => setUboForm(f => ({ ...f, date_of_birth: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 mt-5">
+              <button
+                onClick={() => setUboModalOpen(false)}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveUbo}
+                disabled={uboSaving || !uboForm.ubo_name || !uboForm.ownership_percentage}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {uboSaving ? 'Saving...' : uboEditRecord ? 'Update' : 'Add UBO'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

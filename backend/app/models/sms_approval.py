@@ -25,3 +25,10 @@ class SMSApproval(Base):
     rejection_reason = Column(String, nullable=True)
     otp_demo = Column(String, nullable=True)           # OTP in plaintext for demo/DEBUG mode only
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Second-level FRIMS User approval (only for very high value transactions)
+    frims_approval_required = Column(Boolean, default=False, nullable=False)
+    frims_approval_status = Column(String, nullable=True)  # None / pending / approved / rejected
+    frims_approved_by = Column(String, nullable=True)       # username of FRIMS officer
+    frims_approved_at = Column(DateTime, nullable=True)
+    frims_rejection_reason = Column(String, nullable=True)

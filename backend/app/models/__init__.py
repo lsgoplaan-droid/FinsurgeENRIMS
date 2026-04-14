@@ -15,6 +15,7 @@ from app.models.police_fir import PoliceFIR, FIRActivity
 from app.models.notification_rule import NotificationRule, NotificationLog
 from app.models.evidence import Evidence, EvidenceType
 from app.models.sms_approval import SMSApproval
+from app.models.ubo import UBORecord
 from app.services.maker_checker import PendingAction
 
 
@@ -41,5 +42,6 @@ __all__ = [
     "NotificationRule", "NotificationLog",
     "Evidence", "EvidenceType",
     "SMSApproval",
+    "UBORecord",
     "PendingAction",
 ]

@@ -1,14 +1,22 @@
 """
 SMS Transaction Approval API
 
+Design intent:
+  - SMS OTP is sent to the CUSTOMER's phone.  The customer approves on their device.
+  - FRIMS is a MONITORING screen — operators watch status, resend OTPs if needed.
+  - For very high value transactions (>= INR 10 lakh) a FRIMS User must also give a
+    second-level approval AFTER the customer's OTP is verified.
+
 Endpoints:
   GET  /sms-approvals                  — list (filterable by status)
   GET  /sms-approvals/stats            — counts by status + total held
   GET  /sms-approvals/{id}             — single record detail
-  POST /sms-approvals/{id}/verify      — verify OTP → approve transaction
-  POST /sms-approvals/{id}/reject      — reject transaction
-  POST /sms-approvals/resend/{id}      — resend OTP (new OTP, reset expiry)
-  POST /sms-approvals/expire-check     — mark expired records (on-demand)
+  POST /sms-approvals/{id}/verify      — (customer-side) verify OTP → approve
+  POST /sms-approvals/{id}/reject      — (customer-side) reject transaction
+  POST /sms-approvals/{id}/frims-approve — FRIMS second-level approval (very high value)
+  POST /sms-approvals/{id}/frims-reject  — FRIMS second-level rejection
+  POST /sms-approvals/resend/{id}      — resend OTP (FRIMS triggered, new OTP)
+  POST /sms-approvals/expire-check     — mark expired records (on-demand / scheduled)
 """
 import os
 from datetime import datetime
@@ -37,6 +45,10 @@ from app.services.sms_service import (
 router = APIRouter(prefix="/sms-approvals", tags=["SMS Approvals"])
 
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+# Transactions at or above this amount (in paise) require a FRIMS second-level approval
+# INR 10,00,000 = ₹10 lakh
+FRIMS_APPROVAL_THRESHOLD_PAISE = 1_000_000_00
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +85,18 @@ def _approval_dict(approval: SMSApproval, include_demo_otp: bool = False) -> dic
         "resolved_by": approval.resolved_by,
         "rejection_reason": approval.rejection_reason,
         "created_at": approval.created_at.isoformat() if approval.created_at else None,
+        # FRIMS approval fields — for TXN >= INR 10L, FRIMS approves directly on web
+        "frims_approval_required": bool(approval.frims_approval_required),
+        "frims_approval_status": approval.frims_approval_status,
+        "frims_approved_by": approval.frims_approved_by,
+        "frims_approved_at": approval.frims_approved_at.isoformat() if approval.frims_approved_at else None,
+        "frims_rejection_reason": approval.frims_rejection_reason,
+        # True when FRIMS can act: high-value, customer OTP pending OR approved, no FRIMS decision yet
+        "awaiting_frims_approval": (
+            bool(approval.frims_approval_required)
+            and approval.status in ("pending", "approved")
+            and approval.frims_approval_status in (None, "pending")
+        ),
     }
     if include_demo_otp and approval.otp_demo:
         data["otp_demo"] = approval.otp_demo
@@ -121,11 +145,25 @@ def get_stats(
             counts[status] = cnt
             amounts[status] = total or 0
 
+    # Count how many are awaiting FRIMS second-level approval
+    frims_pending = (
+        db.query(func.count(SMSApproval.id))
+        .filter(
+            SMSApproval.frims_approval_required == True,
+            SMSApproval.status == "approved",
+            SMSApproval.frims_approval_status.in_([None, "pending"]),
+        )
+        .scalar()
+        or 0
+    )
+
     return {
         "counts": counts,
         "amounts": amounts,
         "total_held_paise": amounts.get("pending", 0),
         "total_held_inr": round(amounts.get("pending", 0) / 100, 2),
+        "frims_pending_approval": frims_pending,
+        "frims_threshold_inr": FRIMS_APPROVAL_THRESHOLD_PAISE / 100,
     }
 
 
@@ -316,6 +354,102 @@ def reject_approval(
         "message": "Transaction rejected.",
         "approval_id": rec.id,
         "status": rec.status,
+    }
+
+
+class FRIMSRejectBody(BaseModel):
+    reason: str
+
+
+@router.post("/{approval_id}/frims-approve")
+def frims_approve(
+    approval_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    FRIMS second-level approval for very high value transactions (>= INR 10 lakh).
+    Only available after the customer's OTP has been verified (status == 'approved').
+    """
+    rec = db.query(SMSApproval).filter(SMSApproval.id == approval_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="SMS approval not found")
+    if not rec.frims_approval_required:
+        raise HTTPException(status_code=400, detail="This transaction does not require FRIMS approval.")
+    if rec.status not in ("pending", "approved"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot approve — transaction is '{rec.status}'."
+        )
+    if rec.frims_approval_status == "approved":
+        raise HTTPException(status_code=400, detail="FRIMS approval has already been granted.")
+    if rec.frims_approval_status == "rejected":
+        raise HTTPException(status_code=400, detail="FRIMS approval was already rejected.")
+
+    rec.frims_approval_status = "approved"
+    rec.frims_approved_by = current_user.username
+    rec.frims_approved_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"FRIMS second-level approval granted by {current_user.full_name}.",
+        "approval_id": rec.id,
+        "frims_approval_status": rec.frims_approval_status,
+        "frims_approved_by": rec.frims_approved_by,
+        "frims_approved_at": rec.frims_approved_at,
+    }
+
+
+@router.post("/{approval_id}/frims-reject")
+def frims_reject(
+    approval_id: str,
+    body: FRIMSRejectBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    FRIMS second-level rejection. Overrides the customer's OTP approval and reverses the transaction.
+    Requires a reason.
+    """
+    rec = db.query(SMSApproval).filter(SMSApproval.id == approval_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="SMS approval not found")
+    if not rec.frims_approval_required:
+        raise HTTPException(status_code=400, detail="This transaction does not require FRIMS approval.")
+    if rec.status not in ("pending", "approved"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot reject — transaction is '{rec.status}'."
+        )
+    if rec.frims_approval_status in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail=f"FRIMS approval is already '{rec.frims_approval_status}'.")
+
+    now = datetime.utcnow()
+    rec.frims_approval_status = "rejected"
+    rec.frims_approved_by = current_user.username
+    rec.frims_approved_at = now
+    rec.frims_rejection_reason = body.reason
+    # Mark the approval itself as rejected and close it out
+    rec.status = "rejected"
+    rec.resolved_at = now
+    rec.resolved_by = current_user.username
+    rec.rejection_reason = body.reason
+
+    # Reverse/cancel the transaction if linked
+    if rec.transaction_id:
+        txn = db.query(Transaction).filter(Transaction.id == rec.transaction_id).first()
+        if txn:
+            txn.processing_status = "reversed"
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"FRIMS rejection recorded by {current_user.full_name}. Transaction reversed.",
+        "approval_id": rec.id,
+        "frims_approval_status": rec.frims_approval_status,
+        "frims_rejection_reason": rec.frims_rejection_reason,
     }
 
 

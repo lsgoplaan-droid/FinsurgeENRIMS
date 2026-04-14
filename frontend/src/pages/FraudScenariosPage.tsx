@@ -28,9 +28,14 @@ const riskBadgeColors: Record<string, string> = {
 
 const categoryBadgeColors: Record<string, string> = {
   fraud: 'bg-red-100 text-red-800',
+  Fraud: 'bg-red-100 text-red-800',
   cyber_fraud: 'bg-orange-100 text-orange-800',
   ai_fraud: 'bg-violet-100 text-violet-800',
   internal_fraud: 'bg-amber-100 text-amber-800',
+  AML: 'bg-blue-100 text-blue-800',
+  aml: 'bg-blue-100 text-blue-800',
+  Compliance: 'bg-slate-100 text-slate-700',
+  compliance: 'bg-slate-100 text-slate-700',
 }
 
 const TABS = [
@@ -318,6 +323,9 @@ export default function FraudScenariosPage() {
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                   >
                     <option value="Fraud">Fraud</option>
+                    <option value="cyber_fraud">Cyber Fraud</option>
+                    <option value="ai_fraud">AI Fraud</option>
+                    <option value="internal_fraud">Internal Fraud</option>
                     <option value="AML">AML</option>
                     <option value="Compliance">Compliance</option>
                   </select>

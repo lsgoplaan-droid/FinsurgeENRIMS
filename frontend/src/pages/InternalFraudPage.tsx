@@ -14,6 +14,36 @@ const EMPTY_RULE = {
   enabled: true,
 }
 
+// INT-001 through INT-010: internal fraud detection rules with descriptions
+const INT_RULES = [
+  { code: 'INT-001', name: 'Employee Self-Account Credit Without Approval', description: 'Employee credits own or linked account without dual-control authorization. Triggers on self_credit activity types.', severity: 'critical', types: ['self_credit', 'account_credit', 'self_transfer', 'self_account'] },
+  { code: 'INT-002', name: 'Employee Accessing Unrelated Customer Records', description: 'Staff views customer files outside their assigned portfolio or case. Correlates with unauthorized_access flag.', severity: 'high',     types: ['unauthorized_access', 'data_access', 'record_access', 'customer_access'], flag: 'unauthorized_access' },
+  { code: 'INT-003', name: 'After-Hours CBS Override Transaction',           description: 'Core-banking system transaction executed outside 8 AM–8 PM IST with override privilege. Correlates with after_hours flag.', severity: 'critical', types: ['after_hours', 'cbs_override', 'night_transaction'],                  flag: 'after_hours' },
+  { code: 'INT-004', name: 'Ghost Account Activity — No KYC on File',        description: 'Transaction on an account with missing or incomplete KYC documentation, indicating a fictitious account.', severity: 'critical', types: ['ghost_account', 'kyc_bypass', 'no_kyc'] },
+  { code: 'INT-005', name: 'Repeated Override of Transaction Limits',         description: 'Same employee bypasses system transaction limits more than once per session without supervisor sign-off.', severity: 'high',     types: ['limit_override', 'privilege_abuse', 'limit_bypass', 'override'] },
+  { code: 'INT-006', name: 'Employee Reversals Above Threshold',              description: 'Employee initiates transaction reversal above INR 50,000 without second-level approval within the same session.', severity: 'high',     types: ['transaction_reversal', 'reversal', 'forced_reversal'] },
+  { code: 'INT-007', name: 'Cash Vault Discrepancy Detection',                severity: 'critical', description: 'Physical cash count does not match CBS vault balance after branch close. Employee had vault access that shift.', types: ['cash_discrepancy', 'vault_access', 'cash_variance', 'vault'] },
+  { code: 'INT-008', name: 'Loan Disbursement to Employee-Linked Account',    description: 'Loan proceeds credited to an account belonging to, or linked to, the approving employee or a close associate.', severity: 'critical', types: ['loan_approval', 'loan_disbursement', 'loan_fraud', 'loan'] },
+  { code: 'INT-009', name: 'Dormant Account Withdrawal by Branch Staff',      description: 'Withdrawal from account dormant for >12 months, reactivated and debited by a branch employee without customer contact record.', severity: 'high',     types: ['dormant_access', 'dormant_withdrawal', 'dormant_activation', 'dormant'] },
+  { code: 'INT-010', name: 'Maker-Checker Bypass — Same User Approval',       description: 'Single user acts as both maker and checker for the same transaction, violating dual-control policy.', severity: 'critical', types: ['maker_checker_bypass', 'self_approval', 'dual_approval_bypass', 'maker_checker'] },
+]
+
+function getMatchedRules(activity: any) {
+  const actType = (activity.activity_type || '').toLowerCase()
+  return INT_RULES.filter(r => {
+    const byType = r.types.some(t => actType.includes(t) || t.includes(actType))
+    const byFlag = r.flag ? !!activity[r.flag] : false
+    return byType || byFlag
+  })
+}
+
+const severityColors: Record<string, string> = {
+  critical: 'bg-red-100 text-red-800 border-red-200',
+  high: 'bg-orange-100 text-orange-800 border-orange-200',
+  medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  low: 'bg-green-100 text-green-800 border-green-200',
+}
+
 const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
 )
@@ -343,6 +373,24 @@ export default function InternalFraudPage() {
                       )}
                     </div>
                   )}
+                  {/* Matched detection rules — click to go tune the rule */}
+                  {(() => {
+                    const matched = getMatchedRules(item)
+                    if (!matched.length) return null
+                    return (
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <span className="text-xs text-slate-400 font-medium">Rules:</span>
+                        {matched.map(r => (
+                          <button key={r.code}
+                            title={`${r.name}: ${r.description} — Click to tune rule`}
+                            onClick={e => { e.stopPropagation(); setActiveTab('rules') }}
+                            className={`px-2 py-0.5 rounded border text-xs font-mono font-semibold cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 transition-shadow ${severityColors[r.severity] || 'bg-gray-100 text-gray-700 border-gray-200'}`}>
+                            {r.code}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
 
                 {/* Right side status label */}
@@ -366,6 +414,39 @@ export default function InternalFraudPage() {
                     <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">After Hours</span><p className="font-bold text-slate-700">{item.after_hours ? 'Yes' : 'No'}</p></div>
                     <div className="bg-slate-50 rounded-lg p-2"><span className="text-slate-400">Unauthorized</span><p className="font-bold text-slate-700">{item.unauthorized_access ? 'Yes' : 'No'}</p></div>
                   </div>
+                  {/* Matched detection rules — expanded */}
+                  {(() => {
+                    const matched = getMatchedRules(item)
+                    if (!matched.length) return (
+                      <div className="mt-2 text-xs text-slate-400 italic">No INT rules matched for this activity type. Check activity_type classification.</div>
+                    )
+                    return (
+                      <div className="mt-2">
+                        <p className="text-xs font-semibold text-slate-600 mb-2">Detection Rules Violated ({matched.length})</p>
+                        <div className="space-y-1.5">
+                          {matched.map(r => (
+                            <div key={r.code} className={`px-3 py-2 rounded-lg border ${severityColors[r.severity] || 'bg-gray-50 border-gray-200'}`}>
+                              <div className="flex items-start gap-2">
+                                <span className="font-mono font-bold text-xs shrink-0 mt-0.5">{r.code}</span>
+                                <span className="text-xs font-medium flex-1">{r.name}</span>
+                                <button
+                                  onClick={() => setActiveTab('rules')}
+                                  className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-white/60 border border-current opacity-70 hover:opacity-100 transition-opacity"
+                                  title="Go to Rules tab to tune this rule"
+                                >Tune</button>
+                                <span className={`shrink-0 px-1.5 py-0.5 rounded text-xs font-medium capitalize ${
+                                  r.severity === 'critical' ? 'bg-red-200 text-red-900' : r.severity === 'high' ? 'bg-orange-200 text-orange-900' : 'bg-yellow-200 text-yellow-900'
+                                }`}>{r.severity}</span>
+                              </div>
+                              {r.description && (
+                                <p className="text-xs opacity-75 mt-1 ml-12">{r.description}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
                   <div className="flex items-center gap-2 pt-1">
                     <button className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700">Escalate to HR</button>
                     <button className="px-3 py-1.5 bg-amber-50 text-amber-700 text-xs font-medium rounded-lg border border-amber-200 hover:bg-amber-100">Flag for Investigation</button>
@@ -411,7 +492,10 @@ export default function InternalFraudPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map(r => (
+                  {rules.map(r => {
+                    // Count how many loaded activities this rule matches
+                    const activityHits = activities.filter(a => getMatchedRules(a).some(mr => mr.name === r.name || mr.code === r.id)).length
+                    return (
                     <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
                       <td className="py-2.5 px-4 font-mono text-xs font-semibold text-blue-600">{r.id}</td>
                       <td className="py-2.5 px-4">
@@ -425,7 +509,12 @@ export default function InternalFraudPage() {
                           colors={riskBadgeColors[r.severity] || 'bg-gray-100 text-gray-800'}
                         />
                       </td>
-                      <td className="py-2.5 px-4 text-right font-mono text-slate-700">{r.triggers ?? 0}</td>
+                      <td className="py-2.5 px-4 text-right font-mono text-slate-700">
+                        {r.triggers ?? 0}
+                        {activityHits > 0 && (
+                          <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-700 text-xs rounded font-semibold">{activityHits} active</span>
+                        )}
+                      </td>
                       <td className="py-2.5 px-4">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${r.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}`}>
                           {r.enabled ? 'Active' : 'Disabled'}
@@ -450,7 +539,8 @@ export default function InternalFraudPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                   {rules.length === 0 && (
                     <tr><td colSpan={7} className="py-12 text-center text-slate-400">No rules defined</td></tr>
                   )}

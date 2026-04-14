@@ -143,15 +143,18 @@ logo_path = r"d:\Users\lsgop\Downloads\finsurgelogo.png"
 add_title_slide(prs, "FinsurgeENRIMS", "Real-Time Fraud Detection & Risk Management", logo_path)
 
 # Slide 2: System Overview
-add_content_slide(prs, "System Overview", [
-    "Real-time detection of fraud, cyber attacks, and regulatory violations for Indian & Bhutanese banks",
-    "77 detection rules organized into 17 detection scenarios covering:",
-    "    Fraud patterns (card fraud, account takeover, behavioral anomalies, mule accounts)",
-    "    Cyber threats (SIM swap, phishing, UPI fraud, digital channel attacks)",
-    "    Advanced fraud (AI deepfakes, synthetic identities, bot detection)",
-    "    Internal fraud (employee abuse, data theft)",
-    "Customer 360° unified view with network relationship analysis and risk screening",
-    "Alert-to-case-to-investigation workflow with SLA tracking and AI-powered investigation copilot"
+add_content_slide(prs, "FRIMS — 10 Core Modules at a Glance", [
+    "Fraud Risk Intelligence Management System — purpose-built for Bhutanese banking & RMA regulations",
+    "Transaction Monitoring — 26+ configurable rules evaluated on every transaction in real time",
+    "Alert Management — AI risk scoring (0–100), SLA enforcement, skill-based auto-assignment",
+    "Case Management — Customer 360°, evidence repository, maker-checker, court & recovery tracking",
+    "SMS OTP Approval — High-value/high-risk transfers held; customer approves via SMS before settlement",
+    "CTR / LVTR Reporting — Auto RMA-format PDFs; Nu. 100,000 threshold; 7-day filing deadline",
+    "STR / SAR Reporting — Suspicion-to-FIU-Bhutan workflow with maker-checker sign-off",
+    "Police FIR — BPC 2004 FIR generation with MLPCA 2018 / BICMA 2018 references",
+    "Watchlist Screening — CID/BRN/PEP screening; OFAC, UN Security Council, RMA watchlists",
+    "AI Investigation Copilot — Risk explanation, similar case search, next-step recommendations",
+    "Audit & Governance — Immutable log, RBAC, PII encryption, data masking",
 ], logo_path)
 
 # Slide 3: Multi-Regulator Compliance
@@ -195,7 +198,37 @@ add_content_slide(prs, "Regulatory Document Generation", [
     "    India Police (IPC sections); Bhutan Police (BPC 2004 sections with MLPCA/BICMA references)"
 ], logo_path)
 
-# Slide 6: RMA AML/CFT Controls
+# Slide 6: SMS OTP Transaction Approval
+add_content_slide(prs, "SMS OTP — Real-Time Transaction Approval", [
+    "Unique CBS-integrated OTP gate: high-value or high-risk transfers are held until customer confirms",
+    "Approval Thresholds",
+    "    Auto-approve — below Nu. 25,000 (low risk, standard retail transfer)",
+    "    SMS OTP required — Nu. 25,001 to Nu. 500,000 (customer must confirm within 5 minutes)",
+    "    Analyst pre-approval — above Nu. 500,000 (compliance review before release)",
+    "How It Works",
+    "    FRIMS signals CBS: HOLD — funds reserved, not settled",
+    "    OTP dispatched to registered mobile via Tashi Cell / B-Mobile (SHA-256 stored, 3-attempt limit)",
+    "    Customer approves → FRIMS signals CBS: RELEASE — transfer settles normally",
+    "    Customer rejects or timeout → FRIMS signals CBS: CANCEL — alert escalated to analyst",
+    "Full audit trail: OTP hash, hold/release/cancel timestamps, CBS response codes",
+], logo_path)
+
+# Slide 7: Data Integration & Auth Logs
+add_content_slide(prs, "Data Integration & Cyber Fraud Detection", [
+    "23 system interfaces feeding the FRIMS detection engine — real-time and batch",
+    "Core Banking System (REST API / ISO 8583)",
+    "    Primary data source: transactions, accounts, balances, beneficiary details",
+    "    Real-time event push (preferred) or daily CSV batch with reconciliation",
+    "Authentication & Authorisation Logs — Cyber Fraud Detection",
+    "    Login attempts, OTP events, password/PIN resets → triggers SIM swap, ATO, phishing rules",
+    "    Device registration changes, session anomalies → triggers geo-anomaly, remote-access rules",
+    "    Maker-checker audit trail, privileged user activities → triggers internal fraud rules",
+    "Other Key Interfaces",
+    "    Watchlists: OFAC, UN Security Council, RMA — daily refresh for PEP/sanctions screening",
+    "    FIU-Bhutan SFTP Portal · Royal Bhutan Police (RBP) · CID/BRN Registry API · SMS Gateway",
+], logo_path)
+
+# Slide 9: RMA AML/CFT Controls
 add_content_slide(prs, "RMA AML/CFT Compliance (Bhutan)", [
     "Comprehensive Anti-Money Laundering & Counter-Financing of Terrorism controls",
     "Customer Due Diligence (CDD) & Enhanced Due Diligence (EDD)",
@@ -208,7 +241,7 @@ add_content_slide(prs, "RMA AML/CFT Compliance (Bhutan)", [
     "Suspicious Transaction Reporting (STR) to FIU-Bhutan within 7 days"
 ], logo_path)
 
-# Slide 7: RMA Regulatory Reporting
+# Slide 10: RMA Regulatory Reporting
 add_content_slide(prs, "RMA Regulatory Reporting & LVTR", [
     "Automated filing with RMA and Financial Intelligence Unit - Bhutan",
     "Suspicious Transaction Reporting (STR)",
@@ -221,7 +254,7 @@ add_content_slide(prs, "RMA Regulatory Reporting & LVTR", [
     "    Board-level reporting with metrics and incident summary"
 ], logo_path)
 
-# Slide 8: Compliance Scorecard Dashboard
+# Slide 11: Compliance Scorecard Dashboard
 add_content_slide(prs, "Compliance Scorecard — Live Metrics", [
     "Real-time compliance tracking with auto-calculated scores",
     "RBI Scorecard: 16 requirements across 4 sections",
@@ -234,7 +267,7 @@ add_content_slide(prs, "Compliance Scorecard — Live Metrics", [
     "    Evidence: Specific data supporting compliance status"
 ], logo_path)
 
-# Slide 9: Alert Management & Investigation
+# Slide 12: Alert Management & Investigation
 add_content_slide(prs, "Investigation & Case Management", [
     "Complete alert lifecycle with SLA enforcement and intelligent routing",
     "Alert States: New → Assigned → Under Review → Escalated → Closed",
@@ -246,7 +279,7 @@ add_content_slide(prs, "Investigation & Case Management", [
     "Dashboard Analytics: New alerts trending, SLA compliance %, closure patterns"
 ], logo_path)
 
-# Slide 10: Case Management & Document Downloads
+# Slide 13: Case Management & Document Downloads
 add_content_slide(prs, "Case Management & Document Downloads", [
     "Consolidate related alerts and evidence into formal investigation cases",
     "Document Generation & Download",
@@ -258,7 +291,7 @@ add_content_slide(prs, "Case Management & Document Downloads", [
     "Case Lifecycle: Open → Assigned → Under Investigation → Escalated → Closed"
 ], logo_path)
 
-# Slide 11: Regulatory Filing & Dashboard
+# Slide 14: Regulatory Filing & Dashboard
 add_content_slide(prs, "Regulatory Filing & Real-Time Monitoring", [
     "Automated filing workflow with document generation and downloads",
     "CTR/SAR Filings: Download reports with complete filing details",
@@ -286,9 +319,21 @@ add_content_slide(prs, "Audit Trail, Security & Governance", [
 ], logo_path)
 
 # Save
-prs.save("FinsurgeENRIMS_MultiRegulator_RMA.pptx")
-print("[OK] Multi-regulator PowerPoint created: FinsurgeENRIMS_MultiRegulator_RMA.pptx")
-print("[FEATURE] Investigation Copilot slide with AI-powered analysis capabilities")
-print("[FEATURE] Regulatory Document Generation slide covering CTR/LCTR, STR/SAR, LVTR, FIR")
-print("[FEATURE] Multi-regulator support: RBI (India) + RMA (Bhutan)")
-print("[UPDATE] 12 slides covering fraud detection, compliance, investigation, and regulatory filings")
+out = r"D:/Users/lsgop/Downloads/FinsurgeENRIMS_MultiRegulator_RMA.pptx"
+prs.save(out)
+print(f"[OK] PowerPoint saved: {out}")
+print("[SLIDES] 16 functionality-only slides:")
+print("  1  Title")
+print("  2  FRIMS — 10 Core Modules")
+print("  3  Multi-Regulator Compliance Framework")
+print("  4  Investigation Copilot")
+print("  5  Regulatory Document Generation (CTR/LVTR/STR/FIR)")
+print("  6  SMS OTP Transaction Approval  [NEW]")
+print("  7  Data Integration & Cyber Fraud Detection  [NEW]")
+print("  8  RMA AML/CFT Compliance")
+print("  9  RMA Regulatory Reporting & LVTR")
+print(" 10  Compliance Scorecard — Live Metrics")
+print(" 11  Investigation & Case Management")
+print(" 12  Case Management & Document Downloads")
+print(" 13  Regulatory Filing & Real-Time Monitoring")
+print(" 14  Audit Trail, Security & Governance")

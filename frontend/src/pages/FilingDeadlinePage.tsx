@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Clock, AlertTriangle, CheckCircle2, FileText, Timer, Filter, TrendingUp, X, ExternalLink } from 'lucide-react'
+import { Clock, AlertTriangle, CheckCircle2, FileText, Timer, Filter, TrendingUp, X, ExternalLink, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react'
 import api from '../config/api'
-import { formatINR, formatNumber } from '../utils/formatters'
+import { formatINR } from '../utils/formatters'
 
 function CountdownBadge({ daysRemaining, urgency }: { daysRemaining: number; urgency: string }) {
   const color = urgency === 'overdue' ? 'bg-red-100 text-red-800 border-red-200' :
@@ -54,6 +54,15 @@ export default function FilingDeadlinePage() {
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [selectedFiling, setSelectedFiling] = useState<any>(null)
 
+  // SLA breach state
+  const [breaches, setBreaches] = useState<any[]>([])
+  const [breachSummary, setBreachSummary] = useState<any>(null)
+  const [breachExpanded, setBreachExpanded] = useState(true)
+  const [escalateModal, setEscalateModal] = useState<{ breach: any } | null>(null)
+  const [escalateForm, setEscalateForm] = useState({ escalated_to: 'CMLCO', notes: '' })
+  const [escalating, setEscalating] = useState(false)
+  const [escalatedIds, setEscalatedIds] = useState<Set<number>>(new Set())
+
   useEffect(() => {
     // Get filters from URL parameters
     const typeParam = searchParams.get('type')
@@ -71,7 +80,29 @@ export default function FilingDeadlinePage() {
       .then(res => setData(res.data))
       .catch(() => {})
       .finally(() => setLoading(false))
+
+    api.get('/filing-deadlines/breaches')
+      .then(res => setBreaches(res.data))
+      .catch(() => {})
+
+    api.get('/filing-deadlines/breach-summary')
+      .then(res => setBreachSummary(res.data))
+      .catch(() => {})
   }, [])
+
+  function handleEscalate() {
+    if (!escalateModal) return
+    const { breach } = escalateModal
+    setEscalating(true)
+    api.post(`/filing-deadlines/breaches/${breach.type}/${breach.id}/escalate`, escalateForm)
+      .then(() => {
+        setEscalatedIds(prev => new Set(prev).add(breach.id))
+        setEscalateModal(null)
+        setEscalateForm({ escalated_to: 'CMLCO', notes: '' })
+      })
+      .catch(() => {})
+      .finally(() => setEscalating(false))
+  }
 
   if (loading) {
     return (
@@ -107,14 +138,119 @@ export default function FilingDeadlinePage() {
         <p className="text-xs text-slate-500">CTR (15 days) and STR (7 days) filing deadlines with auto-escalation</p>
       </div>
 
-      {/* Alert banner if overdue */}
-      {summary.overdue > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
-          <AlertTriangle className="text-red-600 flex-shrink-0" size={20} />
-          <div>
-            <p className="text-sm font-bold text-red-800">{summary.overdue} filing{summary.overdue !== 1 ? 's' : ''} OVERDUE</p>
-            <p className="text-xs text-red-600">Immediate action required — non-compliance with RBI filing deadlines</p>
+      {/* SLA Breach Panel */}
+      {breachSummary && breachSummary.total_breaches > 0 && (
+        <div className="rounded-xl border-2 border-red-400 overflow-hidden shadow-md">
+          {/* Panel header — always visible, clickable to expand/collapse */}
+          <button
+            onClick={() => setBreachExpanded(v => !v)}
+            className="w-full bg-red-600 hover:bg-red-700 transition-colors px-4 py-3 flex items-center gap-3 text-left"
+          >
+            <ShieldAlert className="text-white flex-shrink-0" size={18} />
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-bold text-white">
+                SLA BREACH ALERT — {breachSummary.total_breaches} filing{breachSummary.total_breaches !== 1 ? 's' : ''} are overdue
+              </span>
+              <span className="text-xs text-red-200 ml-3">
+                Regulatory risk: <strong className="text-white">{breachSummary.regulatory_risk}</strong>
+                {' '}| Oldest breach: <strong className="text-white">{breachSummary.oldest_breach_days}d</strong>
+              </span>
+            </div>
+            <span className="text-xs text-red-200 hidden sm:block mr-2">
+              CMLCO escalation required within 24 hours per RBI mandate
+            </span>
+            {breachExpanded ? <ChevronUp className="text-white flex-shrink-0" size={16} /> : <ChevronDown className="text-white flex-shrink-0" size={16} />}
+          </button>
+
+          {/* Breach severity strip */}
+          <div className="bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-4 text-xs">
+            {breachSummary.critical_breaches > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-red-700 inline-block" />
+                <strong className="text-red-800">{breachSummary.critical_breaches} CRITICAL</strong>
+                <span className="text-red-600">(&gt;14 days)</span>
+              </span>
+            )}
+            {breachSummary.high_breaches > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+                <strong className="text-orange-700">{breachSummary.high_breaches} HIGH</strong>
+                <span className="text-orange-600">(&gt;7 days)</span>
+              </span>
+            )}
+            {breachSummary.medium_breaches > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                <strong className="text-amber-700">{breachSummary.medium_breaches} MEDIUM</strong>
+                <span className="text-amber-600">(1–7 days)</span>
+              </span>
+            )}
+            <span className="ml-auto text-slate-500">
+              Total overdue exposure: <strong className="text-slate-700">{formatINR(breachSummary.total_overdue_amount)}</strong>
+            </span>
           </div>
+
+          {/* Expanded breach table */}
+          {breachExpanded && (
+            <div className="bg-white overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-red-50 border-b border-red-100 text-left">
+                    <th className="px-3 py-2 font-semibold text-slate-600">Report #</th>
+                    <th className="px-3 py-2 font-semibold text-slate-600">Type</th>
+                    <th className="px-3 py-2 font-semibold text-slate-600">Customer</th>
+                    <th className="px-3 py-2 font-semibold text-slate-600">Days Overdue</th>
+                    <th className="px-3 py-2 font-semibold text-slate-600">Severity</th>
+                    <th className="px-3 py-2 font-semibold text-slate-600">Regulatory Consequence</th>
+                    <th className="px-3 py-2 font-semibold text-slate-600">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-red-50">
+                  {breaches.map((b: any) => (
+                    <tr key={`${b.type}-${b.id}`} className="hover:bg-red-50/50 transition-colors">
+                      <td className="px-3 py-2 font-mono font-medium text-slate-800">{b.report_number}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-1.5 py-0.5 rounded font-bold ${
+                          b.type === 'CTR' ? 'bg-blue-100 text-blue-700' :
+                          b.type === 'LVTR' ? 'bg-teal-100 text-teal-700' :
+                          'bg-purple-100 text-purple-700'
+                        }`}>{b.type}</span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">{b.customer_name}</td>
+                      <td className="px-3 py-2 font-bold text-red-700">{b.days_overdue}d</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
+                          b.breach_severity === 'CRITICAL' ? 'bg-red-700 text-white' :
+                          b.breach_severity === 'HIGH' ? 'bg-orange-500 text-white' :
+                          'bg-amber-400 text-amber-900'
+                        }`}>{b.breach_severity}</span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-500 max-w-xs truncate" title={b.regulatory_consequence}>
+                        {b.regulatory_consequence}
+                      </td>
+                      <td className="px-3 py-2">
+                        {escalatedIds.has(b.id) ? (
+                          <span className="text-green-600 font-semibold flex items-center gap-1">
+                            <CheckCircle2 size={12} /> Escalated
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setEscalateModal({ breach: b })
+                              setEscalateForm({ escalated_to: 'CMLCO', notes: '' })
+                            }}
+                            className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-medium transition-colors"
+                          >
+                            Escalate
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -122,20 +258,34 @@ export default function FilingDeadlinePage() {
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
         {[
           { label: 'Total Pending', value: summary.total_pending, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Overdue', value: summary.overdue, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50' },
+          {
+            label: 'Overdue',
+            value: summary.overdue,
+            icon: AlertTriangle,
+            color: 'text-red-600',
+            bg: 'bg-red-50',
+            badge: breachSummary && breachSummary.total_breaches > 0 ? breachSummary.regulatory_risk : null,
+          },
           { label: 'Critical (< 2d)', value: summary.critical, icon: Timer, color: 'text-red-500', bg: 'bg-red-50' },
           { label: 'Warning (< 5d)', value: summary.warning, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
           { label: 'On Track', value: summary.on_track, icon: CheckCircle2, color: 'text-green-600', bg: 'bg-green-50' },
           { label: 'Total Filed', value: summary.total_filed, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50' },
-        ].map(s => (
+        ].map((s: any) => (
           <div key={s.label} className="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
             <div className="flex items-center gap-2">
               <div className={`w-8 h-8 ${s.bg} rounded-lg flex items-center justify-center`}>
                 <s.icon className={s.color} size={14} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-[10px] text-slate-500">{s.label}</p>
-                <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
+                  {s.badge && (
+                    <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-600 text-white leading-none">
+                      {s.badge}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -231,6 +381,76 @@ export default function FilingDeadlinePage() {
           ))
         )}
       </div>
+
+      {/* Escalation Modal */}
+      {escalateModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setEscalateModal(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">Escalate SLA Breach</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {escalateModal.breach.report_number} — {escalateModal.breach.days_overdue}d overdue
+                </p>
+              </div>
+              <button onClick={() => setEscalateModal(null)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-xs text-red-700">
+              <p className="font-semibold mb-1">Regulatory consequence</p>
+              <p>{escalateModal.breach.regulatory_consequence}</p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Escalate to</label>
+                <select
+                  value={escalateForm.escalated_to}
+                  onChange={e => setEscalateForm(f => ({ ...f, escalated_to: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-400"
+                >
+                  <option value="CMLCO">CMLCO — Chief Money Laundering Compliance Officer</option>
+                  <option value="Board Risk Committee">Board Risk Committee</option>
+                  <option value="RBI Nodal Officer">RBI Nodal Officer</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Notes</label>
+                <textarea
+                  value={escalateForm.notes}
+                  onChange={e => setEscalateForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Add context or instructions for the escalation recipient..."
+                  rows={3}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-5">
+              <button
+                onClick={() => setEscalateModal(null)}
+                className="px-4 py-2 text-xs font-medium text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEscalate}
+                disabled={escalating}
+                className="px-4 py-2 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {escalating ? (
+                  <>
+                    <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                    Escalating…
+                  </>
+                ) : (
+                  'Confirm Escalation'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Filing Detail Modal */}
       {selectedFiling && (

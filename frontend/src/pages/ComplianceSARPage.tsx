@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, AlertTriangle, Users, Clock, Shield, CheckCircle, Download, Eye, X, Upload } from 'lucide-react'
+import { FileText, AlertTriangle, Users, Clock, Shield, CheckCircle, Download, Eye, X, Upload, Plus, Send, Trash2, Pencil, MoreHorizontal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import api from '../config/api'
 import { formatNumber, formatINR, formatDate } from '../utils/formatters'
@@ -285,13 +285,99 @@ export default function ComplianceSARPage() {
   const [previewModal, setPreviewModal] = useState<{ format: string } | null>(null)
   const [uploadModal, setUploadModal] = useState<{ filing: any } | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [createModal, setCreateModal] = useState(false)
+  const [createForm, setCreateForm] = useState({ customer_id: '', suspicious_activity_type: 'structuring', total_amount: '', date_range_start: '', date_range_end: '', narrative: '' })
+  const [creating, setCreating] = useState(false)
+  const [submitting, setSubmitting] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [editModal, setEditModal] = useState<{ filing: any } | null>(null)
+  const [editForm, setEditForm] = useState({ filing_status: '', suspicious_activity_type: '', narrative: '', regulatory_reference: '' })
+  const [editing, setEditing] = useState(false)
+  const [actionsModal, setActionsModal] = useState<any>(null)
 
-  useEffect(() => {
+  const loadData = () => {
     api.get('/compliance/dashboard')
       .then(res => setData(res.data))
       .catch(err => setError(err.response?.data?.detail || 'Failed to load compliance dashboard'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  const handleCreateSAR = async () => {
+    if (!createForm.customer_id || !createForm.total_amount || !createForm.date_range_start || !createForm.date_range_end) {
+      alert('Please fill in all required fields')
+      return
+    }
+    setCreating(true)
+    try {
+      await api.post('/compliance/filings/sar', {
+        customer_id: createForm.customer_id,
+        suspicious_activity_type: createForm.suspicious_activity_type,
+        total_amount: Math.round(parseFloat(createForm.total_amount) * 100),
+        date_range_start: createForm.date_range_start,
+        date_range_end: createForm.date_range_end,
+        narrative: createForm.narrative || null,
+      })
+      setCreateModal(false)
+      setCreateForm({ customer_id: '', suspicious_activity_type: 'structuring', total_amount: '', date_range_start: '', date_range_end: '', narrative: '' })
+      loadData()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to create SAR')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleSubmitSAR = async (f: any) => {
+    if (!confirm(`Submit ${f.report_number} to FIU-IND? This cannot be undone.`)) return
+    setSubmitting(f.id)
+    try {
+      await api.post(`/compliance/filings/sar/${f.id}/submit`)
+      loadData()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to submit SAR')
+    } finally {
+      setSubmitting(null)
+    }
+  }
+
+  const handleDeleteSAR = async (f: any) => {
+    if (!confirm(`Delete ${f.report_number}? This action cannot be undone.`)) return
+    setDeleting(f.id)
+    try {
+      await api.delete(`/compliance/filings/sar/${f.id}`)
+      loadData()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to delete SAR')
+    } finally {
+      setDeleting(null)
+    }
+  }
+
+  const openEdit = (filing: any) => {
+    setEditForm({
+      filing_status: filing.filing_status || filing.status || '',
+      suspicious_activity_type: filing.suspicious_activity_type || filing.activity_type || '',
+      narrative: filing.narrative || '',
+      regulatory_reference: filing.regulatory_reference || '',
+    })
+    setEditModal({ filing })
+  }
+
+  const handleEditSAR = async () => {
+    if (!editModal) return
+    setEditing(true)
+    try {
+      await api.put(`/compliance/filings/sar/${editModal.filing.id}`, editForm)
+      setEditModal(null)
+      loadData()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to update SAR')
+    } finally {
+      setEditing(false)
+    }
+  }
 
   const loadFilingDetail = (f: any) => {
     setDetailLoading(true)
@@ -548,12 +634,201 @@ export default function ComplianceSARPage() {
         </div>
       )}
 
+      {/* Create SAR Modal */}
+      {createModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-800">Create New SAR</h2>
+              <button onClick={() => setCreateModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Customer ID (CIF / UUID)</label>
+                <input type="text" placeholder="e.g. CIF-1001 or UUID" value={createForm.customer_id}
+                  onChange={e => setCreateForm(f => ({ ...f, customer_id: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Activity Type</label>
+                <select value={createForm.suspicious_activity_type}
+                  onChange={e => setCreateForm(f => ({ ...f, suspicious_activity_type: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                  {['structuring', 'layering', 'money_laundering', 'fraud', 'terrorist_financing', 'wire_fraud', 'identity_theft', 'other'].map(t => (
+                    <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Total Amount (INR)</label>
+                <input type="number" placeholder="e.g. 5000000" value={createForm.total_amount}
+                  onChange={e => setCreateForm(f => ({ ...f, total_amount: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Date Range Start</label>
+                  <input type="date" value={createForm.date_range_start}
+                    onChange={e => setCreateForm(f => ({ ...f, date_range_start: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Date Range End</label>
+                  <input type="date" value={createForm.date_range_end}
+                    onChange={e => setCreateForm(f => ({ ...f, date_range_end: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Narrative (optional)</label>
+                <textarea rows={3} placeholder="Describe the suspicious activity..." value={createForm.narrative}
+                  onChange={e => setCreateForm(f => ({ ...f, narrative: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={handleCreateSAR} disabled={creating}
+                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                  {creating ? 'Creating...' : 'Create SAR'}
+                </button>
+                <button onClick={() => setCreateModal(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit SAR Modal */}
+      {editModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-800">Edit SAR — {editModal.filing.report_number}</h2>
+              <button onClick={() => setEditModal(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                <select value={editForm.filing_status}
+                  onChange={e => setEditForm(f => ({ ...f, filing_status: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                  <option value="auto_generated">Auto Generated</option>
+                  <option value="pending_review">Pending Review</option>
+                  <option value="amended">Amended</option>
+                </select>
+                <p className="text-xs text-slate-400 mt-0.5">Use "Submit" button to mark as Filed</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Activity Type</label>
+                <select value={editForm.suspicious_activity_type}
+                  onChange={e => setEditForm(f => ({ ...f, suspicious_activity_type: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                  {['structuring', 'layering', 'money_laundering', 'fraud', 'terrorist_financing', 'wire_fraud', 'identity_theft', 'other'].map(t => (
+                    <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Narrative</label>
+                <textarea rows={3} placeholder="Describe the suspicious activity..." value={editForm.narrative}
+                  onChange={e => setEditForm(f => ({ ...f, narrative: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Regulatory Reference</label>
+                <input type="text" placeholder="e.g. PMLA Section 12" value={editForm.regulatory_reference}
+                  onChange={e => setEditForm(f => ({ ...f, regulatory_reference: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={handleEditSAR} disabled={editing}
+                  className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                  {editing ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button onClick={() => setEditModal(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actions Hub Modal */}
+      {actionsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-base font-bold text-slate-800">{actionsModal.report_number}</h2>
+              <button onClick={() => setActionsModal(null)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              {actionsModal.customer_name || actionsModal.customer} · {actionsModal.amount != null ? formatINR(actionsModal.amount) : '-'} · <span className="capitalize">{(actionsModal.filing_status || actionsModal.status || '').replace(/_/g, ' ')}</span>
+            </p>
+            <div className="space-y-2">
+              <button onClick={() => { loadFilingDetail(actionsModal); setActionsModal(null) }}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700 font-medium text-left">
+                <Eye size={16} className="text-slate-500 shrink-0" />
+                <span>View Details</span>
+              </button>
+              {actionsModal.filing_status !== 'filed' && actionsModal.status !== 'filed' && actionsModal.id && (
+                <button onClick={() => { openEdit(actionsModal); setActionsModal(null) }}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-sm text-amber-800 font-medium text-left">
+                  <Pencil size={16} className="text-amber-600 shrink-0" />
+                  <span>Edit Filing</span>
+                </button>
+              )}
+              <button onClick={() => { setPreviewModal({ format: 'rbi' }); setActionsModal(null) }}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-sm text-indigo-800 font-medium text-left">
+                <FileText size={16} className="text-indigo-600 shrink-0" />
+                <span>View Format Templates</span>
+              </button>
+              <button onClick={() => { setUploadModal({ filing: actionsModal }); setActionsModal(null) }}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg text-sm text-green-800 font-medium text-left">
+                <Upload size={16} className="text-green-600 shrink-0" />
+                <span>Upload Document</span>
+              </button>
+              <button onClick={() => { downloadFiling(actionsModal); setActionsModal(null) }}
+                disabled={downloading === actionsModal.id || !actionsModal.id}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-sm text-blue-800 font-medium text-left disabled:opacity-40">
+                <Download size={16} className="text-blue-600 shrink-0" />
+                <span>{downloading === actionsModal.id ? 'Downloading...' : 'Download Report'}</span>
+              </button>
+              {actionsModal.filing_status !== 'filed' && actionsModal.status !== 'filed' && actionsModal.id && (
+                <button onClick={() => { handleSubmitSAR(actionsModal); setActionsModal(null) }}
+                  disabled={submitting === actionsModal.id}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-sm text-emerald-800 font-medium text-left disabled:opacity-40">
+                  <Send size={16} className="text-emerald-600 shrink-0" />
+                  <span>Submit to FIU-IND / FIU-Bhutan</span>
+                </button>
+              )}
+              {actionsModal.filing_status !== 'filed' && actionsModal.status !== 'filed' && actionsModal.id && (
+                <button onClick={() => { handleDeleteSAR(actionsModal); setActionsModal(null) }}
+                  disabled={deleting === actionsModal.id}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg text-sm text-red-800 font-medium text-left disabled:opacity-40">
+                  <Trash2 size={16} className="text-red-600 shrink-0" />
+                  <span>Delete Filing</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">SAR Filing Management</h1>
           <p className="text-sm text-slate-500 mt-1">Suspicious Activity Reports — India RBI & Bhutan RMA</p>
         </div>
+        <button onClick={() => setCreateModal(true)}
+          className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm">
+          <Plus size={16} />
+          New SAR
+        </button>
       </div>
 
       {/* Filing status cards */}
@@ -716,6 +991,7 @@ export default function ComplianceSARPage() {
             <tbody>
               {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'sar').map((f: any, i: number) => (
                 <tr key={f.id || i} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="py-2.5 px-3 text-xs text-slate-500 uppercase">{f.type || f.report_type || 'SAR'}</td>
                   <td className="py-2.5 px-3 font-mono text-xs text-red-600">{f.report_number || f.id || '-'}</td>
                   <td className="py-2.5 px-3 text-slate-700">{f.customer_name || f.customer || '-'}</td>
                   <td className="py-2.5 px-3 text-right font-mono text-slate-800">{f.amount != null ? formatINR(f.amount) : '-'}</td>
@@ -727,41 +1003,11 @@ export default function ComplianceSARPage() {
                     />
                   </td>
                   <td className="py-2.5 px-3 text-right">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button
-                        onClick={() => loadFilingDetail(f)}
-                        title="View filing details"
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100"
-                      >
-                        <Eye size={12} />
-                        Details
-                      </button>
-                      <button
-                        onClick={() => setPreviewModal({ format: 'rbi' })}
-                        title="Show format preview"
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100"
-                      >
-                        <FileText size={12} />
-                        Formats
-                      </button>
-                      <button
-                        onClick={() => setUploadModal({ filing: f })}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100"
-                        title="Upload SAR document"
-                      >
-                        <Upload size={12} />
-                        Upload
-                      </button>
-                      <button
-                        onClick={() => downloadFiling(f)}
-                        disabled={downloading === f.id || !f.id}
-                        title={f.id ? 'Download filed document' : 'Document not yet available'}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Download size={12} />
-                        {downloading === f.id ? '...' : 'Download'}
-                      </button>
-                    </div>
+                    <button onClick={() => setActionsModal(f)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-sm">
+                      <MoreHorizontal size={13} />
+                      Actions
+                    </button>
                   </td>
                 </tr>
               ))}

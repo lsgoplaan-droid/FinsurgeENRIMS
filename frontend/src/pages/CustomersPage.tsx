@@ -159,6 +159,7 @@ export default function CustomersPage() {
   const initialState = searchParams.get('state') || ''
   const initialRisk = searchParams.get('risk_category') || ''
   const initialSearch = searchParams.get('search') || ''
+  const initialPep = searchParams.get('pep') === 'true'
   const [customers, setCustomers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -167,6 +168,7 @@ export default function CustomersPage() {
   const [kycStatus, setKycStatus] = useState('')
   const [customerType, setCustomerType] = useState('')
   const [stateFilter, setStateFilter] = useState(initialState)
+  const [pepFilter, setPepFilter] = useState(initialPep)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
@@ -179,6 +181,7 @@ export default function CustomersPage() {
     if (kycStatus) params.kyc_status = kycStatus
     if (customerType) params.customer_type = customerType
     if (stateFilter) params.state = stateFilter
+    if (pepFilter) params.pep_status = true
 
     api.get('/customers', { params })
       .then(res => {
@@ -189,7 +192,7 @@ export default function CustomersPage() {
       })
       .catch(err => setError(err.response?.data?.detail || 'Failed to load customers'))
       .finally(() => setLoading(false))
-  }, [page, search, riskCategory, kycStatus, customerType, stateFilter])
+  }, [page, search, riskCategory, kycStatus, customerType, stateFilter, pepFilter])
 
   useEffect(() => { fetchData() }, [fetchData])
 

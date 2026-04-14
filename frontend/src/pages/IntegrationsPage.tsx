@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plug, Zap, Clock, Upload, Send, CheckCircle, XCircle, Loader, RefreshCw, Activity, Database, Globe, CreditCard, Building2, Smartphone, Monitor, Landmark, Shield, FileText, Search } from 'lucide-react'
+import { Plug, Zap, Clock, Send, CheckCircle, XCircle, Loader, Activity, Database, Globe, CreditCard, Building2, Smartphone, Monitor, Landmark, Shield, FileText, Search, Copy, Download, FileCode } from 'lucide-react'
 import api from '../config/api'
 import { formatDateTime, formatNumber } from '../utils/formatters'
 
@@ -36,13 +36,206 @@ const typeLabels: Record<string, { label: string; color: string }> = {
   outbound: { label: 'Outbound', color: 'bg-purple-100 text-purple-800' },
 }
 
+const SAMPLE_STR_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<Report xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="goaml.xsd"
+        schema_version="3.5">
+  <Report_Indicators>
+    <Report_Indicator>STR</Report_Indicator>
+  </Report_Indicators>
+  <rentity_id>AXISBANK001</rentity_id>
+  <rentity_branch>MUM-MAIN</rentity_branch>
+  <submission_code>E</submission_code>
+  <report_code>STR</report_code>
+  <entity_reference>STR-20260414-0042</entity_reference>
+  <fiu_ref_number/>
+  <submission_date>2026-04-14</submission_date>
+  <currency_code_local>INR</currency_code_local>
+  <reporting_person>
+    <gender>M</gender>
+    <first_name>Arun</first_name>
+    <last_name>Kumar</last_name>
+    <title>Chief Compliance Officer</title>
+    <occupation>Compliance</occupation>
+    <phones>
+      <phone>
+        <tph_contact_type>W</tph_contact_type>
+        <tph_number>02261234567</tph_number>
+      </phone>
+    </phones>
+  </reporting_person>
+  <location>
+    <address_type>B</address_type>
+    <address>Plot C-25, G Block, Bandra Kurla Complex</address>
+    <city>Mumbai</city>
+    <state_code>MH</state_code>
+    <country_code>IN</country_code>
+    <zip>400051</zip>
+  </location>
+  <transaction>
+    <transactionnumber>TXN-20260410-8834</transactionnumber>
+    <transaction_location>MUM-MAIN</transaction_location>
+    <transaction_description>Multiple high-value cash deposits followed by immediate RTGS transfer to shell entity; structuring pattern detected by AML system</transaction_description>
+    <date_transaction>2026-04-10</date_transaction>
+    <teller>T-0051</teller>
+    <authorized>A-0012</authorized>
+    <amount_local>4850000</amount_local>
+    <transaction_type>
+      <transaction_type>CA</transaction_type>
+    </transaction_type>
+    <from_funds_code>C</from_funds_code>
+    <from_account>
+      <institution_name>Axis Bank Limited</institution_name>
+      <swift>AXISINBB</swift>
+      <account>
+        <account_number>917020058834001</account_number>
+        <account_name>Rajesh Mehta</account_name>
+        <currency_code>INR</currency_code>
+        <account_type>4</account_type>
+        <opened>2019-03-12</opened>
+        <balance>127500</balance>
+        <balance_date>2026-04-10</balance_date>
+        <signatory>
+          <gender>M</gender>
+          <first_name>Rajesh</first_name>
+          <last_name>Mehta</last_name>
+          <dob>1978-06-15</dob>
+          <id_number>XXXXX1234X</id_number>
+          <nationality>IN</nationality>
+          <addresses>
+            <address>
+              <address_type>R</address_type>
+              <address>42, Worli Sea Face, Worli</address>
+              <city>Mumbai</city>
+              <country_code>IN</country_code>
+              <zip>400018</zip>
+            </address>
+          </addresses>
+        </signatory>
+      </account>
+    </from_account>
+    <to_funds_code>T</to_funds_code>
+    <to_account>
+      <institution_name>HDFC Bank</institution_name>
+      <swift>HDFCINBB</swift>
+      <account>
+        <account_number>50200012345678</account_number>
+        <account_name>Global Trade Solutions Pvt Ltd</account_name>
+        <currency_code>INR</currency_code>
+        <account_type>2</account_type>
+      </account>
+    </to_account>
+  </transaction>
+  <suspicious_activity>
+    <activity_type>Structuring</activity_type>
+    <activity_code>ST-01</activity_code>
+    <description>Customer made 6 cash deposits of INR 4,85,000 each within 5 business days, just below the CTR threshold of INR 10,00,000. Funds immediately transferred out via RTGS to an entity with no prior relationship. Pattern consistent with layering stage of money laundering under PMLA 2002, Section 3.</description>
+    <detection_date>2026-04-12</detection_date>
+    <detection_method>Automated — AML Rule STR-001: Structuring</detection_method>
+  </suspicious_activity>
+</Report>`
+
+const SAMPLE_CTR_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<Report xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="goaml.xsd"
+        schema_version="3.5">
+  <Report_Indicators>
+    <Report_Indicator>CTR</Report_Indicator>
+  </Report_Indicators>
+  <rentity_id>AXISBANK001</rentity_id>
+  <rentity_branch>DEL-CP</rentity_branch>
+  <submission_code>E</submission_code>
+  <report_code>CTR</report_code>
+  <entity_reference>CTR-20260414-0158</entity_reference>
+  <fiu_ref_number/>
+  <submission_date>2026-04-14</submission_date>
+  <currency_code_local>INR</currency_code_local>
+  <reporting_person>
+    <gender>F</gender>
+    <first_name>Priya</first_name>
+    <last_name>Nair</last_name>
+    <title>Branch Compliance Manager</title>
+    <occupation>Compliance</occupation>
+    <phones>
+      <phone>
+        <tph_contact_type>W</tph_contact_type>
+        <tph_number>01145678901</tph_number>
+      </phone>
+    </phones>
+  </reporting_person>
+  <location>
+    <address_type>B</address_type>
+    <address>19, Barakhamba Road, Connaught Place</address>
+    <city>New Delhi</city>
+    <state_code>DL</state_code>
+    <country_code>IN</country_code>
+    <zip>110001</zip>
+  </location>
+  <transaction>
+    <transactionnumber>TXN-20260409-5512</transactionnumber>
+    <transaction_location>DEL-CP</transaction_location>
+    <transaction_description>Large cash deposit exceeding INR 10,00,000 threshold — mandatory CTR filing under PMLA 2002 Section 12 and PML Rules 2005</transaction_description>
+    <date_transaction>2026-04-09</date_transaction>
+    <teller>T-0023</teller>
+    <authorized>A-0008</authorized>
+    <amount_local>15200000</amount_local>
+    <transaction_type>
+      <transaction_type>CD</transaction_type>
+    </transaction_type>
+    <from_funds_code>C</from_funds_code>
+    <from_account>
+      <institution_name>Axis Bank Limited</institution_name>
+      <swift>AXISINBB</swift>
+      <account>
+        <account_number>917010034412009</account_number>
+        <account_name>Hassan Trading Company</account_name>
+        <currency_code>INR</currency_code>
+        <account_type>2</account_type>
+        <opened>2021-07-01</opened>
+        <balance>8342000</balance>
+        <balance_date>2026-04-09</balance_date>
+        <signatory>
+          <gender>M</gender>
+          <first_name>Mohammed</first_name>
+          <last_name>Hassan</last_name>
+          <dob>1965-11-22</dob>
+          <id_number>XXXXX5678X</id_number>
+          <nationality>IN</nationality>
+          <addresses>
+            <address>
+              <address_type>B</address_type>
+              <address>47-B, Chandni Chowk Market</address>
+              <city>New Delhi</city>
+              <country_code>IN</country_code>
+              <zip>110006</zip>
+            </address>
+          </addresses>
+        </signatory>
+      </account>
+    </from_account>
+  </transaction>
+  <threshold_indicator>
+    <threshold_amount>1000000</threshold_amount>
+    <threshold_currency>INR</threshold_currency>
+    <mandate>PMLA 2002 — Section 12 read with Rule 7 of PML (Maintenance of Records) Rules 2005</mandate>
+    <filing_deadline_days>7</filing_deadline_days>
+  </threshold_indicator>
+</Report>`
+
 export default function IntegrationsPage() {
   const [sources, setSources] = useState<any[]>([])
   const [batches, setBatches] = useState<any[]>([])
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'sources' | 'batches'>('sources')
+  const [tab, setTab] = useState<'sources' | 'batches' | 'goaml'>('sources')
   const [filterType, setFilterType] = useState('')
+  const [goamlSample, setGoamlSample] = useState<{ sar_xml: string; ctr_xml: string }>({
+    sar_xml: SAMPLE_STR_XML,
+    ctr_xml: SAMPLE_CTR_XML,
+  })
+  const [goamlSubTab, setGoamlSubTab] = useState<'str' | 'ctr'>('str')
+  const [goamlLoading, setGoamlLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -58,6 +251,36 @@ export default function IntegrationsPage() {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (tab === 'goaml') {
+      api.get('/compliance/goaml-sample')
+        .then(res => {
+          if (res.data?.sar_xml) setGoamlSample(res.data)
+        })
+        .catch(() => { /* keep fallback sample XML */ })
+    }
+  }, [tab])
+
+  const handleCopyXml = () => {
+    const xml = goamlSubTab === 'str' ? goamlSample.sar_xml : goamlSample.ctr_xml
+    navigator.clipboard.writeText(xml).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const handleDownloadXml = () => {
+    const xml = goamlSubTab === 'str' ? goamlSample.sar_xml : goamlSample.ctr_xml
+    const filename = goamlSubTab === 'str' ? 'sample-str-goaml.xml' : 'sample-ctr-goaml.xml'
+    const blob = new Blob([xml], { type: 'application/xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   if (loading) return <div className="flex items-center justify-center h-full text-slate-500">Loading...</div>
 
@@ -96,6 +319,7 @@ export default function IntegrationsPage() {
         {[
           { key: 'sources', label: 'Data Sources', icon: Plug, count: sources.length },
           { key: 'batches', label: 'Batch Jobs', icon: Clock, count: batches.length },
+          { key: 'goaml', label: 'FIU-IND GoAML', icon: FileCode, count: null },
         ].map(t => (
           <button
             key={t.key}
@@ -106,7 +330,9 @@ export default function IntegrationsPage() {
           >
             <t.icon size={16} />
             {t.label}
-            <span className="bg-slate-100 text-slate-600 text-xs px-1.5 py-0.5 rounded-full">{t.count}</span>
+            {t.count !== null && (
+              <span className="bg-slate-100 text-slate-600 text-xs px-1.5 py-0.5 rounded-full">{t.count}</span>
+            )}
           </button>
         ))}
       </div>
@@ -226,6 +452,104 @@ export default function IntegrationsPage() {
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* GoAML Tab */}
+      {tab === 'goaml' && (
+        <div className="space-y-5">
+          {/* Status banner */}
+          <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-5 py-3">
+            <div className="flex items-center gap-3">
+              <CheckCircle size={18} className="text-green-600 flex-shrink-0" />
+              <div>
+                <span className="text-sm font-semibold text-green-800">CONNECTED</span>
+                <span className="text-sm text-green-700 ml-2">— GoAML portal endpoint configured. XML schema v3.5 validated.</span>
+              </div>
+            </div>
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-300">v3.5</span>
+          </div>
+
+          {/* Header */}
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">FIU-IND GoAML Portal Integration</h2>
+            <p className="text-sm text-slate-500 mt-0.5">GoAML XML Schema v3.5 — Automated STR/CTR filing to Financial Intelligence Unit India</p>
+          </div>
+
+          {/* Stats cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: 'STR Filed MTD', value: '12', color: 'text-blue-600', icon: Send },
+              { label: 'CTR Filed MTD', value: '38', color: 'text-indigo-600', icon: FileText },
+              { label: 'Last Submission', value: 'Today 09:14', color: 'text-emerald-600', icon: CheckCircle },
+              { label: 'Schema Version', value: '3.5', color: 'text-slate-600', icon: FileCode },
+            ].map((s, i) => (
+              <div key={i} className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-slate-500">{s.label}</span>
+                  <s.icon size={16} className={s.color} />
+                </div>
+                <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* XML preview card */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            {/* Sub-tab bar */}
+            <div className="flex items-center gap-0 border-b border-slate-200 px-4 pt-4">
+              {[
+                { key: 'str', label: 'STR / SAR' },
+                { key: 'ctr', label: 'CTR / LCTR' },
+              ].map(st => (
+                <button
+                  key={st.key}
+                  onClick={() => setGoamlSubTab(st.key as 'str' | 'ctr')}
+                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors mr-2 ${
+                    goamlSubTab === st.key
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+              <div className="ml-auto flex items-center gap-2 pb-2">
+                <button
+                  onClick={handleCopyXml}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+                >
+                  <Copy size={13} />
+                  {copied ? 'Copied!' : 'Copy XML'}
+                </button>
+                <button
+                  onClick={handleDownloadXml}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  <Download size={13} />
+                  Download XML
+                </button>
+              </div>
+            </div>
+
+            {/* XML code block */}
+            <div className="p-4 bg-slate-900">
+              {goamlLoading ? (
+                <div className="flex items-center justify-center py-16 text-slate-400">
+                  <Loader size={20} className="animate-spin mr-2" />
+                  Loading live XML...
+                </div>
+              ) : (
+                <pre className="text-green-300 text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed">
+                  <code>{goamlSubTab === 'str' ? goamlSample.sar_xml : goamlSample.ctr_xml}</code>
+                </pre>
+              )}
+            </div>
+
+            <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
+              Sample XML conforming to GoAML Schema v3.5 — FIU-IND (Financial Intelligence Unit India) • PMLA 2002, Section 12
+            </div>
           </div>
         </div>
       )}

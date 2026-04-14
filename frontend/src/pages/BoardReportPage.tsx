@@ -21,7 +21,10 @@ export default function BoardReportPage() {
     fetch(`${api.defaults.baseURL}/reports/board-report`, {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then(res => res.blob())
+      .then(res => {
+        if (!res.ok) throw new Error(`Server returned ${res.status}`)
+        return res.blob()
+      })
       .then(blob => {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -30,6 +33,7 @@ export default function BoardReportPage() {
         a.click()
         URL.revokeObjectURL(url)
       })
+      .catch(() => alert('Board report download failed. Please try again.'))
       .finally(() => setGenerating(false))
   }
 

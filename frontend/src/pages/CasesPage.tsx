@@ -15,8 +15,11 @@ const Badge = ({ text, colors }: { text: string; colors: string }) => (
 
 const STATUS_TABS = [
   { key: '', label: 'All' },
+  { key: 'new', label: 'New' },
+  { key: 'assigned', label: 'Assigned' },
   { key: 'open', label: 'Open' },
   { key: 'under_investigation', label: 'Under Investigation' },
+  { key: 'escalated', label: 'Escalated' },
   { key: 'pending_regulatory', label: 'Pending Regulatory' },
   { key: 'closed_true_positive', label: 'Closed (Confirmed)' },
   { key: 'closed_false_positive', label: 'Closed (False Alarm)' },

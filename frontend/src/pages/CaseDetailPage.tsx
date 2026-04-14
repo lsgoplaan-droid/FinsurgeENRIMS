@@ -131,9 +131,9 @@ export default function CaseDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link to="/cases" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors">
-        <ArrowLeft size={16} /> Back to Cases
-      </Link>
+      <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors">
+        <ArrowLeft size={16} /> Back
+      </button>
 
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
@@ -385,7 +385,7 @@ export default function CaseDetailPage() {
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-slate-600 max-w-md truncate" title={e.changes || e.description}>
-                          {e.changes || e.description || e.details || e.new_status ? `Changed to: ${e.new_status}` : 'No details'}
+                          {e.changes || e.description || e.details || (e.new_status ? `Changed to: ${e.new_status}` : 'No details')}
                         </td>
                         <td className="py-2.5 px-3">
                           <span className="font-mono text-[9px] text-slate-400 block" title={e.ip_address}>{e.ip_address?.substring(0, 15) || '-'}</span>

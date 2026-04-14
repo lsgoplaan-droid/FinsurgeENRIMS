@@ -37,6 +37,7 @@ const navGroups: NavGroup[] = [
       { path: '/fraud-detection', label: 'Fraud Detection', icon: Radar },
       { path: '/investigation-copilot', label: 'Investigation Copilot', icon: Sparkles },
       { path: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
+      { path: '/sms-approvals', label: 'SMS Approvals', icon: MessageSquare },
     ],
   },
   {
@@ -65,7 +66,6 @@ const navGroups: NavGroup[] = [
       { path: '/compliance-scorecard', label: 'Compliance Scorecard', icon: CheckSquare },
       { path: '/filing-deadlines', label: 'Filing Deadlines', icon: Clock },
       { path: '/mis-reports', label: 'MIS Reports', icon: BarChart3 },
-      { path: '/sms-approvals', label: 'SMS Approvals', icon: MessageSquare },
     ],
   },
   {
@@ -175,19 +175,19 @@ export default function DashboardLayout({ onLogout }: { onLogout: () => void }) 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0">
+        <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-3">
             <button onClick={() => setCollapsed(!collapsed)} className="text-slate-400 hover:text-slate-600">
               <ChevronDown size={18} className={collapsed ? '-rotate-90' : 'rotate-0'} />
             </button>
-            <h1 className="text-lg font-semibold text-slate-800">
+            <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
               {allNavItems.find(n => location.pathname === n.path || (n.path !== '/' && location.pathname.startsWith(n.path)))?.label || 'FinsurgeFRIMS'}
             </h1>
           </div>
           <div className="flex items-center gap-4">
             <button
               onClick={() => setDark(!dark)}
-              className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors"
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-700 transition-colors"
               title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {dark ? <Sun size={18} /> : <Moon size={18} />}
@@ -197,7 +197,7 @@ export default function DashboardLayout({ onLogout }: { onLogout: () => void }) 
                 {user.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2) || 'U'}
               </div>
               <div className="text-sm">
-                <div className="font-medium text-slate-700">{user.full_name || 'User'}</div>
+                <div className="font-medium text-slate-700 dark:text-slate-200">{user.full_name || 'User'}</div>
                 <div className="text-xs text-slate-400">{user.roles?.join(', ') || ''}</div>
               </div>
             </div>

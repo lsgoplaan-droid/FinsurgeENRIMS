@@ -4,8 +4,7 @@ Covers Tier 1-3: AML, fraud, cyber, UPI, mule, TBML, insider, synthetic ID.
 """
 import json
 import random
-import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -126,6 +125,84 @@ TYPOLOGY_LIBRARY = [
      "description": "Companies with no real business operations used as conduits for money laundering or tax evasion.",
      "fatf_reference": "FATF Transparency Report 2019", "indicators": ["No employees", "No physical office", "High-value transactions inconsistent with turnover", "Director linked to multiple shell entities"]},
 
+    # Cyber Fraud Typologies
+    {"id": "TYP-CFR-001", "name": "Phishing & Vishing Attack", "category": "cyber_fraud", "subcategory": "Social Engineering",
+     "risk": "critical", "status": "active", "rules_count": 4, "detections_30d": random.randint(12, 40),
+     "description": "Fraudulent emails, SMS, or calls impersonating the bank to steal OTP, credentials, or card details. Increasing use of AI-generated voice cloning.",
+     "fatf_reference": "RBI Cybersecurity Framework 2016", "indicators": ["Login from new device after OTP received", "Credential change + immediate transfer", "Customer reports unsolicited OTP request", "Known phishing domain in referrer URL"]},
+
+    {"id": "TYP-CFR-002", "name": "SIM Swap Fraud", "category": "cyber_fraud", "subcategory": "Mobile Takeover",
+     "risk": "critical", "status": "active", "rules_count": 3, "detections_30d": random.randint(8, 25),
+     "description": "Fraudster convinces telecom to transfer victim's phone number to a new SIM, then takes over banking OTP channel.",
+     "fatf_reference": "TRAI & RBI Joint Advisory 2020", "indicators": ["SIM change event followed by bank login within 24h", "OTP delivered to new SIM within 15 min of swap", "High-value NEFT/IMPS immediately after SIM change"]},
+
+    {"id": "TYP-CFR-003", "name": "Internet Banking Credential Stuffing", "category": "cyber_fraud", "subcategory": "Credential Attack",
+     "risk": "high", "status": "active", "rules_count": 3, "detections_30d": random.randint(15, 50),
+     "description": "Automated login attempts using stolen username/password pairs from data breaches. Distributed across IPs to evade rate limiting.",
+     "fatf_reference": "OWASP Top 10 2021", "indicators": ["High failed login rate across multiple accounts", "Login attempts from Tor/proxy IPs", "Known breach dataset credentials", "Multiple accounts same IP within 1 min"]},
+
+    {"id": "TYP-CFR-004", "name": "Malware / RAT Based Attack", "category": "cyber_fraud", "subcategory": "Malware",
+     "risk": "critical", "status": "active", "rules_count": 2, "detections_30d": random.randint(3, 12),
+     "description": "Remote Access Trojans installed on customer devices capture keystrokes, intercept OTPs, and initiate unauthorized transfers.",
+     "fatf_reference": "CERT-In Advisory CI-20-024", "indicators": ["Transfer initiated from known infected IP range", "Unusual browser agent for existing device", "Transaction initiated at 3-5 AM local time", "Multiple beneficiary adds within 1 hour"]},
+
+    {"id": "TYP-CFR-005", "name": "API Exploitation / Man-in-the-Middle", "category": "cyber_fraud", "subcategory": "Technical Attack",
+     "risk": "high", "status": "active", "rules_count": 2, "detections_30d": random.randint(2, 8),
+     "description": "Exploitation of weak API endpoints, JWT token forgery, or TLS interception to intercept or replay banking transactions.",
+     "fatf_reference": "RBI IT Framework for NBFCs 2017", "indicators": ["Replayed request timestamps", "Token used from different IP than issuance", "Requests with malformed auth headers", "Unusually high API call rate from single token"]},
+
+    # AI Fraud Typologies
+    {"id": "TYP-AIF-001", "name": "AI-Generated Synthetic Identity", "category": "ai_fraud", "subcategory": "Synthetic ID",
+     "risk": "critical", "status": "active", "rules_count": 3, "detections_30d": random.randint(2, 10),
+     "description": "Generative AI used to create photorealistic fake Aadhaar, PAN, and income documents for fraudulent account opening and loan applications.",
+     "fatf_reference": "FATF Report on Virtual Assets 2023", "indicators": ["Document metadata inconsistency", "Font rendering artifacts in ID documents", "Aadhaar QR scan fails but visual looks valid", "AI image forensics flag (ELA analysis)"]},
+
+    {"id": "TYP-AIF-002", "name": "Deepfake Voice/Video KYC Bypass", "category": "ai_fraud", "subcategory": "Biometric Fraud",
+     "risk": "critical", "status": "active", "rules_count": 2, "detections_30d": random.randint(1, 6),
+     "description": "AI-generated voice clones or deepfake videos used to pass Video KYC verification, impersonate customers in call centers, or bypass liveness detection.",
+     "fatf_reference": "RBI Video-based Customer Identification Process 2021", "indicators": ["V-CIP liveness score below 0.7", "Audio frequency anomaly in call recording", "Background inconsistency in video KYC", "Face movement patterns outside normal range"]},
+
+    {"id": "TYP-AIF-003", "name": "AI-Powered Phishing & Spear Phishing", "category": "ai_fraud", "subcategory": "Social Engineering",
+     "risk": "high", "status": "active", "rules_count": 3, "detections_30d": random.randint(5, 20),
+     "description": "Large Language Models used to craft highly personalized phishing emails using scraped customer data, indistinguishable from genuine bank communication.",
+     "fatf_reference": "CERT-In Advisory 2024", "indicators": ["Email domain typosquatting with valid SSL", "Personalized content matching customer transaction history", "Customer reports unsolicited link leading to lookalike site"]},
+
+    {"id": "TYP-AIF-004", "name": "ML Model Adversarial Evasion", "category": "ai_fraud", "subcategory": "Model Evasion",
+     "risk": "high", "status": "active", "rules_count": 2, "detections_30d": random.randint(1, 5),
+     "description": "Adversarial inputs deliberately crafted to evade the bank's fraud detection ML models — transactions designed to score just below alert thresholds.",
+     "fatf_reference": "NIST AI RMF 2023", "indicators": ["Transaction amount clusters just below model threshold", "Incremental amount increases testing system limits", "Behavioral drift — gradually changing pattern to avoid detection", "High volume of low-value probes before large transfer"]},
+
+    {"id": "TYP-AIF-005", "name": "AI Mule Recruitment Network", "category": "ai_fraud", "subcategory": "Money Mule",
+     "risk": "critical", "status": "active", "rules_count": 3, "detections_30d": random.randint(4, 15),
+     "description": "Automated chatbots and fake job portals recruit money mules at scale. AI-generated job offers target vulnerable demographics with legitimate-looking employment ads.",
+     "fatf_reference": "Europol AI Mule Report 2024", "indicators": ["New account receives large credits within 48h of opening", "Account holder age 18-25, recent graduate", "Same bank account linked to multiple 'employers'", "Cash withdrawals immediately after large credits"]},
+
+    # Internal Fraud Typologies
+    {"id": "TYP-IFR-001", "name": "Rogue Employee Account Manipulation", "category": "internal_fraud", "subcategory": "Account Fraud",
+     "risk": "critical", "status": "active", "rules_count": 5, "detections_30d": random.randint(2, 8),
+     "description": "Branch or back-office employee creates ghost accounts, credits unauthorized amounts, or manipulates dormant accounts for personal gain.",
+     "fatf_reference": "ACFE Report on Occupational Fraud 2024", "indicators": ["After-hours CBS access without authorization", "New account with no KYC, credited within 24h", "Dormant account activated by same-branch employee", "Multiple overrides in single session"]},
+
+    {"id": "TYP-IFR-002", "name": "Loan Fraud by Relationship Manager", "category": "internal_fraud", "subcategory": "Loan Fraud",
+     "risk": "critical", "status": "active", "rules_count": 3, "detections_30d": random.randint(1, 5),
+     "description": "Relationship Manager inflates customer income, inflates collateral valuations, or links loan disbursement to personally-controlled accounts.",
+     "fatf_reference": "RBI Fraud Risk Management Guidelines 2019", "indicators": ["RM approvals for same customer cluster", "Loan disbursed to non-KYC account", "Income documentation inconsistency", "Collateral valuation above market rate by >20%"]},
+
+    {"id": "TYP-IFR-003", "name": "Data Theft & Exfiltration", "category": "internal_fraud", "subcategory": "Data Exfiltration",
+     "risk": "high", "status": "active", "rules_count": 3, "detections_30d": random.randint(1, 4),
+     "description": "Employee exports bulk customer data via email, USB, or cloud upload for sale to competitors or fraudsters.",
+     "fatf_reference": "DPDP Act 2023 (India)", "indicators": ["Bulk record download outside business hours", "USB device detected on workstation", "Large email attachment to personal domain", "Data query volume 10x above baseline"]},
+
+    {"id": "TYP-IFR-004", "name": "Maker-Checker Collusion", "category": "internal_fraud", "subcategory": "Collusion",
+     "risk": "critical", "status": "active", "rules_count": 2, "detections_30d": random.randint(1, 4),
+     "description": "Two or more employees collude to bypass dual-control authorization. One initiates a fraudulent transaction and the other approves it against bank policy.",
+     "fatf_reference": "RBI Internal Controls Circular 2020", "indicators": ["Maker and checker in same department", "Approval within seconds of initiation", "Both employees accessed same customer record same day", "Transaction amount at authorization threshold"]},
+
+    {"id": "TYP-IFR-005", "name": "IT Administrator Privilege Abuse", "category": "internal_fraud", "subcategory": "Privilege Abuse",
+     "risk": "critical", "status": "active", "rules_count": 3, "detections_30d": random.randint(1, 3),
+     "description": "System administrator misuses elevated access to bypass controls, disable audit logging, modify detection rules, or extract unencrypted data.",
+     "fatf_reference": "NIST SP 800-53 AC-2", "indicators": ["Audit log gaps or deletions", "Rule threshold modified without change request", "Config change during off-hours", "Admin access to prod database outside maintenance window"]},
+
     # Compliance Scenarios
     {"id": "TYP-CMP-001", "name": "Sanctions Evasion", "category": "Compliance", "subcategory": "Sanctions",
      "risk": "critical", "status": "active", "rules_count": 2, "detections_30d": random.randint(1, 5),
@@ -161,8 +238,11 @@ def get_typology_library(
 
 
 def _next_typology_id(category: str) -> str:
-    """Generate next sequential ID for a category, e.g. TYP-FRD-013."""
-    prefix_map = {"aml": "AML", "fraud": "FRD", "compliance": "CMP"}
+    """Generate next sequential ID for a category, e.g. TYP-CFR-006."""
+    prefix_map = {
+        "aml": "AML", "fraud": "FRD", "compliance": "CMP",
+        "cyber_fraud": "CFR", "ai_fraud": "AIF", "internal_fraud": "IFR",
+    }
     prefix = prefix_map.get(category.lower(), "OTH")
     existing = [t["id"] for t in TYPOLOGY_LIBRARY if t["id"].startswith(f"TYP-{prefix}-")]
     nums = []
@@ -265,5 +345,13 @@ def get_scenario_stats(db: Session = Depends(get_db), current_user: User = Depen
             "critical": sum(1 for t in TYPOLOGY_LIBRARY if t["risk"] == "critical"),
             "high": sum(1 for t in TYPOLOGY_LIBRARY if t["risk"] == "high"),
             "medium": sum(1 for t in TYPOLOGY_LIBRARY if t["risk"] == "medium"),
+        },
+        "by_category": {
+            "AML": sum(1 for t in TYPOLOGY_LIBRARY if t["category"] == "AML"),
+            "Fraud": sum(1 for t in TYPOLOGY_LIBRARY if t["category"] == "Fraud"),
+            "cyber_fraud": sum(1 for t in TYPOLOGY_LIBRARY if t["category"] == "cyber_fraud"),
+            "ai_fraud": sum(1 for t in TYPOLOGY_LIBRARY if t["category"] == "ai_fraud"),
+            "internal_fraud": sum(1 for t in TYPOLOGY_LIBRARY if t["category"] == "internal_fraud"),
+            "Compliance": sum(1 for t in TYPOLOGY_LIBRARY if t["category"] == "Compliance"),
         },
     }

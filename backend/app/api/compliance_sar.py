@@ -2,16 +2,63 @@
 Compliance & SAR — Dedicated compliance module with filing workflows,
 regulatory calendar, and compliance dashboard.
 """
+import uuid
 from datetime import date, datetime, timedelta
 from calendar import monthrange
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import Response
+from pydantic import BaseModel
+from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import CTRReport, SARReport, LVTRReport, Customer, Case, User
+from app.models import CTRReport, SARReport, LVTRReport, Customer, Case, Transaction, User
 from app.utils.pdf_gen import generate_ctr_pdf, generate_sar_pdf, generate_lvtr_pdf
+
+
+# ── Pydantic request bodies ──────────────────────────────────────────────────
+
+class CTRCreate(BaseModel):
+    customer_id: str
+    transaction_id: Optional[str] = None
+    transaction_amount: int          # paise
+    transaction_date: datetime
+
+
+class CTRUpdate(BaseModel):
+    filing_status: Optional[str] = None   # pending_review | filed | amended
+
+
+class SARCreate(BaseModel):
+    customer_id: str
+    case_id: Optional[str] = None
+    suspicious_activity_type: str
+    narrative: Optional[str] = None
+    total_amount: int                 # paise
+    date_range_start: date
+    date_range_end: date
+    regulatory_reference: Optional[str] = None
+
+
+class SARUpdate(BaseModel):
+    filing_status: Optional[str] = None
+    narrative: Optional[str] = None
+    suspicious_activity_type: Optional[str] = None
+    regulatory_reference: Optional[str] = None
+
+
+class LVTRCreate(BaseModel):
+    customer_id: str
+    transaction_id: Optional[str] = None
+    transaction_amount: int           # paise
+    transaction_date: datetime
+    transaction_type: str             # cash_deposit | cash_withdrawal | transfer
+
+
+class LVTRUpdate(BaseModel):
+    filing_status: Optional[str] = None
+    transaction_type: Optional[str] = None
 
 router = APIRouter(prefix="/compliance", tags=["Compliance & SAR"])
 
@@ -528,3 +575,564 @@ def regulatory_calendar(current_user: User = Depends(get_current_user)):
     calendar.sort(key=lambda x: x["days_until_due"])
 
     return {"calendar": calendar, "total": len(calendar)}
+
+
+@router.post("/filings/ctr/{filing_id}/upload")
+def upload_ctr_document(
+    filing_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Attach a supporting document to a CTR filing."""
+    report = db.query(CTRReport).filter(CTRReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="CTR filing not found")
+    return {
+        "status": "uploaded",
+        "filing_id": filing_id,
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "uploaded_by": current_user.full_name,
+    }
+
+
+@router.post("/filings/sar/{filing_id}/upload")
+def upload_sar_document(
+    filing_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Attach a supporting document to a SAR filing."""
+    report = db.query(SARReport).filter(SARReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="SAR filing not found")
+    return {
+        "status": "uploaded",
+        "filing_id": filing_id,
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "uploaded_by": current_user.full_name,
+    }
+
+
+@router.post("/filings/lvtr/{filing_id}/upload")
+def upload_lvtr_document(
+    filing_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Attach a supporting document to an LVTR filing."""
+    report = db.query(LVTRReport).filter(LVTRReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="LVTR filing not found")
+    return {
+        "status": "uploaded",
+        "filing_id": filing_id,
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "uploaded_by": current_user.full_name,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════
+# CTR CRUD
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/filings/ctr", status_code=201)
+def create_ctr(body: CTRCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Manually create a new CTR filing."""
+    customer = db.query(Customer).filter(Customer.id == body.customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    today = datetime.utcnow()
+    seq = db.query(func.count(CTRReport.id)).scalar() + 1
+    report_number = f"CTR-{today.strftime('%Y%m%d')}-{seq:04d}"
+
+    report = CTRReport(
+        id=str(uuid.uuid4()),
+        report_number=report_number,
+        customer_id=body.customer_id,
+        transaction_id=body.transaction_id,
+        transaction_amount=body.transaction_amount,
+        transaction_date=body.transaction_date,
+        filing_status="pending_review",
+        filed_by=current_user.id,
+        created_at=today,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return {
+        "id": report.id,
+        "report_number": report.report_number,
+        "filing_status": report.filing_status,
+        "customer_name": customer.full_name,
+        "transaction_amount": report.transaction_amount,
+        "created_at": report.created_at,
+    }
+
+
+@router.put("/filings/ctr/{filing_id}")
+def update_ctr(filing_id: str, body: CTRUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update CTR status (pending_review → filed / amended)."""
+    report = db.query(CTRReport).filter(CTRReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="CTR not found")
+    if body.filing_status:
+        report.filing_status = body.filing_status
+        if body.filing_status == "filed":
+            report.filed_at = datetime.utcnow()
+            report.filed_by = current_user.id
+    db.commit()
+    return {"id": report.id, "report_number": report.report_number, "filing_status": report.filing_status, "filed_at": report.filed_at}
+
+
+@router.post("/filings/ctr/{filing_id}/submit")
+def submit_ctr(filing_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Mark a CTR as officially filed with FIU-IND."""
+    report = db.query(CTRReport).filter(CTRReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="CTR not found")
+    if report.filing_status == "filed":
+        raise HTTPException(status_code=400, detail="CTR is already filed")
+    report.filing_status = "filed"
+    report.filed_at = datetime.utcnow()
+    report.filed_by = current_user.id
+    db.commit()
+    return {"status": "filed", "report_number": report.report_number, "filed_at": report.filed_at, "filed_by": current_user.full_name}
+
+
+@router.delete("/filings/ctr/{filing_id}", status_code=200)
+def delete_ctr(filing_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Delete a CTR filing (only allowed if not yet filed; requires compliance or admin role)."""
+    user_roles = {r.name for r in current_user.roles} if current_user.roles else set()
+    if not user_roles.intersection({"compliance_officer", "admin", "cro"}):
+        raise HTTPException(status_code=403, detail="Only compliance officers and admins can delete filings")
+    report = db.query(CTRReport).filter(CTRReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="CTR not found")
+    if report.filing_status == "filed":
+        raise HTTPException(status_code=400, detail="Cannot delete a filed CTR. Use 'amended' status instead.")
+    db.delete(report)
+    db.commit()
+    return {"deleted": True, "report_number": report.report_number}
+
+
+# ═══════════════════════════════════════════════════════════════
+# SAR CRUD
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/filings/sar", status_code=201)
+def create_sar(body: SARCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Manually create a new SAR filing."""
+    customer = db.query(Customer).filter(Customer.id == body.customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    if body.case_id:
+        case = db.query(Case).filter(Case.id == body.case_id).first()
+        if not case:
+            raise HTTPException(status_code=404, detail="Case not found")
+
+    today = datetime.utcnow()
+    seq = db.query(func.count(SARReport.id)).scalar() + 1
+    report_number = f"SAR-{today.strftime('%Y%m%d')}-{seq:04d}"
+
+    report = SARReport(
+        id=str(uuid.uuid4()),
+        report_number=report_number,
+        customer_id=body.customer_id,
+        case_id=body.case_id,
+        suspicious_activity_type=body.suspicious_activity_type,
+        narrative=body.narrative,
+        total_amount=body.total_amount,
+        date_range_start=body.date_range_start,
+        date_range_end=body.date_range_end,
+        filing_status="draft",
+        regulatory_reference=body.regulatory_reference or "PMLA Section 12 / RBI Master Direction",
+        filed_by=current_user.id,
+        created_at=today,
+        updated_at=today,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return {
+        "id": report.id,
+        "report_number": report.report_number,
+        "filing_status": report.filing_status,
+        "customer_name": customer.full_name,
+        "total_amount": report.total_amount,
+        "created_at": report.created_at,
+    }
+
+
+@router.put("/filings/sar/{filing_id}")
+def update_sar(filing_id: str, body: SARUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update SAR details or status."""
+    report = db.query(SARReport).filter(SARReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="SAR not found")
+    if body.filing_status:
+        report.filing_status = body.filing_status
+        if body.filing_status == "filed":
+            report.filed_at = datetime.utcnow()
+            report.filed_by = current_user.id
+    if body.narrative is not None:
+        report.narrative = body.narrative
+    if body.suspicious_activity_type is not None:
+        report.suspicious_activity_type = body.suspicious_activity_type
+    if body.regulatory_reference is not None:
+        report.regulatory_reference = body.regulatory_reference
+    report.updated_at = datetime.utcnow()
+    db.commit()
+    return {"id": report.id, "report_number": report.report_number, "filing_status": report.filing_status, "updated_at": report.updated_at}
+
+
+@router.post("/filings/sar/{filing_id}/submit")
+def submit_sar(filing_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Mark a SAR as officially filed with FIU-IND."""
+    report = db.query(SARReport).filter(SARReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="SAR not found")
+    if report.filing_status == "filed":
+        raise HTTPException(status_code=400, detail="SAR is already filed")
+    report.filing_status = "filed"
+    report.filed_at = datetime.utcnow()
+    report.filed_by = current_user.id
+    report.updated_at = datetime.utcnow()
+    db.commit()
+    return {"status": "filed", "report_number": report.report_number, "filed_at": report.filed_at, "filed_by": current_user.full_name}
+
+
+@router.delete("/filings/sar/{filing_id}", status_code=200)
+def delete_sar(filing_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Delete a SAR filing (only allowed if not yet filed; requires compliance or admin role)."""
+    user_roles = {r.name for r in current_user.roles} if current_user.roles else set()
+    if not user_roles.intersection({"compliance_officer", "admin", "cro"}):
+        raise HTTPException(status_code=403, detail="Only compliance officers and admins can delete filings")
+    report = db.query(SARReport).filter(SARReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="SAR not found")
+    if report.filing_status == "filed":
+        raise HTTPException(status_code=400, detail="Cannot delete a filed SAR. Use 'amended' status instead.")
+    db.delete(report)
+    db.commit()
+    return {"deleted": True, "report_number": report.report_number}
+
+
+# ═══════════════════════════════════════════════════════════════
+# LVTR CRUD
+# ═══════════════════════════════════════════════════════════════
+
+@router.post("/lvtr", status_code=201)
+def create_lvtr(body: LVTRCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Manually create a new LVTR filing."""
+    customer = db.query(Customer).filter(Customer.id == body.customer_id).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+
+    today = datetime.utcnow()
+    seq = db.query(func.count(LVTRReport.id)).scalar() + 1
+    report_number = f"LVTR-{today.strftime('%Y%m%d')}-{seq:04d}"
+
+    report = LVTRReport(
+        id=str(uuid.uuid4()),
+        report_number=report_number,
+        customer_id=body.customer_id,
+        transaction_id=body.transaction_id,
+        transaction_amount=body.transaction_amount,
+        transaction_date=body.transaction_date,
+        transaction_type=body.transaction_type,
+        reporting_threshold=10000000,
+        filing_status="pending_review",
+        filed_by=current_user.id,
+        created_at=today,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return {
+        "id": report.id,
+        "report_number": report.report_number,
+        "filing_status": report.filing_status,
+        "customer_name": customer.full_name,
+        "transaction_amount": report.transaction_amount,
+        "created_at": report.created_at,
+    }
+
+
+@router.put("/lvtr/{filing_id}")
+def update_lvtr(filing_id: str, body: LVTRUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update LVTR status or transaction type."""
+    report = db.query(LVTRReport).filter(LVTRReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="LVTR not found")
+    if body.filing_status:
+        report.filing_status = body.filing_status
+        if body.filing_status == "filed":
+            report.filed_at = datetime.utcnow()
+            report.filed_by = current_user.id
+    if body.transaction_type is not None:
+        report.transaction_type = body.transaction_type
+    db.commit()
+    return {"id": report.id, "report_number": report.report_number, "filing_status": report.filing_status}
+
+
+@router.post("/filings/lvtr/{filing_id}/submit")
+def submit_lvtr(filing_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Mark an LVTR as officially filed with FIU-Bhutan."""
+    report = db.query(LVTRReport).filter(LVTRReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="LVTR not found")
+    if report.filing_status == "filed":
+        raise HTTPException(status_code=400, detail="LVTR is already filed")
+    report.filing_status = "filed"
+    report.filed_at = datetime.utcnow()
+    report.filed_by = current_user.id
+    db.commit()
+    return {"status": "filed", "report_number": report.report_number, "filed_at": report.filed_at, "filed_by": current_user.full_name}
+
+
+@router.delete("/lvtr/{filing_id}", status_code=200)
+def delete_lvtr(filing_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Delete an LVTR filing (only allowed if not yet filed; requires compliance or admin role)."""
+    user_roles = {r.name for r in current_user.roles} if current_user.roles else set()
+    if not user_roles.intersection({"compliance_officer", "admin", "cro"}):
+        raise HTTPException(status_code=403, detail="Only compliance officers and admins can delete filings")
+    report = db.query(LVTRReport).filter(LVTRReport.id == filing_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="LVTR not found")
+    if report.filing_status == "filed":
+        raise HTTPException(status_code=400, detail="Cannot delete a filed LVTR. Use 'amended' status instead.")
+    db.delete(report)
+    db.commit()
+    return {"deleted": True, "report_number": report.report_number}
+
+
+# ═══════════════════════════════════════════════════════════════
+# GoAML XML GENERATION
+# ═══════════════════════════════════════════════════════════════
+
+def _xml_escape(value: str) -> str:
+    """Escape special XML characters in text content."""
+    if not value:
+        return ""
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
+@router.get("/goaml-sample")
+def goaml_sample(current_user: User = Depends(get_current_user)):
+    """Return hardcoded sample GoAML XML for both SAR/STR and CTR — used by the integrations page."""
+    today_str = date.today().isoformat()
+
+    sar_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Report xmlns="urn:goAML:reporting:3.5" ReportType="STR" ReportDate="{today_str}" ReportingSequence="1">
+  <Header>
+    <ReportingEntityCode>FINSURGE001</ReportingEntityCode>
+    <InstitutionName>FinsurgeFRIMS Demo Bank</InstitutionName>
+    <ReportingPeriodStart>2026-03-01</ReportingPeriodStart>
+    <ReportingPeriodEnd>2026-03-31</ReportingPeriodEnd>
+    <BranchCode>MUM-001</BranchCode>
+    <PrincipalOfficer>Sunita Krishnan</PrincipalOfficer>
+    <FilingDate>{today_str}</FilingDate>
+  </Header>
+  <STReport>
+    <ReportNumber>SAR-20260401-0042</ReportNumber>
+    <STRType>ML</STRType>
+    <SuspicionDeterminedDate>2026-03-15</SuspicionDeterminedDate>
+    <Subject>
+      <SubjectType>I</SubjectType>
+      <Name>Rajesh Mehta</Name>
+      <CustomerID>CIF-1001</CustomerID>
+      <PAN>ABCPM1234R</PAN>
+      <Nationality>IN</Nationality>
+      <Address>Mumbai, Maharashtra, India</Address>
+    </Subject>
+    <SuspiciousActivity>
+      <ActivityType>structuring</ActivityType>
+      <AmountINR>4850000.00</AmountINR>
+      <Currency>INR</Currency>
+      <Narrative>Multiple cash deposits structured just below the CTR threshold of INR 10 lakh detected over 14 days. Pattern consistent with smurfing/structuring under PMLA 2002.</Narrative>
+      <PMPLASection>Section 12</PMPLASection>
+    </SuspiciousActivity>
+    <FilingStatus>filed</FilingStatus>
+    <RegulatoryReference>PMLA 2002, Section 12; RBI Master Direction on KYC</RegulatoryReference>
+  </STReport>
+</Report>"""
+
+    ctr_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Report xmlns="urn:goAML:reporting:3.5" ReportType="CTR" ReportDate="{today_str}">
+  <Header>
+    <ReportingEntityCode>FINSURGE001</ReportingEntityCode>
+    <InstitutionName>FinsurgeFRIMS Demo Bank</InstitutionName>
+    <BranchCode>MUM-001</BranchCode>
+    <PrincipalOfficer>Sunita Krishnan</PrincipalOfficer>
+    <FilingDate>{today_str}</FilingDate>
+  </Header>
+  <CTReport>
+    <ReportNumber>CTR-20260401-0118</ReportNumber>
+    <TransactionDate>2026-03-28</TransactionDate>
+    <Subject>
+      <Name>Hassan Trading Co.</Name>
+      <CustomerID>CIF-1003</CustomerID>
+      <PAN>AABCH5432P</PAN>
+    </Subject>
+    <Transaction>
+      <Amount>1250000.00</Amount>
+      <Currency>INR</Currency>
+      <ThresholdAmount>1000000.00</ThresholdAmount>
+      <TransactionType>CASH</TransactionType>
+    </Transaction>
+    <PMPLASection>Section 12; RBI Master Direction on KYC</PMPLASection>
+    <FilingStatus>filed</FilingStatus>
+  </CTReport>
+</Report>"""
+
+    return {"sar_xml": sar_xml, "ctr_xml": ctr_xml}
+
+
+@router.get("/filings/sar/{report_id}/goaml-xml")
+def get_sar_goaml_xml(
+    report_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return GoAML-compliant XML for a SAR/STR filing."""
+    rec = db.query(SARReport).filter(SARReport.id == report_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="SAR not found")
+
+    customer = db.query(Customer).filter(Customer.id == rec.customer_id).first() if rec.customer_id else None
+    today_str = date.today().isoformat()
+    filed_at_str = rec.filed_at.strftime("%Y-%m-%d") if rec.filed_at else today_str
+    created_at_str = rec.created_at.strftime("%Y-%m-%d") if rec.created_at else today_str
+    date_range_start = str(rec.date_range_start) if rec.date_range_start else today_str
+    date_range_end = str(rec.date_range_end) if rec.date_range_end else today_str
+    amount_inr = f"{(rec.total_amount or 0) / 100:.2f}"
+    narrative = _xml_escape(rec.narrative or "Suspicious activity detected by AML system")
+    activity_type = _xml_escape(rec.suspicious_activity_type or "unknown")
+    regulatory_ref = _xml_escape(rec.regulatory_reference or "PMLA 2002, Section 12; RBI Master Direction on KYC")
+    filing_status = _xml_escape(rec.filing_status or "draft")
+    report_number = _xml_escape(rec.report_number or "")
+
+    customer_name = _xml_escape(customer.full_name if customer else "Unknown")
+    customer_number = _xml_escape(customer.customer_number if customer else "")
+    pan = _xml_escape(customer.pan_number if customer and customer.pan_number else "")
+    nationality = _xml_escape(customer.nationality if customer and customer.nationality else "IN")
+    address = _xml_escape(
+        f"{customer.city or ''}, {customer.state or ''}, India".strip(", ")
+        if customer else "India"
+    )
+    subject_type = "E" if (customer and getattr(customer, "customer_type", "individual") == "corporate") else "I"
+
+    xml_str = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Report xmlns="urn:goAML:reporting:3.5" ReportType="STR" ReportDate="{today_str}" ReportingSequence="1">
+  <Header>
+    <ReportingEntityCode>FINSURGE001</ReportingEntityCode>
+    <InstitutionName>FinsurgeFRIMS Demo Bank</InstitutionName>
+    <ReportingPeriodStart>{date_range_start}</ReportingPeriodStart>
+    <ReportingPeriodEnd>{date_range_end}</ReportingPeriodEnd>
+    <BranchCode>MUM-001</BranchCode>
+    <PrincipalOfficer>Sunita Krishnan</PrincipalOfficer>
+    <FilingDate>{filed_at_str}</FilingDate>
+  </Header>
+  <STReport>
+    <ReportNumber>{report_number}</ReportNumber>
+    <STRType>ML</STRType>
+    <SuspicionDeterminedDate>{created_at_str}</SuspicionDeterminedDate>
+    <Subject>
+      <SubjectType>{subject_type}</SubjectType>
+      <Name>{customer_name}</Name>
+      <CustomerID>{customer_number}</CustomerID>
+      <PAN>{pan}</PAN>
+      <Nationality>{nationality}</Nationality>
+      <Address>{address}</Address>
+    </Subject>
+    <SuspiciousActivity>
+      <ActivityType>{activity_type}</ActivityType>
+      <AmountINR>{amount_inr}</AmountINR>
+      <Currency>INR</Currency>
+      <Narrative>{narrative}</Narrative>
+      <PMPLASection>Section 12</PMPLASection>
+    </SuspiciousActivity>
+    <FilingStatus>{filing_status}</FilingStatus>
+    <RegulatoryReference>{regulatory_ref}</RegulatoryReference>
+  </STReport>
+</Report>"""
+
+    filename = f"{rec.report_number}-goaml.xml"
+    return Response(
+        content=xml_str,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/filings/ctr/{report_id}/goaml-xml")
+def get_ctr_goaml_xml(
+    report_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return GoAML-compliant XML for a CTR filing."""
+    rec = db.query(CTRReport).filter(CTRReport.id == report_id).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="CTR not found")
+
+    customer = db.query(Customer).filter(Customer.id == rec.customer_id).first() if rec.customer_id else None
+    today_str = date.today().isoformat()
+    filed_at_str = rec.filed_at.strftime("%Y-%m-%d") if rec.filed_at else today_str
+    transaction_date_str = rec.transaction_date.strftime("%Y-%m-%d") if rec.transaction_date else today_str
+    amount_inr = f"{(rec.transaction_amount or 0) / 100:.2f}"
+    filing_status = _xml_escape(rec.filing_status or "pending_review")
+    report_number = _xml_escape(rec.report_number or "")
+
+    customer_name = _xml_escape(customer.full_name if customer else "Unknown")
+    customer_number = _xml_escape(customer.customer_number if customer else "")
+    pan = _xml_escape(customer.pan_number if customer and customer.pan_number else "")
+
+    xml_str = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Report xmlns="urn:goAML:reporting:3.5" ReportType="CTR" ReportDate="{today_str}">
+  <Header>
+    <ReportingEntityCode>FINSURGE001</ReportingEntityCode>
+    <InstitutionName>FinsurgeFRIMS Demo Bank</InstitutionName>
+    <BranchCode>MUM-001</BranchCode>
+    <PrincipalOfficer>Sunita Krishnan</PrincipalOfficer>
+    <FilingDate>{filed_at_str}</FilingDate>
+  </Header>
+  <CTReport>
+    <ReportNumber>{report_number}</ReportNumber>
+    <TransactionDate>{transaction_date_str}</TransactionDate>
+    <Subject>
+      <Name>{customer_name}</Name>
+      <CustomerID>{customer_number}</CustomerID>
+      <PAN>{pan}</PAN>
+    </Subject>
+    <Transaction>
+      <Amount>{amount_inr}</Amount>
+      <Currency>INR</Currency>
+      <ThresholdAmount>1000000.00</ThresholdAmount>
+      <TransactionType>CASH</TransactionType>
+    </Transaction>
+    <PMPLASection>Section 12; RBI Master Direction on KYC</PMPLASection>
+    <FilingStatus>{filing_status}</FilingStatus>
+  </CTReport>
+</Report>"""
+
+    filename = f"{rec.report_number}-goaml.xml"
+    return Response(
+        content=xml_str,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

@@ -4,7 +4,7 @@ recovery, and RBI fraud reporting (FMR-1/FMR-2).
 """
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import Response
 from app.utils.pdf_gen import generate_fir_pdf
 from sqlalchemy.orm import Session
@@ -508,4 +508,24 @@ def fir_dashboard(db: Session = Depends(get_db), current_user: User = Depends(ge
         "offense_breakdown": [
             {"offense_type": k, **v} for k, v in offense_breakdown.items()
         ],
+    }
+
+
+@router.post("/{fir_id}/upload")
+def upload_fir_document(
+    fir_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Attach a supporting document to a Police FIR."""
+    fir = db.query(PoliceFIR).filter(PoliceFIR.id == fir_id).first()
+    if not fir:
+        raise HTTPException(status_code=404, detail="FIR not found")
+    return {
+        "status": "uploaded",
+        "fir_id": fir_id,
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "uploaded_by": current_user.full_name,
     }

@@ -151,7 +151,15 @@ def executive_dashboard(db: Session = Depends(get_db), current_user: User = Depe
     # Top risk customers
     top_risk = db.query(Customer).filter(Customer.is_active == True).order_by(Customer.risk_score.desc()).limit(10).all()
     top_risk_customers = [
-        {"id": c.id, "name": c.full_name, "customer_number": c.customer_number, "risk_score": c.risk_score or 0, "risk_category": c.risk_category, "pep_status": c.pep_status}
+        {
+            "id": c.id,
+            "name": c.full_name,
+            "customer_number": c.customer_number,
+            "risk_score": c.risk_score or 0,
+            "risk_category": c.risk_category,
+            "pep_status": c.pep_status,
+            "alert_count": db.query(func.count(Alert.id)).filter(Alert.customer_id == c.id).scalar() or 0,
+        }
         for c in top_risk
     ]
 

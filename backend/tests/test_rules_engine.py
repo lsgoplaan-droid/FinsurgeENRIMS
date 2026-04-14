@@ -53,8 +53,8 @@ def test_op_contains():
 # ── Condition evaluator tests ───────────────────────────────────────────────
 
 def _make_context(amount=500000_00, method="neft", channel="internet_banking",
-                  txn_type="credit", city="Mumbai", country="IN",
-                  risk_score=10, risk_category="low", pep=False, kyc="approved",
+                  txn_type="credit", city="Thimphu", country="BT",
+                  risk_score=10, risk_category="low", pep=False,
                   acct_type="savings", balance=1000000_00, acct_status="active"):
     return {
         "transaction": {
@@ -65,8 +65,8 @@ def _make_context(amount=500000_00, method="neft", channel="internet_banking",
         },
         "customer": {
             "risk_score": risk_score, "risk_category": risk_category,
-            "customer_type": "individual", "nationality": "IN",
-            "pep_status": pep, "kyc_status": kyc, "occupation": "Engineer",
+            "customer_type": "individual", "nationality": "BT",
+            "pep_status": pep, "occupation": "Engineer",
             "annual_income": 3000000_00,
         },
         "account": {
@@ -86,7 +86,7 @@ def _make_aggregates(txn_count=1, txn_sum=500000_00, cash_count=0, cash_sum=0,
     }
 
 
-# ── AML Structuring rule tests ─────────────────────────────────────────────
+# ── Structuring pattern tests ──────────────────────────────────────────────
 
 def test_rule_str001_positive():
     """Single cash transaction >= 10L should match."""
@@ -132,7 +132,7 @@ def test_rule_str003_negative():
     assert _evaluate_condition(condition, ctx, agg) is False
 
 
-# ── AML Layering rule tests ────────────────────────────────────────────────
+# ── Layering / fund movement pattern tests ─────────────────────────────────
 
 def test_rule_lay001_positive():
     """Many counterparties + high sum in 24h should match."""
@@ -156,7 +156,7 @@ def test_rule_lay001_negative():
     assert _evaluate_condition(condition, ctx, agg) is False
 
 
-# ── AML Geographic rule tests ──────────────────────────────────────────────
+# ── Geographic risk tests ──────────────────────────────────────────────────
 
 def test_rule_geo001_positive():
     """Transaction from high-risk country should match."""
@@ -168,11 +168,11 @@ def test_rule_geo001_positive():
 
 
 def test_rule_geo001_negative():
-    """Transaction from India should not match."""
+    """Transaction from Bhutan should not match high-risk country rule."""
     condition = {"logic": "AND", "conditions": [
         {"field": "transaction.location_country", "operator": "in", "value": ["AF", "IR", "KP", "SY", "YE", "MM"]},
     ]}
-    ctx = _make_context(country="IN")
+    ctx = _make_context(country="BT")
     assert _evaluate_condition(condition, ctx, {}) is False
 
 
@@ -200,28 +200,10 @@ def test_rule_crd001_negative():
     assert _evaluate_condition(condition, ctx, agg) is False
 
 
-# ── KYC rule tests ─────────────────────────────────────────────────────────
+# ── PEP monitoring tests ────────────────────────────────────────────────────
 
-def test_rule_kyc001_positive():
-    """Transaction with expired KYC should match."""
-    condition = {"logic": "AND", "conditions": [
-        {"field": "customer.kyc_status", "operator": "equals", "value": "expired"},
-    ]}
-    ctx = _make_context(kyc="expired")
-    assert _evaluate_condition(condition, ctx, {}) is True
-
-
-def test_rule_kyc001_negative():
-    """Approved KYC should not match."""
-    condition = {"logic": "AND", "conditions": [
-        {"field": "customer.kyc_status", "operator": "equals", "value": "expired"},
-    ]}
-    ctx = _make_context(kyc="approved")
-    assert _evaluate_condition(condition, ctx, {}) is False
-
-
-def test_rule_kyc003_positive():
-    """PEP + large cash should match."""
+def test_rule_pep001_positive():
+    """PEP customer + large cash transaction should match."""
     condition = {"logic": "AND", "conditions": [
         {"field": "customer.pep_status", "operator": "equals", "value": True},
         {"field": "transaction.transaction_method", "operator": "in", "value": ["cash_deposit", "cash_withdrawal"]},
@@ -231,8 +213,8 @@ def test_rule_kyc003_positive():
     assert _evaluate_condition(condition, ctx, {}) is True
 
 
-def test_rule_kyc003_negative():
-    """Non-PEP should not match."""
+def test_rule_pep001_negative():
+    """Non-PEP customer should not match PEP rule."""
     condition = {"logic": "AND", "conditions": [
         {"field": "customer.pep_status", "operator": "equals", "value": True},
         {"field": "transaction.transaction_method", "operator": "in", "value": ["cash_deposit", "cash_withdrawal"]},

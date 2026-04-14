@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { FileText, CheckCircle, Download, Eye, X, Upload } from 'lucide-react'
+import { FileText, CheckCircle, Download, Eye, X, Upload, Plus, Send, Trash2, Pencil, MoreHorizontal } from 'lucide-react'
 import api from '../config/api'
-import { formatNumber, formatDate } from '../utils/formatters'
+import { formatDate } from '../utils/formatters'
 
 const LVTR_FORMAT_SAMPLE = `LARGE VALUE TRANSACTION REPORT (LVTR)
 ================================================================
@@ -53,13 +53,24 @@ export default function ComplianceLVTRPage() {
   const [previewModal, setPreviewModal] = useState<boolean>(false)
   const [uploadModal, setUploadModal] = useState<{ report: any } | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [createModal, setCreateModal] = useState(false)
+  const [createForm, setCreateForm] = useState({ customer_id: '', transaction_amount: '', transaction_date: '', transaction_type: 'cash_deposit' })
+  const [creating, setCreating] = useState(false)
+  const [submitting, setSubmitting] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [editModal, setEditModal] = useState<{ report: any } | null>(null)
+  const [editForm, setEditForm] = useState({ filing_status: '', transaction_type: '' })
+  const [editing, setEditing] = useState(false)
+  const [actionsModal, setActionsModal] = useState<any>(null)
 
-  useEffect(() => {
+  const loadReports = () => {
     api.get('/compliance/lvtr')
       .then(res => setReports(res.data?.items || []))
       .catch(err => setError(err.response?.data?.detail || 'Failed to load LVTR reports'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { loadReports() }, [])
 
   const loadReportDetail = (report: any) => {
     setDetailLoading(true)
@@ -90,11 +101,9 @@ export default function ComplianceLVTRPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !uploadModal) return
-
     setUploading(true)
     const formData = new FormData()
     formData.append('file', file)
-
     try {
       await api.post(`/compliance/filings/lvtr/${uploadModal.report.id}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -105,6 +114,74 @@ export default function ComplianceLVTRPage() {
       alert('Failed to upload LVTR document')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const handleCreate = async () => {
+    if (!createForm.customer_id || !createForm.transaction_amount || !createForm.transaction_date) {
+      alert('Please fill in all required fields')
+      return
+    }
+    setCreating(true)
+    try {
+      await api.post('/compliance/lvtr', {
+        customer_id: createForm.customer_id,
+        transaction_amount: Math.round(parseFloat(createForm.transaction_amount) * 100),
+        transaction_date: new Date(createForm.transaction_date).toISOString(),
+        transaction_type: createForm.transaction_type,
+      })
+      setCreateModal(false)
+      setCreateForm({ customer_id: '', transaction_amount: '', transaction_date: '', transaction_type: 'cash_deposit' })
+      loadReports()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to create LVTR')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleSubmit = async (report: any) => {
+    if (!confirm(`Submit ${report.report_number} to FIU-Bhutan? This cannot be undone.`)) return
+    setSubmitting(report.id)
+    try {
+      await api.post(`/compliance/filings/lvtr/${report.id}/submit`)
+      loadReports()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to submit LVTR')
+    } finally {
+      setSubmitting(null)
+    }
+  }
+
+  const openEdit = (report: any) => {
+    setEditForm({ filing_status: report.filing_status || 'pending_review', transaction_type: report.transaction_type || 'cash_deposit' })
+    setEditModal({ report })
+  }
+
+  const handleEdit = async () => {
+    if (!editModal) return
+    setEditing(true)
+    try {
+      await api.put(`/compliance/lvtr/${editModal.report.id}`, editForm)
+      setEditModal(null)
+      loadReports()
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to update LVTR')
+    } finally {
+      setEditing(false)
+    }
+  }
+
+  const handleDelete = async (report: any) => {
+    if (!confirm(`Delete ${report.report_number}? This action cannot be undone.`)) return
+    setDeleting(report.id)
+    try {
+      await api.delete(`/compliance/lvtr/${report.id}`)
+      setReports(prev => prev.filter(r => r.id !== report.id))
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to delete LVTR')
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -197,9 +274,7 @@ export default function ComplianceLVTRPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
             <h2 className="text-lg font-semibold text-slate-800 mb-2">Upload LVTR Document</h2>
-            <p className="text-sm text-slate-600 mb-4">
-              Upload PDF document for {uploadModal.report.report_number}
-            </p>
+            <p className="text-sm text-slate-600 mb-4">Upload PDF document for {uploadModal.report.report_number}</p>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Bhutan RMA Format (PDF)</label>
@@ -208,22 +283,171 @@ export default function ComplianceLVTRPage() {
                     <Upload size={20} className="mx-auto text-purple-600 mb-1" />
                     <span className="text-xs text-purple-700 font-medium">Choose PDF or drag here</span>
                   </div>
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleFileUpload}
-                    disabled={uploading}
-                    className="hidden"
-                  />
+                  <input type="file" accept=".pdf" onChange={handleFileUpload} disabled={uploading} className="hidden" />
                 </label>
               </div>
-              <button
-                onClick={() => setUploadModal(null)}
-                disabled={uploading}
-                className="w-full px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-50 font-medium text-sm"
-              >
+              <button onClick={() => setUploadModal(null)} disabled={uploading}
+                className="w-full px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-50 font-medium text-sm">
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create LVTR Modal */}
+      {createModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-800">Create New LVTR</h2>
+              <button onClick={() => setCreateModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Customer ID (CIF / UUID)</label>
+                <input type="text" placeholder="e.g. CIF-1001 or UUID" value={createForm.customer_id}
+                  onChange={e => setCreateForm(f => ({ ...f, customer_id: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Transaction Type</label>
+                <select value={createForm.transaction_type}
+                  onChange={e => setCreateForm(f => ({ ...f, transaction_type: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                  {['cash_deposit', 'cash_withdrawal', 'transfer', 'wire_transfer', 'cheque'].map(t => (
+                    <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Transaction Amount (INR)</label>
+                <input type="number" placeholder="e.g. 400000 (= Nu. 250,000)" value={createForm.transaction_amount}
+                  onChange={e => setCreateForm(f => ({ ...f, transaction_amount: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Transaction Date</label>
+                <input type="date" value={createForm.transaction_date}
+                  onChange={e => setCreateForm(f => ({ ...f, transaction_date: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={handleCreate} disabled={creating}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                  {creating ? 'Creating...' : 'Create LVTR'}
+                </button>
+                <button onClick={() => setCreateModal(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit LVTR Modal */}
+      {editModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-800">Edit LVTR — {editModal.report.report_number}</h2>
+              <button onClick={() => setEditModal(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Filing Status</label>
+                <select value={editForm.filing_status}
+                  onChange={e => setEditForm(f => ({ ...f, filing_status: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                  <option value="auto_generated">Auto Generated</option>
+                  <option value="pending_review">Pending Review</option>
+                  <option value="amended">Amended</option>
+                </select>
+                <p className="text-xs text-slate-400 mt-0.5">Use "Submit" to mark as Filed</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Transaction Type</label>
+                <select value={editForm.transaction_type}
+                  onChange={e => setEditForm(f => ({ ...f, transaction_type: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                  {['cash_deposit', 'cash_withdrawal', 'transfer', 'wire_transfer', 'cheque'].map(t => (
+                    <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={handleEdit} disabled={editing}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
+                  {editing ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button onClick={() => setEditModal(null)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Actions Hub Modal */}
+      {actionsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-base font-bold text-slate-800">{actionsModal.report_number}</h2>
+              <button onClick={() => setActionsModal(null)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              {actionsModal.customer_name} · Nu. {(actionsModal.transaction_amount_nu || 0).toLocaleString()} · <span className="capitalize">{(actionsModal.filing_status || '').replace(/_/g, ' ')}</span>
+            </p>
+            <div className="space-y-2">
+              <button onClick={() => { loadReportDetail(actionsModal); setActionsModal(null) }}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700 font-medium text-left">
+                <Eye size={16} className="text-slate-500 shrink-0" />
+                <span>View Details</span>
+              </button>
+              {actionsModal.filing_status !== 'filed' && (
+                <button onClick={() => { openEdit(actionsModal); setActionsModal(null) }}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg text-sm text-amber-800 font-medium text-left">
+                  <Pencil size={16} className="text-amber-600 shrink-0" />
+                  <span>Edit Filing</span>
+                </button>
+              )}
+              <button onClick={() => { setPreviewModal(true); setActionsModal(null) }}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-sm text-indigo-800 font-medium text-left">
+                <FileText size={16} className="text-indigo-600 shrink-0" />
+                <span>View Format Template</span>
+              </button>
+              <button onClick={() => { setUploadModal({ report: actionsModal }); setActionsModal(null) }}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg text-sm text-green-800 font-medium text-left">
+                <Upload size={16} className="text-green-600 shrink-0" />
+                <span>Upload Document</span>
+              </button>
+              <button onClick={() => { performDownload(actionsModal); setActionsModal(null) }}
+                disabled={downloading === actionsModal.id}
+                className="w-full flex items-center gap-3 px-4 py-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-sm text-blue-800 font-medium text-left disabled:opacity-40">
+                <Download size={16} className="text-blue-600 shrink-0" />
+                <span>{downloading === actionsModal.id ? 'Downloading...' : 'Download Report (RMA)'}</span>
+              </button>
+              {actionsModal.filing_status !== 'filed' && (
+                <button onClick={() => { handleSubmit(actionsModal); setActionsModal(null) }}
+                  disabled={submitting === actionsModal.id}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-sm text-emerald-800 font-medium text-left disabled:opacity-40">
+                  <Send size={16} className="text-emerald-600 shrink-0" />
+                  <span>Submit to FIU-Bhutan</span>
+                </button>
+              )}
+              {actionsModal.filing_status !== 'filed' && (
+                <button onClick={() => { handleDelete(actionsModal); setActionsModal(null) }}
+                  disabled={deleting === actionsModal.id}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg text-sm text-red-800 font-medium text-left disabled:opacity-40">
+                  <Trash2 size={16} className="text-red-600 shrink-0" />
+                  <span>Delete Filing</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -235,10 +459,11 @@ export default function ComplianceLVTRPage() {
           <h1 className="text-2xl font-bold text-slate-800">LVTR Filing Management</h1>
           <p className="text-sm text-slate-500 mt-1">Large Value Transaction Reports — Bhutan RMA Rule 14</p>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-slate-500">Total: {reports.length}</p>
-          <p className="text-2xl font-bold text-green-600">{reports.filter(r => r.filing_status === 'filed').length} Filed</p>
-        </div>
+        <button onClick={() => setCreateModal(true)}
+          className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm">
+          <Plus size={16} />
+          New LVTR
+        </button>
       </div>
 
       {/* Summary Cards */}
@@ -287,37 +512,11 @@ export default function ComplianceLVTRPage() {
                     <Badge text={r.filing_status} colors={statusBadgeColors[r.filing_status] || 'bg-gray-100 text-gray-800'} />
                   </td>
                   <td className="py-2.5 px-3 text-right">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button
-                        onClick={() => loadReportDetail(r)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100"
-                      >
-                        <Eye size={12} />
-                        Details
-                      </button>
-                      <button
-                        onClick={() => setPreviewModal(true)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded hover:bg-purple-100"
-                      >
-                        <FileText size={12} />
-                        Format
-                      </button>
-                      <button
-                        onClick={() => setUploadModal({ report: r })}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded hover:bg-green-100"
-                      >
-                        <Upload size={12} />
-                        Upload
-                      </button>
-                      <button
-                        onClick={() => performDownload(r)}
-                        disabled={downloading === r.id}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-40"
-                      >
-                        <Download size={12} />
-                        {downloading === r.id ? '...' : 'Download'}
-                      </button>
-                    </div>
+                    <button onClick={() => setActionsModal(r)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 shadow-sm">
+                      <MoreHorizontal size={13} />
+                      Actions
+                    </button>
                   </td>
                 </tr>
               ))}

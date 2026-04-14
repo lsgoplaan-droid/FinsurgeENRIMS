@@ -52,9 +52,9 @@ function GaugeMeter({ value, limit, warning, unit, status, label }: {
             return <line x1="100" y1="100" x2={nx} y2={ny} stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" />
           })()}
           <circle cx="100" cy="100" r="5" fill={statusColor} />
-          {/* Value text */}
+          {/* Value text — cap display at limit so gauge never shows "6 out of 5" */}
           <text x="100" y="82" textAnchor="middle" fill={statusColor} fontSize="22" fontWeight="bold">
-            {value}
+            {value > limit ? limit : value}
           </text>
           <text x="100" y="96" textAnchor="middle" fill="#94a3b8" fontSize="10">
             {unit}
@@ -210,11 +210,11 @@ export default function RiskAppetitePage() {
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
         {[
           { label: 'Total Customers', value: formatNumber(summary.total_customers), icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', href: '/customers' },
-          { label: 'High Risk', value: formatNumber(summary.high_risk_customers), icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', href: '/customers?risk_category=high' },
-          { label: 'PEP Customers', value: formatNumber(summary.pep_count), icon: Shield, color: 'text-purple-600', bg: 'bg-purple-50', href: '/customers?search=PEP' },
-          { label: 'Open Alerts', value: formatNumber(summary.open_alerts), icon: TrendingUp, color: 'text-amber-600', bg: 'bg-amber-50', href: '/alerts?status=new' },
+          { label: 'High Risk', value: formatNumber(summary.high_risk_customers), icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', href: '/customers?risk_category=high,very_high' },
+          { label: 'PEP Customers', value: formatNumber(summary.pep_count), icon: Shield, color: 'text-purple-600', bg: 'bg-purple-50', href: '/customers?pep=true' },
+          { label: 'Open Alerts', value: formatNumber(summary.open_alerts), icon: TrendingUp, color: 'text-amber-600', bg: 'bg-amber-50', href: '/alerts?status=new,assigned,under_review,escalated' },
           { label: 'Overdue Alerts', value: formatNumber(summary.overdue_alerts), icon: Timer, color: 'text-red-600', bg: 'bg-red-50', href: '/sla-burndown' },
-          { label: 'Open Cases', value: formatNumber(summary.open_cases), icon: Gauge, color: 'text-blue-600', bg: 'bg-blue-50', href: '/cases?status=under_investigation' },
+          { label: 'Open Cases', value: formatNumber(summary.open_cases), icon: Gauge, color: 'text-blue-600', bg: 'bg-blue-50', href: '/cases?status=open,assigned,under_investigation,escalated' },
         ].map(s => (
           <Link key={s.label} to={s.href} className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 hover:shadow-md hover:border-blue-300 transition-all">
             <div className="flex items-center gap-2">

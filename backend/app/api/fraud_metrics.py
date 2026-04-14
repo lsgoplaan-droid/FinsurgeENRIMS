@@ -22,18 +22,22 @@ def fraud_summary(db: Session = Depends(get_db), current_user: User = Depends(ge
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     quarter_start = now.replace(month=((now.month - 1) // 3) * 3 + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    # Fraud loss (from flagged transactions)
-    total_flagged_amount = db.query(func.sum(Transaction.amount)).filter(Transaction.is_flagged == True).scalar() or 0
-    monthly_flagged = db.query(func.sum(Transaction.amount)).filter(
-        Transaction.is_flagged == True, Transaction.transaction_date >= month_start
-    ).scalar() or 0
-    quarterly_flagged = db.query(func.sum(Transaction.amount)).filter(
-        Transaction.is_flagged == True, Transaction.transaction_date >= quarter_start
-    ).scalar() or 0
+    # Fraud loss — gross total of confirmed cases (true_positive + recovered both count as confirmed fraud)
+    confirmed_dispositions = ["true_positive", "recovered"]
+    tp_cases = db.query(Case).filter(Case.disposition.in_(confirmed_dispositions)).all()
+    total_confirmed_loss = sum(c.total_suspicious_amount or 0 for c in tp_cases)
+    monthly_confirmed_loss = sum(
+        c.total_suspicious_amount or 0 for c in tp_cases
+        if c.created_at and c.created_at >= month_start
+    )
+    quarterly_confirmed_loss = sum(
+        c.total_suspicious_amount or 0 for c in tp_cases
+        if c.created_at and c.created_at >= quarter_start
+    )
 
-    # Recovery (true positive cases with disposition)
-    tp_cases = db.query(Case).filter(Case.disposition == "true_positive").all()
-    recovered_amount = sum(c.total_suspicious_amount or 0 for c in tp_cases) * 42 // 100  # ~42% recovery rate
+    # Recovery — cases marked recovered (a subset of confirmed fraud, so rate stays ≤ 100%)
+    recovered_cases = [c for c in tp_cases if c.disposition == "recovered"]
+    recovered_amount = sum(c.total_suspicious_amount or 0 for c in recovered_cases)
 
     # Alert performance
     total_alerts = db.query(func.count(Alert.id)).scalar() or 1
@@ -79,13 +83,13 @@ def fraud_summary(db: Session = Depends(get_db), current_user: User = Depends(ge
 
     return {
         "fraud_loss": {
-            "total": total_flagged_amount,
-            "monthly": monthly_flagged,
-            "quarterly": quarterly_flagged,
+            "total": total_confirmed_loss,
+            "monthly": monthly_confirmed_loss,
+            "quarterly": quarterly_confirmed_loss,
         },
         "recovery": {
             "amount": recovered_amount,
-            "rate": 42.0,
+            "rate": round(recovered_amount / total_confirmed_loss * 100, 1) if total_confirmed_loss > 0 else 0.0,
         },
         "alert_performance": {
             "total_alerts": total_alerts,

@@ -55,14 +55,13 @@ export default function InvestigationCopilotPage() {
     Promise.all([
       api.get(`/customers/${customerId}`).catch(() => ({ data: null })),
       api.get(`/alerts`, { params: { customer_id: customerId, page_size: 20 } }).catch(() => ({ data: { items: [] } })),
-      api.get(`/ai-agent/analyze/${alert.id}`).catch(() => ({ data: null })),
       api.get(`/cases`, { params: { customer_id: customerId, page_size: 10 } }).catch(() => ({ data: { items: [] } })),
-      api.get(`/audit-logs`, { params: { resource_id: customerId, page_size: 20 } }).catch(() => ({ data: { items: [] } })),
+      api.get(`/audit-trail/entries`, { params: { resource_id: alert.id, page_size: 20 } }).catch(() => ({ data: { items: [] } })),
     ])
-      .then(([customerRes, alertsRes, aiRes, casesRes, auditRes]) => {
+      .then(([customerRes, alertsRes, casesRes, auditRes]) => {
         const customer = customerRes.data
         const relatedAlerts = (alertsRes.data?.items || alertsRes.data?.alerts || []).filter((a: any) => a.id !== alert.id)
-        const aiAnalysis = aiRes.data
+        const aiAnalysis = null
         const cases = casesRes.data?.items || casesRes.data?.cases || []
         const auditLogs = auditRes.data?.items || auditRes.data?.audit_logs || []
 
@@ -297,7 +296,7 @@ export default function InvestigationCopilotPage() {
                       >
                         <div className="flex items-center gap-2 justify-center">
                           <div className={`text-2xl font-bold ${analysis.score >= 70 ? 'text-red-600' : analysis.score >= 40 ? 'text-amber-600' : 'text-green-600'}`}>
-                            {analysis.score}
+                            {analysis.score.toFixed(2)}
                           </div>
                           <HelpCircle size={16} className="text-slate-400" />
                         </div>

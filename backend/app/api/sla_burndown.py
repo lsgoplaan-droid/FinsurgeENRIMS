@@ -175,7 +175,8 @@ def sla_stats(
         ~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"])
     ).scalar() or 0
     breached_alerts = db.query(func.count(Alert.id)).filter(
-        Alert.is_overdue == True,
+        Alert.sla_due_at.isnot(None),
+        Alert.sla_due_at < now,
         ~Alert.status.in_(["closed_true_positive", "closed_false_positive", "closed_inconclusive"]),
     ).scalar() or 0
     sla_alerts_with_due = db.query(func.count(Alert.id)).filter(
@@ -188,7 +189,8 @@ def sla_stats(
         Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"])
     ).scalar() or 0
     breached_cases = db.query(func.count(Case.id)).filter(
-        Case.is_overdue == True,
+        Case.sla_due_at.isnot(None),
+        Case.sla_due_at < now,
         Case.status.in_(["assigned", "under_investigation", "escalated", "open", "pending_regulatory", "new"]),
     ).scalar() or 0
 

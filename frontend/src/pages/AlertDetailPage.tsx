@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft, UserPlus, AlertTriangle, XCircle, Send, Clock, User, History, HelpCircle } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDateTime, timeAgo, priorityColors, statusColors } from '../utils/formatters'
@@ -11,6 +11,7 @@ const Badge = ({ text, colors }: { text: string; colors: string }) => (
 
 export default function AlertDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [alert, setAlert] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -87,9 +88,9 @@ export default function AlertDetailPage() {
   return (
     <div className="space-y-6">
       {/* Back link */}
-      <Link to="/alerts" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors">
-        <ArrowLeft size={16} /> Back to Alerts
-      </Link>
+      <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors">
+        <ArrowLeft size={16} /> Back
+      </button>
 
       {/* Header */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">

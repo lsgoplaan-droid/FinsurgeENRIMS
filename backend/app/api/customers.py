@@ -93,6 +93,7 @@ def list_customers(
     kyc_status: str = Query(None),
     customer_type: str = Query(None),
     state: str = Query(None),
+    pep_status: bool = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -126,6 +127,8 @@ def list_customers(
         query = query.filter(Customer.customer_type == customer_type)
     if state:
         query = query.filter(Customer.state == state)
+    if pep_status is not None:
+        query = query.filter(Customer.pep_status == pep_status)
 
     total = query.count()
     customers = query.order_by(Customer.risk_score.desc()).offset((page - 1) * page_size).limit(page_size).all()

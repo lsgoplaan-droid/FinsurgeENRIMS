@@ -33,6 +33,8 @@ from app.models import (
     EmployeeActivity,
     PoliceFIR, FIRActivity,
     NotificationRule, NotificationLog,
+    SMSApproval,
+    UBORecord,
 )
 
 NOW = datetime.utcnow()
@@ -903,10 +905,12 @@ def seed_alerts(db: Session, customers: list, rules: list, user_map: dict) -> li
         [("assigned", 35)] +
         [("under_review", 25)] +
         [("escalated", 15)] +
-        [("closed_true_positive", 20)] +
-        [("closed_false_positive", 15)] +
+        [("closed_true_positive", 40)] +   # raised: drives alert accuracy up to ~89%
+        [("closed_false_positive", 5)] +   # lowered: fewer FP → high accuracy
         [("closed_inconclusive", 10)]
     )
+
+    OPEN_STATUSES = {"new", "assigned", "under_review", "escalated"}
 
     alert_counter = 1
     for status, count in statuses:
@@ -920,8 +924,17 @@ def seed_alerts(db: Session, customers: list, rules: list, user_map: dict) -> li
             alert_counter += 1
 
             sla_hours = {"critical": 4, "high": 24, "medium": 72, "low": 168}.get(priority, 72)
-            sla_due = dt + timedelta(hours=sla_hours)
-            is_overdue = NOW > sla_due and status not in ("closed_true_positive", "closed_false_positive", "closed_inconclusive")
+            if status in OPEN_STATUSES:
+                # ~12% of open alerts are overdue → ~88% SLA compliance rate
+                if random.random() < 0.12:
+                    sla_due = NOW - timedelta(hours=random.uniform(1, 36))
+                    is_overdue = True
+                else:
+                    sla_due = NOW + timedelta(hours=random.uniform(sla_hours * 0.3, sla_hours * 1.8))
+                    is_overdue = False
+            else:
+                sla_due = dt + timedelta(hours=sla_hours)
+                is_overdue = False  # closed alerts don't count as overdue
 
             assigned_to = None
             assigned_at = None
@@ -972,14 +985,21 @@ def seed_cases(db: Session, customers: list, alerts: list, user_map: dict) -> li
 
     high_risk = [c for c in customers if c.risk_category in ("high", "very_high")]
 
+    # (status, count, disposition_override)
+    # "recovered" cases: status=closed_true_positive but money was clawed back
     case_configs = [
-        ("open", 5), ("assigned", 4), ("under_investigation", 5),
-        ("escalated", 3), ("pending_regulatory", 2),
-        ("closed_true_positive", 4), ("closed_false_positive", 2),
+        ("open", 5, None),
+        ("assigned", 4, None),
+        ("under_investigation", 5, None),
+        ("escalated", 3, None),
+        ("pending_regulatory", 2, None),
+        ("closed_true_positive", 5, "true_positive"),
+        ("closed_true_positive", 3, "recovered"),   # confirmed fraud where funds recovered
+        ("closed_false_positive", 2, "false_positive"),
     ]
 
     case_counter = 1
-    for status, count in case_configs:
+    for status, count, disposition_override in case_configs:
         for i in range(count):
             customer = random.choice(high_risk)
             dt = _random_date(60, 0)
@@ -993,6 +1013,20 @@ def seed_cases(db: Session, customers: list, alerts: list, user_map: dict) -> li
             if status != "open":
                 assigned_to = random.choice([investigator] + analysts).id
 
+            # Open/active cases: SLA due in the future; ~15% breached for realism
+            is_closed = status in ("closed_true_positive", "closed_false_positive", "closed_inconclusive")
+            if is_closed:
+                sla_due_at = dt + timedelta(days=30)
+                is_overdue = False
+            elif random.random() < 0.15:
+                sla_due_at = NOW - timedelta(days=random.uniform(1, 10))
+                is_overdue = True
+            else:
+                sla_due_at = NOW + timedelta(days=random.uniform(3, 25))
+                is_overdue = False
+
+            disposition = disposition_override
+
             c = Case(
                 id=_uid(),
                 case_number=case_num,
@@ -1004,9 +1038,9 @@ def seed_cases(db: Session, customers: list, alerts: list, user_map: dict) -> li
                 customer_id=customer.id,
                 assigned_to=assigned_to,
                 assigned_at=dt + timedelta(hours=2) if assigned_to else None,
-                sla_due_at=dt + timedelta(days=30),
-                is_overdue=random.random() < 0.2,
-                disposition="true_positive" if status == "closed_true_positive" else "false_positive" if status == "closed_false_positive" else None,
+                sla_due_at=sla_due_at,
+                is_overdue=is_overdue,
+                disposition=disposition,
                 total_suspicious_amount=random.randint(500000_00, 50000000_00),
                 regulatory_filed=status == "pending_regulatory",
                 created_at=dt,
@@ -1450,7 +1484,7 @@ def seed_police_firs(db: Session, cases, user_map):
     fir_data = []
 
     # Create FIRs for first 8 cases (confirmed fraud cases)
-    fraud_cases = [c for c in cases if c.disposition == "true_positive" or c.status in ("under_investigation", "escalated")][:8]
+    fraud_cases = [c for c in cases if c.disposition in ("true_positive", "recovered") or c.status in ("under_investigation", "escalated")][:8]
     if not fraud_cases:
         fraud_cases = cases[:5]
 
@@ -1888,6 +1922,312 @@ def seed_notification_rules(db: Session):
     db.flush()
 
 
+def seed_sms_approvals(db: Session, customers: list, acct_map: dict, user_map: dict):
+    """Seed SMS approval records for high-value transfer OTP flows."""
+    import hashlib
+
+    analysts = [u for u in user_map.values() if u.username not in ("admin", "cro")]
+    reviewer = user_map.get("analyst1") or analysts[0]
+
+    # High-value transfer scenarios — realistic Indian banking amounts (in paise)
+    scenarios = [
+        # (amount_paise, label, transfer_type)
+        (500_000_00, "₹5,00,000 RTGS transfer to vendor account", "RTGS"),
+        (1_000_000_00, "₹10,00,000 NEFT bulk payment", "NEFT"),
+        (250_000_00, "₹2,50,000 IMPS corporate payout", "IMPS"),
+        (750_000_00, "₹7,50,000 SWIFT outward remittance", "SWIFT"),
+        (200_000_00, "₹2,00,000 online fund transfer", "NEFT"),
+        (3_000_000_00, "₹30,00,000 real estate payment", "RTGS"),
+        (150_000_00, "₹1,50,000 tax payment", "NEFT"),
+        (450_000_00, "₹4,50,000 international wire", "SWIFT"),
+        (100_000_00, "₹1,00,000 supplier payment", "IMPS"),
+        (600_000_00, "₹6,00,000 loan repayment", "NEFT"),
+        (800_000_00, "₹8,00,000 investment transfer", "RTGS"),
+        (175_000_00, "₹1,75,000 trade settlement", "NEFT"),
+        (2_500_000_00, "₹25,00,000 property advance", "RTGS"),
+        (350_000_00, "₹3,50,000 overseas education fee", "SWIFT"),
+        (125_000_00, "₹1,25,000 insurance premium", "NEFT"),
+        (950_000_00, "₹9,50,000 share purchase transfer", "RTGS"),
+        (220_000_00, "₹2,20,000 bulk salary disbursement", "NEFT"),
+        (480_000_00, "₹4,80,000 FD premature closure", "NEFT"),
+        (1_500_000_00, "₹15,00,000 capital investment", "RTGS"),
+        (300_000_00, "₹3,00,000 consultant fee payment", "IMPS"),
+    ]
+
+    # Use high/medium risk customers for more interesting data
+    priority_customers = [c for c in customers if c.risk_category in ("high", "very_high", "medium")]
+    other_customers = [c for c in customers if c.risk_category == "low"]
+    pool = (priority_customers * 2 + other_customers)[:len(scenarios)]
+    random.shuffle(pool)
+
+    # Second-level FRIMS approval threshold: INR 10 lakh (1_000_000_00 paise)
+    FRIMS_THRESHOLD = 1_000_000_00
+
+    # Status distribution: 40% pending, 30% approved, 20% rejected, 10% expired
+    status_weights = (
+        ["pending"] * 8 +
+        ["approved"] * 6 +
+        ["rejected"] * 4 +
+        ["expired"] * 2
+    )
+
+    # FRIMS approval distribution for very-high-value approved records:
+    # some already FRIMS-approved, some still pending FRIMS, one rejected by FRIMS
+    frims_status_cycle = ["pending", "pending", "approved", "approved", "approved", "rejected"]
+
+    frims_idx = 0
+    created = []
+    for i, (amount, label, txn_type) in enumerate(scenarios):
+        cust = pool[i % len(pool)]
+        accts = acct_map.get(cust.id, [])
+        if not accts:
+            continue
+        acct = accts[0]
+
+        status = status_weights[i % len(status_weights)]
+        otp_value = f"{random.randint(100000, 999999)}"
+        otp_hash = hashlib.sha256(otp_value.encode()).hexdigest()
+
+        # Created between 1 and 45 days ago
+        created_at = NOW - timedelta(days=random.uniform(0.5, 45), hours=random.uniform(0, 23))
+
+        if status == "pending":
+            otp_expires = NOW + timedelta(minutes=random.randint(2, 10))
+            resolved_at = None
+            resolved_by = None
+            rejection_reason = None
+            attempts = random.randint(0, 2)
+        elif status == "approved":
+            otp_expires = created_at + timedelta(minutes=10)
+            resolved_at = created_at + timedelta(minutes=random.uniform(1, 8))
+            resolved_by = "customer"   # OTP verified by customer on their device
+            rejection_reason = None
+            attempts = 1
+        elif status == "rejected":
+            otp_expires = created_at + timedelta(minutes=10)
+            resolved_at = created_at + timedelta(minutes=random.uniform(0.5, 9))
+            resolved_by = "customer"   # customer declined on their device
+            rejection_reason = random.choice([
+                "Customer cancelled transfer",
+                "Unrecognised beneficiary — declined by customer",
+                "Amount does not match customer expectation",
+                "Customer requested cancellation",
+                "Transaction not initiated by customer",
+            ])
+            attempts = random.randint(1, 3)
+        else:  # expired
+            otp_expires = created_at + timedelta(minutes=10)
+            resolved_at = None
+            resolved_by = None
+            rejection_reason = None
+            attempts = random.randint(0, 3)
+
+        # FRIMS second-level approval — only for very high value
+        frims_required = amount >= FRIMS_THRESHOLD
+        frims_status = None
+        frims_approved_by = None
+        frims_approved_at = None
+        frims_rejection_reason = None
+
+        if frims_required and status == "approved":
+            # Rotate through: pending FRIMS, FRIMS approved, FRIMS rejected
+            fs = frims_status_cycle[frims_idx % len(frims_status_cycle)]
+            frims_idx += 1
+            frims_status = fs
+            if fs == "approved":
+                frims_approved_by = reviewer.username
+                frims_approved_at = resolved_at + timedelta(hours=random.uniform(0.5, 4))
+            elif fs == "rejected":
+                frims_approved_by = reviewer.username
+                frims_approved_at = resolved_at + timedelta(hours=random.uniform(0.5, 2))
+                frims_rejection_reason = random.choice([
+                    "Beneficiary flagged in internal watchlist",
+                    "Transaction pattern inconsistent with customer profile",
+                    "Destination jurisdiction under enhanced monitoring",
+                    "AML alert triggered — manual review required",
+                ])
+        elif frims_required and status in ("pending", "expired"):
+            # Customer hasn't approved yet — FRIMS action not yet applicable
+            frims_status = None
+
+        txn_ref = f"TXN{random.randint(10000000, 99999999)}"
+        first_name = (cust.first_name or cust.last_name or "Customer").split()[0]
+        amount_inr = amount / 100
+        sms_text = (
+            f"Dear {first_name}, OTP for {txn_type} of "
+            f"INR {amount_inr:,.2f} to account ending "
+            f"XXXX{random.randint(1000, 9999)} is {otp_value}. "
+            f"Valid 10 mins. Do NOT share. -FinsurgeFRIMS"
+        )
+
+        sms = SMSApproval(
+            id=_uid(),
+            transaction_id=None,
+            transaction_ref=txn_ref,
+            account_id=acct.id,
+            customer_id=cust.id,
+            phone_number=cust.phone,
+            amount=amount,
+            otp_hash=otp_hash,
+            otp_expires_at=otp_expires,
+            status=status,
+            attempts=attempts,
+            sms_content=sms_text,
+            sms_sent_at=created_at,
+            resolved_at=resolved_at,
+            resolved_by=resolved_by,
+            rejection_reason=rejection_reason,
+            otp_demo=otp_value,
+            created_at=created_at,
+            frims_approval_required=frims_required,
+            frims_approval_status=frims_status,
+            frims_approved_by=frims_approved_by,
+            frims_approved_at=frims_approved_at,
+            frims_rejection_reason=frims_rejection_reason,
+        )
+        db.add(sms)
+        created.append(sms)
+
+    # ── Explicit FRIMS demo records (fixed, easy to spot in UI) ──────────────
+    # Pick named customers: Rajesh Mehta (high-risk), Hassan Trading (layering)
+    rajesh = next((c for c in customers if "Rajesh" in (c.full_name or "")), pool[0])
+    hassan = next((c for c in customers if "Hassan" in (c.full_name or "")), pool[1])
+    ananya = next((c for c in customers if "Ananya" in (c.full_name or "")), pool[2] if len(pool) > 2 else pool[0])
+    frims_officer = user_map.get("compliance_officer") or reviewer
+
+    def _acct(c):
+        a = acct_map.get(c.id, [])
+        return a[0] if a else accts[0]
+
+    frims_demos = [
+        # 1. Awaiting FRIMS — customer OTP still pending, FRIMS can act now
+        dict(
+            customer=rajesh, amount=1_500_000_00,
+            label="₹15,00,000 RTGS — Rajesh Mehta → Offshore vendor",
+            txn_type="RTGS",
+            cust_status="pending",
+            otp_expires=NOW + timedelta(minutes=7),
+            resolved_at=None, resolved_by=None, rejection_reason=None, attempts=1,
+            frims_status=None, frims_by=None, frims_at=None, frims_reason=None,
+            created_ago=timedelta(minutes=12),
+        ),
+        # 2. Awaiting FRIMS — customer approved OTP, FRIMS yet to act
+        dict(
+            customer=hassan, amount=2_500_000_00,
+            label="₹25,00,000 SWIFT — Hassan Trading → Dubai entity",
+            txn_type="SWIFT",
+            cust_status="approved",
+            otp_expires=NOW - timedelta(minutes=5),
+            resolved_at=NOW - timedelta(hours=1, minutes=20),
+            resolved_by="customer", rejection_reason=None, attempts=1,
+            frims_status=None, frims_by=None, frims_at=None, frims_reason=None,
+            created_ago=timedelta(hours=2),
+        ),
+        # 3. FRIMS Approved — customer OTP approved, FRIMS cleared it
+        dict(
+            customer=ananya, amount=1_200_000_00,
+            label="₹12,00,000 NEFT — Ananya Sharma → Property developer",
+            txn_type="NEFT",
+            cust_status="approved",
+            otp_expires=NOW - timedelta(hours=3),
+            resolved_at=NOW - timedelta(hours=4),
+            resolved_by="customer", rejection_reason=None, attempts=1,
+            frims_status="approved", frims_by=frims_officer.username,
+            frims_at=NOW - timedelta(hours=3, minutes=30), frims_reason=None,
+            created_ago=timedelta(hours=5),
+        ),
+        # 4. FRIMS Approved — high corporate RTGS, cleared by FRIMS
+        dict(
+            customer=rajesh, amount=5_000_000_00,
+            label="₹50,00,000 RTGS — Rajesh Mehta → Equity fund",
+            txn_type="RTGS",
+            cust_status="approved",
+            otp_expires=NOW - timedelta(days=2),
+            resolved_at=NOW - timedelta(days=2, hours=1),
+            resolved_by="customer", rejection_reason=None, attempts=1,
+            frims_status="approved", frims_by=frims_officer.username,
+            frims_at=NOW - timedelta(days=2), frims_reason=None,
+            created_ago=timedelta(days=2, hours=3),
+        ),
+        # 5. FRIMS Rejected — watchlist hit, FRIMS overruled customer OTP
+        dict(
+            customer=hassan, amount=3_000_000_00,
+            label="₹30,00,000 SWIFT — Hassan Trading → Shell entity (flagged)",
+            txn_type="SWIFT",
+            cust_status="rejected",
+            otp_expires=NOW - timedelta(hours=6),
+            resolved_at=NOW - timedelta(hours=5, minutes=40),
+            resolved_by=frims_officer.username,
+            rejection_reason="Beneficiary flagged in OFAC SDN list — FRIMS rejected",
+            attempts=1,
+            frims_status="rejected", frims_by=frims_officer.username,
+            frims_at=NOW - timedelta(hours=5, minutes=40),
+            frims_reason="Beneficiary flagged in OFAC SDN list — transaction reversed",
+            created_ago=timedelta(hours=7),
+        ),
+        # 6. FRIMS Rejected — AML alert, amount pattern suspicious
+        dict(
+            customer=ananya, amount=1_800_000_00,
+            label="₹18,00,000 NEFT — Ananya Sharma → Unverified account",
+            txn_type="NEFT",
+            cust_status="rejected",
+            otp_expires=NOW - timedelta(days=1),
+            resolved_at=NOW - timedelta(days=1, hours=1),
+            resolved_by=frims_officer.username,
+            rejection_reason="Transaction pattern inconsistent with customer profile — AML hold",
+            attempts=2,
+            frims_status="rejected", frims_by=frims_officer.username,
+            frims_at=NOW - timedelta(days=1),
+            frims_reason="Transaction pattern inconsistent with customer profile — AML hold",
+            created_ago=timedelta(days=1, hours=2),
+        ),
+    ]
+
+    for d in frims_demos:
+        cust = d["customer"]
+        acct = _acct(cust)
+        otp_val = f"{random.randint(100000, 999999)}"
+        otp_hash = hashlib.sha256(otp_val.encode()).hexdigest()
+        created_at = NOW - d["created_ago"]
+        first_name = (cust.first_name or cust.full_name or "Customer").split()[0]
+        amount_inr = d["amount"] / 100
+        sms_text = (
+            f"Dear {first_name}, OTP for {d['txn_type']} of "
+            f"INR {amount_inr:,.2f} is {otp_val}. "
+            f"Valid 10 mins. Do NOT share. -FinsurgeFRIMS"
+        )
+        sms = SMSApproval(
+            id=_uid(),
+            transaction_id=None,
+            transaction_ref=f"TXN{random.randint(10000000, 99999999)}",
+            account_id=acct.id,
+            customer_id=cust.id,
+            phone_number=cust.phone,
+            amount=d["amount"],
+            otp_hash=otp_hash,
+            otp_expires_at=d["otp_expires"],
+            status=d["cust_status"],
+            attempts=d["attempts"],
+            sms_content=sms_text,
+            sms_sent_at=created_at,
+            resolved_at=d["resolved_at"],
+            resolved_by=d["resolved_by"],
+            rejection_reason=d["rejection_reason"],
+            otp_demo=otp_val,
+            created_at=created_at,
+            frims_approval_required=True,
+            frims_approval_status=d["frims_status"],
+            frims_approved_by=d["frims_by"],
+            frims_approved_at=d["frims_at"],
+            frims_rejection_reason=d["frims_reason"],
+        )
+        db.add(sms)
+        created.append(sms)
+
+    db.flush()
+    return created
+
+
 def seed_audit_trail(db: Session, customers: list, alerts: list, cases: list, user_map: dict):
     """Seed audit trail entries for customers, alerts, and cases."""
     NOW = datetime.utcnow()
@@ -2244,6 +2584,122 @@ def seed_corporate_group(db: Session, user_map: dict):
     db.flush()
 
 
+def seed_ubo_records(db: Session, customers: list):
+    """Seed UBO records for corporate customers (FATF R.24 / RBI KYC Master Direction 2023)."""
+    corporate_customers = [c for c in customers if c.customer_type == "corporate"]
+
+    # Also pick up corporate customers added by seed_corporate_group (CIF-8000/8001/8002)
+    from app.models import Customer as CustomerModel
+    db_corporates = db.query(CustomerModel).filter(CustomerModel.customer_type == "corporate").all()
+    seen_ids = {c.id for c in corporate_customers}
+    for c in db_corporates:
+        if c.id not in seen_ids:
+            corporate_customers.append(c)
+            seen_ids.add(c.id)
+
+    # UBO data keyed by company name pattern (partial match)
+    ubo_templates = {
+        "Vikram Enterprises": [
+            {"ubo_name": "Vikram Malhotra", "ownership_percentage": 51.0, "nationality": "IN",
+             "date_of_birth": date(1968, 3, 22), "id_type": "pan", "id_number": "ABCVM1234K",
+             "relationship_type": "promoter", "verified": True},
+            {"ubo_name": "Sunita Malhotra", "ownership_percentage": 26.0, "nationality": "IN",
+             "date_of_birth": date(1971, 8, 14), "id_type": "pan", "id_number": "ABCSM5678L",
+             "relationship_type": "director", "verified": True},
+            {"ubo_name": "Rahul Malhotra", "ownership_percentage": 23.0, "nationality": "IN",
+             "date_of_birth": date(1995, 11, 5), "id_type": "pan", "id_number": "ABCRM9012M",
+             "relationship_type": "shareholder", "verified": False},
+        ],
+        "Diamond Star Jewellers": [
+            {"ubo_name": "Hasmukh Mehta", "ownership_percentage": 60.0, "nationality": "IN",
+             "date_of_birth": date(1955, 6, 1), "id_type": "pan", "id_number": "AAAHM4321Z",
+             "relationship_type": "promoter", "verified": True},
+            {"ubo_name": "Kokila Mehta", "ownership_percentage": 25.0, "nationality": "IN",
+             "date_of_birth": date(1960, 12, 19), "id_type": "pan", "id_number": "AAAKM8765Y",
+             "relationship_type": "director", "verified": True},
+            {"ubo_name": "Nirav Mehta", "ownership_percentage": 15.0, "nationality": "IN",
+             "date_of_birth": date(1988, 4, 30), "id_type": "passport", "id_number": "J8801234",
+             "relationship_type": "shareholder", "verified": False},
+        ],
+        "Zenith Capital Holdings": [
+            {"ubo_name": "Vikram Patel", "ownership_percentage": 55.0, "nationality": "IN",
+             "date_of_birth": date(1972, 5, 15), "id_type": "pan", "id_number": "ABCDE1234F",
+             "relationship_type": "promoter", "verified": True},
+            {"ubo_name": "Meenakshi Patel", "ownership_percentage": 30.0, "nationality": "IN",
+             "date_of_birth": date(1975, 9, 28), "id_type": "pan", "id_number": "ABCMP4321G",
+             "relationship_type": "director", "verified": True},
+            {"ubo_name": "Aryan Ventures LLP", "ownership_percentage": 15.0, "nationality": "IN",
+             "date_of_birth": None, "id_type": "cin", "id_number": "AAA-1234",
+             "relationship_type": "shareholder", "verified": False},
+        ],
+        "Zenith Manufacturing": [
+            {"ubo_name": "Vikram Patel", "ownership_percentage": 55.0, "nationality": "IN",
+             "date_of_birth": date(1972, 5, 15), "id_type": "pan", "id_number": "ABCDE1234F",
+             "relationship_type": "promoter", "verified": True},
+            {"ubo_name": "Rajesh Iyer", "ownership_percentage": 30.0, "nationality": "IN",
+             "date_of_birth": date(1969, 7, 11), "id_type": "pan", "id_number": "AACRI7654H",
+             "relationship_type": "director", "verified": True},
+            {"ubo_name": "Global Funds Mauritius", "ownership_percentage": 15.0, "nationality": "MU",
+             "date_of_birth": None, "id_type": "cin", "id_number": "GFM-20190023",
+             "relationship_type": "shareholder", "verified": False},
+        ],
+        "Zenith Properties": [
+            {"ubo_name": "Vikram Patel", "ownership_percentage": 51.0, "nationality": "IN",
+             "date_of_birth": date(1972, 5, 15), "id_type": "pan", "id_number": "ABCDE1234F",
+             "relationship_type": "promoter", "verified": True},
+            {"ubo_name": "Sushma Rao", "ownership_percentage": 26.0, "nationality": "IN",
+             "date_of_birth": date(1978, 2, 17), "id_type": "pan", "id_number": "AACSR3210J",
+             "relationship_type": "director", "verified": True},
+            {"ubo_name": "Zenith Capital Holdings Ltd.", "ownership_percentage": 23.0, "nationality": "IN",
+             "date_of_birth": None, "id_type": "cin", "id_number": "L65100MH2010PLC201234",
+             "relationship_type": "shareholder", "verified": True},
+        ],
+    }
+
+    # Default template for any corporate not matched above
+    default_template = [
+        {"ubo_name": "Suresh Agarwal", "ownership_percentage": 51.0, "nationality": "IN",
+         "date_of_birth": date(1965, 4, 10), "id_type": "pan", "id_number": "AACSA1111B",
+         "relationship_type": "promoter", "verified": True},
+        {"ubo_name": "Priya Agarwal", "ownership_percentage": 26.0, "nationality": "IN",
+         "date_of_birth": date(1968, 10, 25), "id_type": "pan", "id_number": "AACPA2222C",
+         "relationship_type": "director", "verified": False},
+        {"ubo_name": "SBF Investments Pvt Ltd", "ownership_percentage": 23.0, "nationality": "IN",
+         "date_of_birth": None, "id_type": "cin", "id_number": "U65100KA2015PTC080123",
+         "relationship_type": "shareholder", "verified": False},
+    ]
+
+    count = 0
+    for customer in corporate_customers:
+        company = customer.company_name or customer.full_name or ""
+        template = default_template
+        for key, tmpl in ubo_templates.items():
+            if key.lower() in company.lower():
+                template = tmpl
+                break
+
+        for t in template:
+            verified_at = NOW - timedelta(days=random.randint(30, 180)) if t["verified"] else None
+            record = UBORecord(
+                customer_id=customer.id,
+                ubo_name=t["ubo_name"],
+                ownership_percentage=t["ownership_percentage"],
+                nationality=t["nationality"],
+                date_of_birth=t["date_of_birth"],
+                id_type=t["id_type"],
+                id_number=t["id_number"],
+                relationship_type=t["relationship_type"],
+                verified=t["verified"],
+                verified_at=verified_at,
+                created_at=NOW - timedelta(days=random.randint(60, 365)),
+            )
+            db.add(record)
+            count += 1
+
+    db.flush()
+    print(f"    Created {count} UBO records for {len(corporate_customers)} corporate customers")
+
+
 # ─── Master Seeder ──────────────────────────────────────────────────────────
 
 def seed_all(db: Session):
@@ -2309,6 +2765,16 @@ def seed_all(db: Session):
 
     print("  Seeding corporate group structure...")
     seed_corporate_group(db, user_map)
+    db.commit()
+
+    print("  Seeding UBO records...")
+    seed_ubo_records(db, customers)
+    db.commit()
+
+    print("  Seeding SMS approvals...")
+    sms_approvals = seed_sms_approvals(db, customers, acct_map, user_map)
+    print(f"    Created {len(sms_approvals)} SMS approval records")
+    db.commit()
 
     print("  Seeding audit trail...")
     seed_audit_trail(db, customers, alerts, cases, user_map)

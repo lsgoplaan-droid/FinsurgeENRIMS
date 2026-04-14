@@ -325,7 +325,13 @@ export default function DashboardPage() {
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-xs font-semibold text-slate-700">{s.state}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-500">{s.customers} customers</span>
+                          <Link
+                            to={`/customers?state=${encodeURIComponent(s.state)}`}
+                            onClick={e => e.stopPropagation()}
+                            className="text-xs text-blue-600 hover:underline font-medium"
+                          >
+                            {s.customers} customers
+                          </Link>
                           <span className="text-xs font-bold" style={{ color: barColor }}>{s.avg_risk}</span>
                         </div>
                       </div>
@@ -336,8 +342,8 @@ export default function DashboardPage() {
                         />
                       </div>
                       <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-400">
-                        <span>{s.high_risk_count} very high risk</span>
-                        <span>{s.open_alerts} open alerts</span>
+                        <Link to={`/customers?state=${encodeURIComponent(s.state)}&risk_category=very_high`} onClick={e => e.stopPropagation()} className="hover:text-red-600 hover:underline">{s.high_risk_count} very high risk</Link>
+                        <Link to={`/alerts?state=${encodeURIComponent(s.state)}`} onClick={e => e.stopPropagation()} className="hover:text-amber-600 hover:underline">{s.open_alerts} open alerts</Link>
                         {s.flagged_amount > 0 && <span>{formatINR(s.flagged_amount)} flagged</span>}
                       </div>
                     </div>
@@ -380,7 +386,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-4 pt-2 border-t border-slate-100 text-xs text-slate-500">
                 <span><strong>{geoRisk.summary.total_states}</strong> states</span>
                 <span><strong>{geoRisk.summary.total_customers}</strong> customers</span>
-                <span className="text-red-600"><strong>{geoRisk.summary.total_high_risk}</strong> very very high risk</span>
+                <span className="text-red-600"><strong>{geoRisk.summary.total_high_risk}</strong> very high risk</span>
                 <span><strong>{geoRisk.summary.total_open_alerts}</strong> open alerts</span>
               </div>
             </div>
@@ -698,7 +704,7 @@ export default function DashboardPage() {
                           to={`/customers/${c.id}/360`}
                           className="text-blue-600 hover:underline font-medium text-xs"
                         >
-                          {c.full_name || c.customer_number}
+                          {c.name || c.full_name || c.customer_number}
                         </Link>
                       </td>
                       <td className="py-2 px-3">
