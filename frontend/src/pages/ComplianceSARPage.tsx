@@ -62,13 +62,13 @@ Reporting Window: 7 days from transaction date (RMA Rule 14)
 Reported under RMA AML/CFT Rules 2009.
 ================================================================`,
 
-  sar_rbi: `Suspicious Transaction Report (SAR)
+  sar_rbi: `Suspicious Transaction Report (STR)
 ================================================================
 Filed with: Financial Intelligence Unit India (FIU-IND)
 Reference:  RBI Master Direction, PMLA Section 12
 Generated:  12-Apr-2026 10:55 UTC
 
-Report Number:    SAR-20260412-0015
+Report Number:    STR-20260412-0015
 Filing Status:    FILED
 Filed Date:       12-Apr-2026
 Created:          12-Apr-2026 10:55 UTC
@@ -96,7 +96,7 @@ Filed with: Financial Intelligence Unit - Bhutan (FIU-Bhutan)
 Reference:  RMA AML/CFT Rules 2009, Section 11 — 7-day filing
 Generated:  12-Apr-2026 10:55 UTC
 
-Report Number:    SAR-20260412-0015
+Report Number:    STR-20260412-0015
 Filing Status:    FILED
 Filed Date:       12-Apr-2026
 Created:          12-Apr-2026 10:55 UTC
@@ -323,7 +323,7 @@ export default function ComplianceSARPage() {
       setCreateForm({ customer_id: '', suspicious_activity_type: 'structuring', total_amount: '', date_range_start: '', date_range_end: '', narrative: '' })
       loadData()
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Failed to create SAR')
+      alert(e.response?.data?.detail || 'Failed to create STR')
     } finally {
       setCreating(false)
     }
@@ -349,7 +349,7 @@ export default function ComplianceSARPage() {
       await api.delete(`/compliance/filings/sar/${f.id}`)
       loadData()
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Failed to delete SAR')
+      alert(e.response?.data?.detail || 'Failed to delete STR')
     } finally {
       setDeleting(null)
     }
@@ -373,7 +373,7 @@ export default function ComplianceSARPage() {
       setEditModal(null)
       loadData()
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Failed to update SAR')
+      alert(e.response?.data?.detail || 'Failed to update STR')
     } finally {
       setEditing(false)
     }
@@ -381,7 +381,8 @@ export default function ComplianceSARPage() {
 
   const loadFilingDetail = (f: any) => {
     setDetailLoading(true)
-    const filingType = (f.type || f.report_type || 'CTR').toLowerCase()
+    const rawType = (f.type || f.report_type || 'CTR').toLowerCase()
+    const filingType = rawType === 'str' ? 'sar' : rawType
     api.get(`/compliance/filings/${filingType}/${f.id}`)
       .then(res => {
         setDetailModal({ ...res.data, type: filingType, report_number: f.report_number })
@@ -437,10 +438,10 @@ export default function ComplianceSARPage() {
       await api.post(`/compliance/filings/sar/${uploadModal.filing.id}/upload`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      alert('SAR document uploaded successfully')
+      alert('STR document uploaded successfully')
       setUploadModal(null)
     } catch {
-      alert('Failed to upload SAR document')
+      alert('Failed to upload STR document')
     } finally {
       setUploading(false)
     }
@@ -455,8 +456,8 @@ export default function ComplianceSARPage() {
   const recentFilings = data?.recent_filings || data?.filings || []
 
   const filingCards = [
-    { label: "STR"Pending', value: filingStatus.sar_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines?type=sar' },
-    { label: 'STR filed', value: filingStatus.sar_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines?type=sar' },
+    { label: 'STR Pending', value: filingStatus.sar_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines?type=sar' },
+    { label: 'STR Filed', value: filingStatus.sar_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines?type=sar' },
   ]
 
   const complianceCards = [
@@ -501,7 +502,7 @@ export default function ComplianceSARPage() {
                 {detailModal.type === 'ctr' && (
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                     <div>
-                      <p className="text-slate-500 font-medium">Amount (INR)</p>
+                      <p className="text-slate-500 font-medium">Amount (Nu.)</p>
                       <p className="text-slate-800 font-mono">{formatINR(detailModal.amount)}</p>
                     </div>
                     <div>
@@ -510,10 +511,10 @@ export default function ComplianceSARPage() {
                     </div>
                   </div>
                 )}
-                {detailModal.type === 'STR' && (
+                {detailModal.type === 'sar' && (
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                     <div>
-                      <p className="text-slate-500 font-medium">Amount (INR)</p>
+                      <p className="text-slate-500 font-medium">Amount (Nu.)</p>
                       <p className="text-slate-800 font-mono">{formatINR(detailModal.amount)}</p>
                     </div>
                     <div>
@@ -529,7 +530,7 @@ export default function ComplianceSARPage() {
                       <p className="text-slate-800 font-mono">Nu. {(detailModal.amount_nu || 0).toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-slate-500 font-medium">Amount (INR)</p>
+                      <p className="text-slate-500 font-medium">Amount (Nu.)</p>
                       <p className="text-slate-800 font-mono">{formatINR(detailModal.amount)}</p>
                     </div>
                     <div>
@@ -552,18 +553,31 @@ export default function ComplianceSARPage() {
       {previewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-3xl w-full mx-4 my-8">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-800">
-                SAR — {previewModal.format === 'rbi' ? 'RBI (India)' : 'RMA (Bhutan)'}
-              </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-slate-800">STR — Format Preview</h2>
               <button onClick={() => setPreviewModal(null)} className="text-slate-400 hover:text-slate-600">
                 <X size={20} />
+              </button>
+            </div>
+            {/* Format tabs */}
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setPreviewModal({ format: 'rbi' })}
+                className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${previewModal.format === 'rbi' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+              >
+                RBI Format (India)
+              </button>
+              <button
+                onClick={() => setPreviewModal({ format: 'rma' })}
+                className={`px-4 py-1.5 text-sm font-medium rounded-lg border transition-colors ${previewModal.format === 'rma' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+              >
+                RMA Format (Bhutan)
               </button>
             </div>
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 font-mono text-xs whitespace-pre-wrap overflow-y-auto max-h-96 text-slate-700">
               {FORMAT_SAMPLES[`sar_${previewModal.format}` as keyof typeof FORMAT_SAMPLES]}
             </div>
-            <div className="mt-4 space-y-2">
+            <div className="mt-3">
               {previewModal.format === 'rbi' && (
                 <div className="text-xs text-slate-600 bg-blue-50 p-3 rounded">
                   <p className="font-medium text-blue-900 mb-1">India RBI Format</p>
@@ -585,7 +599,7 @@ export default function ComplianceSARPage() {
       {uploadModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full mx-4">
-            <h2 className="text-lg font-semibold text-slate-800 mb-2">Upload SAR Document</h2>
+            <h2 className="text-lg font-semibold text-slate-800 mb-2">Upload STR Document</h2>
             <p className="text-sm text-slate-600 mb-4">
               Upload PDF documents for {uploadModal.filing.report_number}
             </p>
@@ -639,7 +653,7 @@ export default function ComplianceSARPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-800">Create New SAR</h2>
+              <h2 className="text-lg font-semibold text-slate-800">Create New STR</h2>
               <button onClick={() => setCreateModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
             </div>
             <div className="space-y-3">
@@ -660,7 +674,7 @@ export default function ComplianceSARPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Total Amount (INR)</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Total Amount (Nu.)</label>
                 <input type="number" placeholder="e.g. 5000000" value={createForm.total_amount}
                   onChange={e => setCreateForm(f => ({ ...f, total_amount: e.target.value }))}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500" />
@@ -688,7 +702,7 @@ export default function ComplianceSARPage() {
               <div className="flex gap-2 pt-2">
                 <button onClick={handleCreateSAR} disabled={creating}
                   className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium">
-                  {creating ? 'Creating...' : 'Create SAR'}
+                  {creating ? 'Creating...' : 'Create STR'}
                 </button>
                 <button onClick={() => setCreateModal(false)}
                   className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200">
@@ -705,7 +719,7 @@ export default function ComplianceSARPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-800">Edit SAR — {editModal.filing.report_number}</h2>
+              <h2 className="text-lg font-semibold text-slate-800">Edit STR — {editModal.filing.report_number}</h2>
               <button onClick={() => setEditModal(null)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
             </div>
             <div className="space-y-3">
@@ -827,13 +841,13 @@ export default function ComplianceSARPage() {
         <button onClick={() => setCreateModal(true)}
           className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm">
           <Plus size={16} />
-          New SAR
+          New STR
         </button>
       </div>
 
       {/* Filing status cards */}
       <div>
-        <h3 className="text-sm font-semibold text-slate-700 mb-3">SAR Status</h3>
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">STR Status</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {filingCards.map(card => (
             <Link key={card.label} to={card.href} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md hover:border-blue-300 transition-all">
@@ -989,9 +1003,9 @@ export default function ComplianceSARPage() {
               </tr>
             </thead>
             <tbody>
-              {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'STR').map((f: any, i: number) => (
+              {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'str').map((f: any, i: number) => (
                 <tr key={f.id || i} className="border-t border-slate-100 hover:bg-slate-50">
-                  <td className="py-2.5 px-3 text-xs text-slate-500 uppercase">{f.type || f.report_type || 'STR'}</td>
+                  <td className="py-2.5 px-3 text-xs text-slate-500 font-medium">STR</td>
                   <td className="py-2.5 px-3 font-mono text-xs text-red-600">{f.report_number || f.id || '-'}</td>
                   <td className="py-2.5 px-3 text-slate-700">{f.customer_name || f.customer || '-'}</td>
                   <td className="py-2.5 px-3 text-right font-mono text-slate-800">{f.amount != null ? formatINR(f.amount) : '-'}</td>
@@ -1011,7 +1025,7 @@ export default function ComplianceSARPage() {
                   </td>
                 </tr>
               ))}
-              {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'STR').length === 0 && (
+              {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'str').length === 0 && (
                 <tr><td colSpan={6} className="py-12 text-center text-slate-400">No STR Filings</td></tr>
               )}
             </tbody>

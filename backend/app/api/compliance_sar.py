@@ -114,6 +114,8 @@ REGULATORY_DEADLINES = [
      "description": "Principal Officer monthly report to FIU-IND under PMLA Section 12"},
     {"name": "STR Filing to FIU-IND", "owner": "Compliance", "frequency": "monthly", "day": 7, "priority": "critical",
      "description": "Suspicious Transaction Reports within 7 days of detection — PMLA Rules 2005"},
+    {"name": "STR Filing to FIU-Bhutan", "owner": "Compliance", "frequency": "monthly", "day": 14, "priority": "critical",
+     "description": "Suspicious Transaction Reports to FIU-Bhutan — RMA AML/CFT Rules 2009, Section 11 — 7-day filing deadline"},
     {"name": "OFAC SDN List Update", "owner": "Compliance", "frequency": "daily", "day": 1, "priority": "high",
      "description": "Screen against updated OFAC Specially Designated Nationals list"},
     {"name": "UN Sanctions List Update", "owner": "Compliance", "frequency": "weekly", "day": 1, "priority": "high",
@@ -212,7 +214,7 @@ def compliance_dashboard(db: Session = Depends(get_db), current_user: User = Dep
         customer = db.query(Customer).filter(Customer.id == r.customer_id).first() if r.customer_id else None
         recent_filings.append({
             "id": r.id,
-            "type": "SAR",
+            "type": "STR",
             "report_number": r.report_number,
             "customer": customer.full_name if customer else "-",
             "amount": r.total_amount or 0,
