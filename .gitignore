@@ -25,3 +25,14 @@ dist/
 .DS_Store
 Thumbs.db
 .gstack/
+
+# Presentation & document artifacts (keep local, not in repo)
+*.pptx
+*.ppt
+*.docx
+*.doc
+~$*
+create_ppt*.py
+create_frims*.py
+generate_pptx*.py
+generate_docx*.py
