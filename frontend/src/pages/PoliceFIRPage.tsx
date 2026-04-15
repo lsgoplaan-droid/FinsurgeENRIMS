@@ -145,11 +145,11 @@ Generated:           12-Apr-2026 10:55 UTC
 }
 
 function formatINR(paise: number) {
-  const Nu. = paise / 100
-  if (Nu. >= 10000000) return `${(Nu. / 10000000).toFixed(2)} Cr`
-  if (Nu. >= 100000) return `${(Nu. / 100000).toFixed(2)} L`
-  if (Nu. >= 1000) return `${(Nu. / 1000).toFixed(1)}K`
-  return inr.toFixed(0)
+  const nu = paise / 100
+  if (nu >= 10000000) return `${(nu / 10000000).toFixed(2)} Cr`
+  if (nu >= 100000) return `${(nu / 100000).toFixed(2)} L`
+  if (nu >= 1000) return `${(nu / 1000).toFixed(1)}K`
+  return nu.toFixed(0)
 }
 
 const OFFENSE_TYPES = [
