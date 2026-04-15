@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Plug, Zap, Clock, Send, CheckCircle, XCircle, Loader, Activity, Database, Globe, CreditCard, Building2, Smartphone, Monitor, Landmark, Shield, FileText, Search, Copy, Download, FileCode } from 'lucide-react'
 import api from '../config/api'
 import { formatDateTime, formatNumber } from '../utils/formatters'
@@ -50,7 +50,7 @@ const SAMPLE_STR_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <entity_reference>STR-20260414-0042</entity_reference>
   <fiu_ref_number/>
   <submission_date>2026-04-14</submission_date>
-  <currency_code_local>INR</currency_code_local>
+  <currency_code_local>BTN</currency_code_local>
   <reporting_person>
     <gender>M</gender>
     <first_name>Arun</first_name>
@@ -90,7 +90,7 @@ const SAMPLE_STR_XML = `<?xml version="1.0" encoding="UTF-8"?>
       <account>
         <account_number>917020058834001</account_number>
         <account_name>Rajesh Mehta</account_name>
-        <currency_code>INR</currency_code>
+        <currency_code>BTN</currency_code>
         <account_type>4</account_type>
         <opened>2019-03-12</opened>
         <balance>127500</balance>
@@ -121,7 +121,7 @@ const SAMPLE_STR_XML = `<?xml version="1.0" encoding="UTF-8"?>
       <account>
         <account_number>50200012345678</account_number>
         <account_name>Global Trade Solutions Pvt Ltd</account_name>
-        <currency_code>INR</currency_code>
+        <currency_code>BTN</currency_code>
         <account_type>2</account_type>
       </account>
     </to_account>
@@ -129,7 +129,7 @@ const SAMPLE_STR_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <suspicious_activity>
     <activity_type>Structuring</activity_type>
     <activity_code>ST-01</activity_code>
-    <description>Customer made 6 cash deposits of INR 4,85,000 each within 5 business days, just below the CTR threshold of INR 10,00,000. Funds immediately transferred out via RTGS to an entity with no prior relationship. Pattern consistent with layering stage of money laundering under PMLA 2002, Section 3.</description>
+    <description>Customer made 6 cash deposits of Nu. 4,85,000 each within 5 business days, just below the CTR threshold of Nu. 10,00,000. Funds immediately transferred out via RTGS to an entity with no prior relationship. Pattern consistent with layering stage of money laundering under PMLA 2002, Section 3.</description>
     <detection_date>2026-04-12</detection_date>
     <detection_method>Automated — AML Rule STR-001: Structuring</detection_method>
   </suspicious_activity>
@@ -149,7 +149,7 @@ const SAMPLE_CTR_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <entity_reference>CTR-20260414-0158</entity_reference>
   <fiu_ref_number/>
   <submission_date>2026-04-14</submission_date>
-  <currency_code_local>INR</currency_code_local>
+  <currency_code_local>BTN</currency_code_local>
   <reporting_person>
     <gender>F</gender>
     <first_name>Priya</first_name>
@@ -174,7 +174,7 @@ const SAMPLE_CTR_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <transaction>
     <transactionnumber>TXN-20260409-5512</transactionnumber>
     <transaction_location>DEL-CP</transaction_location>
-    <transaction_description>Large cash deposit exceeding INR 10,00,000 threshold — mandatory CTR filing under PMLA 2002 Section 12 and PML Rules 2005</transaction_description>
+    <transaction_description>Large cash deposit exceeding Nu. 10,00,000 threshold — mandatory CTR filing under PMLA 2002 Section 12 and PML Rules 2005</transaction_description>
     <date_transaction>2026-04-09</date_transaction>
     <teller>T-0023</teller>
     <authorized>A-0008</authorized>
@@ -189,7 +189,7 @@ const SAMPLE_CTR_XML = `<?xml version="1.0" encoding="UTF-8"?>
       <account>
         <account_number>917010034412009</account_number>
         <account_name>Hassan Trading Company</account_name>
-        <currency_code>INR</currency_code>
+        <currency_code>BTN</currency_code>
         <account_type>2</account_type>
         <opened>2021-07-01</opened>
         <balance>8342000</balance>
@@ -216,7 +216,7 @@ const SAMPLE_CTR_XML = `<?xml version="1.0" encoding="UTF-8"?>
   </transaction>
   <threshold_indicator>
     <threshold_amount>1000000</threshold_amount>
-    <threshold_currency>INR</threshold_currency>
+    <threshold_currency>BTN</threshold_currency>
     <mandate>PMLA 2002 — Section 12 read with Rule 7 of PML (Maintenance of Records) Rules 2005</mandate>
     <filing_deadline_days>7</filing_deadline_days>
   </threshold_indicator>
@@ -500,7 +500,7 @@ export default function IntegrationsPage() {
             {/* Sub-tab bar */}
             <div className="flex items-center gap-0 border-b border-slate-200 px-4 pt-4">
               {[
-                { key: 'str', label: 'STR / SAR' },
+                { key: 'str', label: 'STR' },
                 { key: 'ctr', label: 'CTR / LCTR' },
               ].map(st => (
                 <button

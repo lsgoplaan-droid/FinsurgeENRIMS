@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react'
+﻿import { useState, useEffect, type ReactNode } from 'react'
 import {
   BookOpen, ChevronRight, ToggleLeft, ToggleRight, X, Plus, Edit3, Trash2,
   Save, Search, Play, CheckCircle2, Layers, Variable, GitBranch,
@@ -735,7 +735,7 @@ export default function RulesPage() {
                           type="number"
                           value={form.thresholdAmount}
                           onChange={e => setForm(f => ({ ...f, thresholdAmount: e.target.value }))}
-                          placeholder="e.g. 10000000 = ₹1L"
+                          placeholder="e.g. 10000000 = Nu.1L"
                           className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>

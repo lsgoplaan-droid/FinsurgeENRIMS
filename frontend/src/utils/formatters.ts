@@ -1,10 +1,8 @@
 export function formatINR(paise: number): string {
-  const rupees = paise / 100
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
+  const ngultrum = paise / 100
+  return 'Nu. ' + new Intl.NumberFormat('en-IN', {
     maximumFractionDigits: 0,
-  }).format(rupees)
+  }).format(ngultrum)
 }
 
 export function formatNumber(n: number): string {

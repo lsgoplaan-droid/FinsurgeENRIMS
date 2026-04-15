@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import {
   BookOpen, Shield, AlertTriangle, CheckCircle, XCircle, Plus, Pencil,
   Copy, Trash2, ToggleLeft, ToggleRight, Filter, ChevronDown, Search,
@@ -616,7 +616,7 @@ export default function RulesManagementPage() {
                   type="number"
                   value={ruleForm.threshold_amount}
                   onChange={e => setRuleForm({ ...ruleForm, threshold_amount: e.target.value })}
-                  placeholder="100000 = ₹1000"
+                  placeholder="100000 = Nu.1000"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
                 />
               </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import {
   MessageSquare, CheckCircle2, XCircle, Clock, RefreshCw,
   ChevronDown, ChevronUp, AlertTriangle, ShieldCheck, Eye,
@@ -46,7 +46,7 @@ interface Stats {
 // Helpers
 // ---------------------------------------------------------------------------
 function fmt(paise: number) {
-  return `INR ${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `Nu. ${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 function countdown(expiresAt: string | null): string {
@@ -72,11 +72,11 @@ const FRIMS_BADGE: Record<string, string> = {
 }
 
 const THRESHOLDS = [
-  { segment: 'High / Very-High Risk',             threshold: 'ALL transactions (INR 0+)' },
-  { segment: 'Corporate',                          threshold: 'INR 5,00,000' },
-  { segment: 'SME / Trust',                        threshold: 'INR 2,00,000' },
-  { segment: 'Retail Premium (income ≥ INR 10L)', threshold: 'INR 1,00,000' },
-  { segment: 'Retail Standard',                    threshold: 'INR 50,000 (default)' },
+  { segment: 'High / Very-High Risk',             threshold: 'ALL transactions (Nu. 0+)' },
+  { segment: 'Corporate',                          threshold: 'Nu. 5,00,000' },
+  { segment: 'SME / Trust',                        threshold: 'Nu. 2,00,000' },
+  { segment: 'Retail Premium (income ≥ Nu. 10L)', threshold: 'Nu. 1,00,000' },
+  { segment: 'Retail Standard',                    threshold: 'Nu. 50,000 (default)' },
 ]
 
 // ---------------------------------------------------------------------------
@@ -256,7 +256,7 @@ export default function SMSApprovalPage() {
             Transaction Approval — FRIMS
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Transactions ≥ INR 10,00,000 require FRIMS officer approval · Auto-refreshes every 30s
+            Transactions ≥ Nu. 10,00,000 require FRIMS officer approval · Auto-refreshes every 30s
           </p>
         </div>
         <button onClick={() => loadData()}
@@ -275,7 +275,7 @@ export default function SMSApprovalPage() {
               {stats.frims_pending_approval} transaction{stats.frims_pending_approval !== 1 ? 's' : ''} awaiting FRIMS approval
             </span>
             <span className="text-purple-700 ml-1 text-sm">
-              — high value (≥ INR {(stats.frims_threshold_inr / 100).toLocaleString('en-IN')})
+              — high value (≥ Nu. {(stats.frims_threshold_inr / 100).toLocaleString('en-IN')})
             </span>
           </div>
         </div>
@@ -287,7 +287,7 @@ export default function SMSApprovalPage() {
           <Clock size={20} className="text-amber-600 flex-shrink-0" />
           <div>
             <span className="font-semibold text-amber-800">
-              INR {stats.total_held_inr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              Nu. {stats.total_held_inr.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </span>
             <span className="text-amber-700 ml-1 text-sm">
               currently held across {stats.counts.pending} pending OTP approval{stats.counts.pending !== 1 ? 's' : ''} — waiting for customer response
@@ -319,7 +319,7 @@ export default function SMSApprovalPage() {
           <div className="text-xs text-blue-800 space-y-1">
             <p className="font-semibold text-blue-900">How high-value transaction approval works</p>
             <p>1. Customer initiates a transfer — system sends an OTP SMS to their registered mobile for verification.</p>
-            <p>2. For transactions <strong>≥ INR 10,00,000</strong>, a FRIMS officer must independently <strong>Approve or Reject</strong> from this screen — regardless of customer OTP status.</p>
+            <p>2. For transactions <strong>≥ Nu. 10,00,000</strong>, a FRIMS officer must independently <strong>Approve or Reject</strong> from this screen — regardless of customer OTP status.</p>
             <p>3. FRIMS rejection overrides the customer OTP and reverses the transaction immediately.</p>
           </div>
         </div>
@@ -354,7 +354,7 @@ export default function SMSApprovalPage() {
               </tbody>
             </table>
             <p className="text-xs text-purple-700 mt-3 font-medium">
-              * Transactions ≥ INR 10,00,000 additionally require FRIMS second-level approval after customer OTP.
+              * Transactions ≥ Nu. 10,00,000 additionally require FRIMS second-level approval after customer OTP.
             </p>
           </div>
         )}

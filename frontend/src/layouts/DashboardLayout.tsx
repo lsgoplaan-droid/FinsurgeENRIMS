@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
+﻿import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, ArrowLeftRight, Bell, Briefcase, Users, Shield,
   BookOpen, Network, FileText, Settings, LogOut, ChevronDown, Plug,
@@ -55,7 +55,7 @@ const navGroups: NavGroup[] = [
     title: 'Regulatory Documents',
     items: [
       { path: '/compliance-ctr', label: 'CTR Filing', icon: FileText },
-      { path: '/compliance-sar', label: 'SAR Filing', icon: ShieldCheck },
+      { path: '/compliance-sar', label: 'STR Filing', icon: ShieldCheck },
       { path: '/compliance-lvtr', label: 'LVTR Filing', icon: FileText },
       { path: '/police-fir', label: 'Police FIR', icon: Scale },
     ],

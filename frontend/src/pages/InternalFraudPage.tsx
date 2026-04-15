@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import {
   AlertTriangle, CheckCircle, CircleAlert, Skull, Shield, Clock,
   Monitor, Wifi, User, Search, Filter, ChevronDown, Plus, Pencil, Trash2, X
@@ -21,7 +21,7 @@ const INT_RULES = [
   { code: 'INT-003', name: 'After-Hours CBS Override Transaction',           description: 'Core-banking system transaction executed outside 8 AM–8 PM IST with override privilege. Correlates with after_hours flag.', severity: 'critical', types: ['after_hours', 'cbs_override', 'night_transaction'],                  flag: 'after_hours' },
   { code: 'INT-004', name: 'Ghost Account Activity — No KYC on File',        description: 'Transaction on an account with missing or incomplete KYC documentation, indicating a fictitious account.', severity: 'critical', types: ['ghost_account', 'kyc_bypass', 'no_kyc'] },
   { code: 'INT-005', name: 'Repeated Override of Transaction Limits',         description: 'Same employee bypasses system transaction limits more than once per session without supervisor sign-off.', severity: 'high',     types: ['limit_override', 'privilege_abuse', 'limit_bypass', 'override'] },
-  { code: 'INT-006', name: 'Employee Reversals Above Threshold',              description: 'Employee initiates transaction reversal above INR 50,000 without second-level approval within the same session.', severity: 'high',     types: ['transaction_reversal', 'reversal', 'forced_reversal'] },
+  { code: 'INT-006', name: 'Employee Reversals Above Threshold',              description: 'Employee initiates transaction reversal above Nu. 50,000 without second-level approval within the same session.', severity: 'high',     types: ['transaction_reversal', 'reversal', 'forced_reversal'] },
   { code: 'INT-007', name: 'Cash Vault Discrepancy Detection',                severity: 'critical', description: 'Physical cash count does not match CBS vault balance after branch close. Employee had vault access that shift.', types: ['cash_discrepancy', 'vault_access', 'cash_variance', 'vault'] },
   { code: 'INT-008', name: 'Loan Disbursement to Employee-Linked Account',    description: 'Loan proceeds credited to an account belonging to, or linked to, the approving employee or a close associate.', severity: 'critical', types: ['loan_approval', 'loan_disbursement', 'loan_fraud', 'loan'] },
   { code: 'INT-009', name: 'Dormant Account Withdrawal by Branch Staff',      description: 'Withdrawal from account dormant for >12 months, reactivated and debited by a branch employee without customer contact record.', severity: 'high',     types: ['dormant_access', 'dormant_withdrawal', 'dormant_activation', 'dormant'] },

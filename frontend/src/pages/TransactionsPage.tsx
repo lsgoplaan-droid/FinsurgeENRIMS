@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { X, Search, Filter, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDateTime, riskColors } from '../utils/formatters'
@@ -237,7 +237,7 @@ export default function TransactionsPage() {
                   ['Channel', (selected.channel || '-').replace(/_/g, ' ')],
                   ['Method', (selected.transaction_type || selected.method || '-').replace(/_/g, ' ')],
                   ['Amount', formatINR(selected.amount)],
-                  ['Currency', selected.currency || 'INR'],
+                  ['Currency', selected.currency || 'Nu'],
                   ['Risk Score', selected.risk_score ?? '-'],
                   ['Flagged', selected.is_flagged || selected.flagged ? 'Yes' : 'No'],
                   ['Status', selected.status || '-'],

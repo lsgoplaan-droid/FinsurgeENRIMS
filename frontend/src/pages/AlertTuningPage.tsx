@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import {
   Target, TrendingUp, TrendingDown, AlertTriangle, CheckCircle,
   XCircle, HelpCircle, BarChart3, Lightbulb, Filter, ChevronDown,
@@ -351,7 +351,7 @@ export default function AlertTuningPage() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Amount Threshold (paise)</label>
                 <input type="number" value={tuneForm.threshold_amount} onChange={e => setTuneForm(f => ({ ...f, threshold_amount: e.target.value }))}
-                  placeholder="e.g. 10000000 (= ₹1,00,000)" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
+                  placeholder="e.g. 10000000 (= Nu.1,00,000)" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Count Threshold</label>

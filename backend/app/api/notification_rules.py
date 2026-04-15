@@ -29,7 +29,7 @@ TRIGGER_EVENTS = [
     {"code": "case_closed", "label": "Case Closed", "category": "case"},
     {"code": "high_risk_transaction", "label": "High Risk Transaction Detected", "category": "transaction"},
     {"code": "rule_triggered", "label": "Detection Rule Triggered", "category": "detection"},
-    {"code": "sar_filed", "label": "SAR Report Filed", "category": "compliance"},
+    {"code": "sar_filed", "label": "STR Report Filed", "category": "compliance"},
     {"code": "ctr_filed", "label": "CTR Report Filed", "category": "compliance"},
     {"code": "fir_filed", "label": "FIR Filed with Police", "category": "law_enforcement"},
     {"code": "fir_hearing", "label": "FIR Court Hearing Approaching", "category": "law_enforcement"},

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Clock, AlertTriangle, CheckCircle2, FileText, Timer, Filter, TrendingUp, X, ExternalLink, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react'
 import api from '../config/api'
@@ -304,7 +304,7 @@ export default function FilingDeadlinePage() {
             <span>Pending: <strong className="text-blue-600">{summary.ctrs_pending}</strong></span>
             <span>Filed: <strong className="text-green-600">{summary.ctrs_filed}</strong></span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-2">RBI Master Direction on KYC — Cash transactions exceeding INR 10 lakh must be reported to FIU-IND within 15 days of the month following the transaction</p>
+          <p className="text-[10px] text-slate-400 mt-2">RBI Master Direction on KYC — Cash transactions exceeding Nu. 10 lakh must be reported to FIU-IND within 15 days of the month following the transaction</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -499,7 +499,7 @@ export default function FilingDeadlinePage() {
                 </Link>
               )}
               <Link
-                to={selectedFiling.type === 'STR' || selectedFiling.type === 'SAR' ? '/compliance/sar' : '/reports'}
+                to={selectedFiling.type === 'STR' || selectedFiling.type === 'STR' ? '/compliance/sar' : '/reports'}
                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
               >
                 <ExternalLink size={12} /> View in {selectedFiling.type === 'CTR' ? 'CTR Workbench' : 'STR Workflow'}

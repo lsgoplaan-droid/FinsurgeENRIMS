@@ -925,12 +925,13 @@ def seed_alerts(db: Session, customers: list, rules: list, user_map: dict) -> li
 
             sla_hours = {"critical": 4, "high": 24, "medium": 72, "low": 168}.get(priority, 72)
             if status in OPEN_STATUSES:
-                # ~12% of open alerts are overdue → ~88% SLA compliance rate
-                if random.random() < 0.12:
+                # ~11% of open alerts are overdue → ~89% SLA compliance rate
+                # Use large future windows (30-90 days) so seed stays valid for months
+                if random.random() < 0.11:
                     sla_due = NOW - timedelta(hours=random.uniform(1, 36))
                     is_overdue = True
                 else:
-                    sla_due = NOW + timedelta(hours=random.uniform(sla_hours * 0.3, sla_hours * 1.8))
+                    sla_due = NOW + timedelta(days=random.uniform(30, 90))
                     is_overdue = False
             else:
                 sla_due = dt + timedelta(hours=sla_hours)

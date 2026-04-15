@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, CartesianGrid, Legend
@@ -293,8 +293,8 @@ function RegulatoryTab({ data }: { data: any }) {
   const filingCards = [
     { label: 'CTR Filed', value: ctr.filed ?? 0, total: (ctr.filed ?? 0) + (ctr.pending ?? 0), color: 'text-green-600', barColor: 'bg-green-500' },
     { label: 'CTR Pending', value: ctr.pending ?? 0, total: (ctr.filed ?? 0) + (ctr.pending ?? 0), color: 'text-amber-600', barColor: 'bg-amber-500' },
-    { label: 'SAR Filed', value: sar.filed ?? 0, total: (sar.filed ?? 0) + (sar.pending ?? 0), color: 'text-green-600', barColor: 'bg-green-500' },
-    { label: 'SAR Pending', value: sar.pending ?? 0, total: (sar.filed ?? 0) + (sar.pending ?? 0), color: 'text-amber-600', barColor: 'bg-amber-500' },
+    { label: 'STR filed', value: sar.filed ?? 0, total: (sar.filed ?? 0) + (sar.pending ?? 0), color: 'text-green-600', barColor: 'bg-green-500' },
+    { label: "STR"Pending', value: sar.pending ?? 0, total: (sar.filed ?? 0) + (sar.pending ?? 0), color: 'text-amber-600', barColor: 'bg-amber-500' },
   ]
 
   return (

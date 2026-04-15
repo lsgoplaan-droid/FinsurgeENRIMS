@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { FileText, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, formatDate, statusColors } from '../utils/formatters'
@@ -7,7 +7,7 @@ const Badge = ({ text, colors }: { text: string; colors: string }) => (
   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors}`}>{text.replace(/_/g, ' ')}</span>
 )
 
-type ReportTab = 'ctr' | 'sar'
+type ReportTab = 'ctr' | 'STR'
 
 export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>('ctr')
@@ -82,14 +82,14 @@ export default function ReportsPage() {
           <FileText size={15} /> CTR Reports
         </button>
         <button
-          onClick={() => switchTab('sar')}
+          onClick={() => switchTab('STR')}
           className={`px-5 py-2 rounded-full text-sm font-medium transition-colors flex items-center gap-2 ${
-            tab === 'sar'
+            tab === 'STR'
               ? 'bg-blue-600 text-white'
               : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
           }`}
         >
-          <FileText size={15} /> SAR Reports
+          <FileText size={15} /> STR Reports
         </button>
       </div>
 
@@ -98,7 +98,7 @@ export default function ReportsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-700">
-              {tab === 'ctr' ? 'Currency Transaction Reports (CTR)' : 'Suspicious Activity Reports (SAR)'}
+              {tab === 'ctr' ? 'Currency Transaction Reports (CTR)' : 'Suspicious Transaction Reports (STR)'}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               {tab === 'ctr'
@@ -136,7 +136,7 @@ export default function ReportsPage() {
                   <th className="text-right py-2.5 px-3 font-medium text-slate-600">Amount</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
                   <th className="text-left py-2.5 px-3 font-medium text-slate-600">Filed Date</th>
-                  {tab === 'sar' && <th className="text-left py-2.5 px-3 font-medium text-slate-600">Reason</th>}
+                  {tab === 'STR' && <th className="text-left py-2.5 px-3 font-medium text-slate-600">Reason</th>}
                   {tab === 'ctr' && <th className="text-left py-2.5 px-3 font-medium text-slate-600">Transaction Date</th>}
                   <th className="text-right py-2.5 px-3 font-medium text-slate-600">Document</th>
                 </tr>
@@ -151,7 +151,7 @@ export default function ReportsPage() {
                       <Badge text={r.status || '-'} colors={statusColors[r.status] || 'bg-gray-100 text-gray-800'} />
                     </td>
                     <td className="py-2.5 px-3 text-slate-500 text-xs whitespace-nowrap">{formatDate(r.filed_date || r.filing_date)}</td>
-                    {tab === 'sar' && (
+                    {tab === 'STR' && (
                       <td className="py-2.5 px-3 text-slate-600 text-xs truncate max-w-[200px]">{r.reason || r.suspicious_activity_type || '-'}</td>
                     )}
                     {tab === 'ctr' && (
@@ -171,7 +171,7 @@ export default function ReportsPage() {
                   </tr>
                 ))}
                 {reports.length === 0 && (
-                  <tr><td colSpan={tab === 'sar' ? 7 : 7} className="py-12 text-center text-slate-400">No reports found</td></tr>
+                  <tr><td colSpan={tab === 'STR' ? 7 : 7} className="py-12 text-center text-slate-400">No reports found</td></tr>
                 )}
               </tbody>
             </table>

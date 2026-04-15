@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { FileText, AlertTriangle, Users, Clock, Shield, CheckCircle, Download, Eye, X, Upload, Plus, Send, Trash2, Pencil, MoreHorizontal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import api from '../config/api'
@@ -8,7 +8,7 @@ const FORMAT_SAMPLES = {
   ctr_rbi: `CURRENCY TRANSACTION REPORT (CTR)
 ================================================================
 Filed with: Financial Intelligence Unit India (FIU-IND)
-Reference:  RBI Master Direction on KYC — INR 10 lakh threshold
+Reference:  RBI Master Direction on KYC — Nu. 10 lakh threshold
 Generated:  12-Apr-2026 10:55 UTC
 
 Report Number:    CTR-20260412-0042
@@ -25,8 +25,8 @@ Address:          Mumbai, Maharashtra, India
 
 TRANSACTION DETAILS
 ----------------------------------------------------------------
-Amount:           INR 15,00,000.00
-Threshold:        INR 10,00,000.00 (mandatory CTR threshold)
+Amount:           Nu. 15,00,000.00
+Threshold:        Nu. 10,00,000.00 (mandatory CTR threshold)
 Reporting Window: 15 days from end of transaction month
 
 Reported under RBI Master Direction on KYC and PMLA Section 12.
@@ -55,14 +55,14 @@ Address:          Thimphu, Bhutan
 TRANSACTION DETAILS
 ================================================================
 Amount:           Nu. 937,500.00 (Ngultrum)
-INR Equivalent:   INR 15,00,000.00
+Nu. equivalent:   Nu. 15,00,000.00
 Reporting Threshold: Nu. 100,000.00 (mandatory LCTR threshold)
 Reporting Window: 7 days from transaction date (RMA Rule 14)
 
 Reported under RMA AML/CFT Rules 2009.
 ================================================================`,
 
-  sar_rbi: `SUSPICIOUS ACTIVITY REPORT (SAR)
+  sar_rbi: `Suspicious Transaction Report (SAR)
 ================================================================
 Filed with: Financial Intelligence Unit India (FIU-IND)
 Reference:  RBI Master Direction, PMLA Section 12
@@ -174,7 +174,7 @@ OFFENSE DETAILS
 ================================================================
 Offense Type:        Card Fraud
 IPC / Legal Sections: IPC 420, 468, 471
-Fraud Amount:        INR 8,50,000.00
+Fraud Amount:        Nu. 8,50,000.00
 
 FIR FILING TIMELINE
 ================================================================
@@ -190,8 +190,8 @@ Next Hearing Date:   Not scheduled
 
 RECOVERY & ASSET FREEZING
 ================================================================
-Fraud Amount:        INR 8,50,000.00
-Amount Recovered:    INR 2,10,000.00
+Fraud Amount:        Nu. 8,50,000.00
+Amount Recovered:    Nu. 2,10,000.00
 Recovery Rate:       24.7%
 Assets Frozen:       YES
 
@@ -336,7 +336,7 @@ export default function ComplianceSARPage() {
       await api.post(`/compliance/filings/sar/${f.id}/submit`)
       loadData()
     } catch (e: any) {
-      alert(e.response?.data?.detail || 'Failed to submit SAR')
+      alert(e.response?.data?.detail || 'Failed to Submit STR')
     } finally {
       setSubmitting(null)
     }
@@ -422,7 +422,7 @@ export default function ComplianceSARPage() {
 
   const downloadFiling = (f: any) => {
     // SAR supports format selection (RBI vs RMA)
-    setFormatModal({ filing: f, type: 'sar' })
+    setFormatModal({ filing: f, type: 'STR' })
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, format: string) => {
@@ -455,8 +455,8 @@ export default function ComplianceSARPage() {
   const recentFilings = data?.recent_filings || data?.filings || []
 
   const filingCards = [
-    { label: 'SAR Pending', value: filingStatus.sar_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines?type=sar' },
-    { label: 'SAR Filed', value: filingStatus.sar_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines?type=sar' },
+    { label: "STR"Pending', value: filingStatus.sar_pending ?? 0, color: 'text-amber-600', bg: 'bg-amber-50', icon: Clock, href: '/filing-deadlines?type=sar' },
+    { label: 'STR filed', value: filingStatus.sar_filed ?? 0, color: 'text-green-600', bg: 'bg-green-50', icon: CheckCircle, href: '/filing-deadlines?type=sar' },
   ]
 
   const complianceCards = [
@@ -510,7 +510,7 @@ export default function ComplianceSARPage() {
                     </div>
                   </div>
                 )}
-                {detailModal.type === 'sar' && (
+                {detailModal.type === 'STR' && (
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                     <div>
                       <p className="text-slate-500 font-medium">Amount (INR)</p>
@@ -821,8 +821,8 @@ export default function ComplianceSARPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">SAR Filing Management</h1>
-          <p className="text-sm text-slate-500 mt-1">Suspicious Activity Reports — India RBI & Bhutan RMA</p>
+          <h1 className="text-2xl font-bold text-slate-800">STR Filing Management</h1>
+          <p className="text-sm text-slate-500 mt-1">Suspicious Transaction Reports — India RBI & Bhutan RMA</p>
         </div>
         <button onClick={() => setCreateModal(true)}
           className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm">
@@ -970,10 +970,10 @@ export default function ComplianceSARPage() {
         </div>
       )}
 
-      {/* Recent SAR filings table */}
+      {/* Recent STR Filings table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="p-4 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-700">SAR Reports</h3>
+          <h3 className="text-sm font-semibold text-slate-700">STR Reports</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -989,9 +989,9 @@ export default function ComplianceSARPage() {
               </tr>
             </thead>
             <tbody>
-              {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'sar').map((f: any, i: number) => (
+              {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'STR').map((f: any, i: number) => (
                 <tr key={f.id || i} className="border-t border-slate-100 hover:bg-slate-50">
-                  <td className="py-2.5 px-3 text-xs text-slate-500 uppercase">{f.type || f.report_type || 'SAR'}</td>
+                  <td className="py-2.5 px-3 text-xs text-slate-500 uppercase">{f.type || f.report_type || 'STR'}</td>
                   <td className="py-2.5 px-3 font-mono text-xs text-red-600">{f.report_number || f.id || '-'}</td>
                   <td className="py-2.5 px-3 text-slate-700">{f.customer_name || f.customer || '-'}</td>
                   <td className="py-2.5 px-3 text-right font-mono text-slate-800">{f.amount != null ? formatINR(f.amount) : '-'}</td>
@@ -1011,8 +1011,8 @@ export default function ComplianceSARPage() {
                   </td>
                 </tr>
               ))}
-              {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'sar').length === 0 && (
-                <tr><td colSpan={6} className="py-12 text-center text-slate-400">No SAR filings</td></tr>
+              {recentFilings.filter((f: any) => (f.type || f.report_type || '').toLowerCase() === 'STR').length === 0 && (
+                <tr><td colSpan={6} className="py-12 text-center text-slate-400">No STR Filings</td></tr>
               )}
             </tbody>
           </table>

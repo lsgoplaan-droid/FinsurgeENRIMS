@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Search, Clock, Plus } from 'lucide-react'
 import api from '../config/api'
@@ -145,7 +145,7 @@ export default function AlertsPage() {
     if (search) params.search = search
     if (priorityFilter) params.priority = priorityFilter
     if (dateFilter) params.date = dateFilter
-    if (minAmount) params.min_amount = Number(minAmount) * 100  // INR → paise
+    if (minAmount) params.min_amount = Number(minAmount) * 100  // Nu. → paise
     if (maxAmount) params.max_amount = Number(maxAmount) * 100
     if (assignedFilter) params.assigned_to = assignedFilter
     if (alertTypeFilter) params.alert_type = alertTypeFilter
@@ -273,14 +273,14 @@ export default function AlertsPage() {
             type="number"
             value={minAmount}
             onChange={e => { setMinAmount(e.target.value); setPage(1) }}
-            placeholder="Min ₹"
+            placeholder="Min Nu."
             className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white w-24"
           />
           <input
             type="number"
             value={maxAmount}
             onChange={e => { setMaxAmount(e.target.value); setPage(1) }}
-            placeholder="Max ₹"
+            placeholder="Max Nu."
             className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white w-24"
           />
           {alertTypeFilter && (

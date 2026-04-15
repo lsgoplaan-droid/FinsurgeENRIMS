@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { FileText, Clock, CheckCircle, Download, Eye, X, Upload, Plus, Send, Trash2, Pencil, MoreHorizontal } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import api from '../config/api'
@@ -8,7 +8,7 @@ const CTR_FORMAT_SAMPLES = {
   rbi: `CURRENCY TRANSACTION REPORT (CTR)
 ================================================================
 Filed with: Financial Intelligence Unit India (FIU-IND)
-Reference:  RBI Master Direction on KYC — INR 10 lakh threshold
+Reference:  RBI Master Direction on KYC — Nu. 10 lakh threshold
 Generated:  12-Apr-2026 10:55 UTC
 
 Report Number:    CTR-20260412-0042
@@ -25,8 +25,8 @@ Address:          Mumbai, Maharashtra, India
 
 TRANSACTION DETAILS
 ================================================================
-Amount:           INR 15,00,000.00
-Threshold:        INR 10,00,000.00 (mandatory CTR threshold)
+Amount:           Nu. 15,00,000.00
+Threshold:        Nu. 10,00,000.00 (mandatory CTR threshold)
 Reporting Window: 15 days from end of transaction month
 
 Reported under RBI Master Direction on KYC and PMLA Section 12.
@@ -55,7 +55,7 @@ Address:          Thimphu, Bhutan
 TRANSACTION DETAILS
 ================================================================
 Amount:           Nu. 937,500.00 (Ngultrum)
-INR Equivalent:   INR 15,00,000.00
+Nu. equivalent:   Nu. 15,00,000.00
 Reporting Threshold: Nu. 100,000.00 (mandatory LCTR threshold)
 Reporting Window: 7 days from transaction date (RMA Rule 14)
 
@@ -266,7 +266,7 @@ export default function ComplianceCTRPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t">
                   <div>
-                    <p className="text-slate-500 font-medium">Amount (INR)</p>
+                    <p className="text-slate-500 font-medium">Amount (Nu.)</p>
                     <p className="text-slate-800 font-mono">{formatINR(detailModal.amount)}</p>
                   </div>
                   <div>
@@ -303,7 +303,7 @@ export default function ComplianceCTRPage() {
               {previewModal.format === 'rbi' && (
                 <div className="text-xs text-slate-600 bg-blue-50 p-3 rounded">
                   <p className="font-medium text-blue-900 mb-1">India RBI Format</p>
-                  <p>Filed with FIU-IND under RBI Master Direction. INR 10 lakh threshold. 15-day reporting window from month end.</p>
+                  <p>Filed with FIU-IND under RBI Master Direction. Nu. 10 lakh threshold. 15-day reporting window from month end.</p>
                 </div>
               )}
               {previewModal.format === 'rma' && (
@@ -462,7 +462,7 @@ export default function ComplianceCTRPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Transaction Amount (INR)</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Transaction Amount (Nu.)</label>
                 <input
                   type="number"
                   placeholder="e.g. 1500000"
@@ -601,7 +601,7 @@ export default function ComplianceCTRPage() {
               <tr className="bg-slate-50">
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">Report#</th>
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">Customer</th>
-                <th className="text-right py-2.5 px-3 font-medium text-slate-600">Amount (INR)</th>
+                <th className="text-right py-2.5 px-3 font-medium text-slate-600">Amount (Nu.)</th>
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">Filed Date</th>
                 <th className="text-left py-2.5 px-3 font-medium text-slate-600">Status</th>
                 <th className="text-right py-2.5 px-3 font-medium text-slate-600">Actions</th>

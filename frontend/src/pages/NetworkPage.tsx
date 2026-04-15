@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+﻿import { useState, useEffect, useRef, useCallback } from 'react'
 import { Search, Users, ArrowRight, ArrowLeftRight, Building, User, AlertTriangle, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react'
 import api from '../config/api'
 import { formatINR, riskColors } from '../utils/formatters'
@@ -254,7 +254,7 @@ function NetworkGraph({
             const opacity = selectedNode ? (isSelected ? 1 : 0.15) : 0.6
 
             // Amount label
-            const amtLabel = edge.total_amount ? `${(edge.total_amount / 100).toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}` : ''
+            const amtLabel = edge.total_amount ? `${(edge.total_amount / 100).toLocaleString('en-IN', { style: 'currency', currency: 'Nu', maximumFractionDigits: 0 })}` : ''
             const relLabel = edgeLabel(edge)
 
             return (
@@ -538,7 +538,7 @@ function FlowMatrix({ nodes, edges, center }: { nodes: NetworkNode[]; edges: Net
                     key={to.id}
                     className="py-1 px-1.5 text-center font-mono"
                     style={{ backgroundColor: from.id === to.id ? '#f1f5f9' : flow > 0 ? `rgba(59,130,246,${0.1 + intensity * 0.6})` : undefined }}
-                    title={flow > 0 ? `${nodeName(from)} → ${nodeName(to)}: ₹${(flow / 100).toLocaleString('en-IN')}` : ''}
+                    title={flow > 0 ? `${nodeName(from)} → ${nodeName(to)}: Nu.${(flow / 100).toLocaleString('en-IN')}` : ''}
                   >
                     {from.id === to.id ? (
                       <span className="text-slate-300">—</span>
@@ -556,7 +556,7 @@ function FlowMatrix({ nodes, edges, center }: { nodes: NetworkNode[]; edges: Net
           ))}
         </tbody>
       </table>
-      <p className="text-[9px] text-slate-400 mt-2">Cell intensity indicates relative flow volume. Amounts in INR.</p>
+      <p className="text-[9px] text-slate-400 mt-2">Cell intensity indicates relative flow volume. Amounts in Nu..</p>
     </div>
   )
 }

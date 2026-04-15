@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import {
   Search, Brain, AlertTriangle, TrendingUp, Lightbulb, FileText,
   Copy, Check, Activity, Loader2, ShieldAlert, Users
@@ -73,7 +73,7 @@ export default function AIAgentPage() {
   const [anomalySummary, setAnomalySummary] = useState<any>(null)
   const [anomalyLoading, setAnomalyLoading] = useState(true)
 
-  // SAR narrative state
+  // STR narrative state
   const [sarCustomer, setSarCustomer] = useState<any>(null)
   const [sarSearchQuery, setSarSearchQuery] = useState('')
   const [sarSearchResults, setSarSearchResults] = useState<any[]>([])
@@ -122,7 +122,7 @@ export default function AIAgentPage() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // SAR customer search
+  // STR customer search
   useEffect(() => {
     if (!sarSearchQuery || sarSearchQuery.length < 2) {
       setSarSearchResults([])
@@ -465,11 +465,11 @@ export default function AIAgentPage() {
         </div>
       </div>
 
-      {/* Bottom section: SAR Narrative Generator */}
+      {/* Bottom section: STR Narrative Generator */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
         <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 mb-4">
           <FileText size={16} className="text-purple-600" />
-          SAR Narrative Generator
+          STR Narrative Generator
         </h3>
 
         <div className="flex items-end gap-3">
@@ -528,7 +528,7 @@ export default function AIAgentPage() {
         {narrative && (
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-slate-500">Generated SAR Narrative</span>
+              <span className="text-xs font-medium text-slate-500">Generated STR Narrative</span>
               <button
                 onClick={handleCopy}
                 className="flex items-center gap-1 px-2 py-1 text-xs text-slate-500 hover:text-slate-700 border border-slate-200 rounded-md hover:bg-slate-50"

@@ -105,7 +105,7 @@ def export_transactions_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Ref", "Date", "Customer ID", "Account ID", "Type", "Method", "Channel", "Amount (INR)", "Risk Score", "Flagged", "Flag Reason", "City", "Country"])
+    writer.writerow(["Ref", "Date", "Customer ID", "Account ID", "Type", "Method", "Channel", "Amount (Nu)", "Risk Score", "Flagged", "Flag Reason", "City", "Country"])
 
     for t in txns:
         writer.writerow([

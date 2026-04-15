@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { FileText, CheckCircle, Download, Eye, X, Upload, Plus, Send, Trash2, Pencil, MoreHorizontal } from 'lucide-react'
 import api from '../config/api'
 import { formatDate } from '../utils/formatters'
@@ -19,7 +19,7 @@ TRANSACTION DETAILS
 Customer Name:    Ananya Sharma
 CID Number:       CIF-1010
 Transaction Type: Cash Deposit
-Amount:           Nu. 250,000.00 (INR 4,00,000.00)
+Amount:           Nu. 250,000.00 (Nu. 4,00,000.00)
 Reporting Threshold: Nu. 100,000.00 (7-day filing window)
 Transaction Date: 10-Apr-2026
 
@@ -228,8 +228,8 @@ export default function ComplianceLVTRPage() {
                     <p className="text-slate-800 font-mono">Nu. {(detailModal.amount_nu || 0).toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className="text-slate-500 font-medium">Amount (INR)</p>
-                    <p className="text-slate-800 font-mono">INR {((detailModal.amount || 0) / 100).toLocaleString()}</p>
+                    <p className="text-slate-500 font-medium">Amount (Nu.)</p>
+                    <p className="text-slate-800 font-mono">Nu. {((detailModal.amount || 0) / 100).toLocaleString()}</p>
                   </div>
                   <div>
                     <p className="text-slate-500 font-medium">Type</p>
@@ -262,7 +262,7 @@ export default function ComplianceLVTRPage() {
             <div className="mt-4">
               <div className="text-xs text-slate-600 bg-purple-50 p-3 rounded">
                 <p className="font-medium text-purple-900 mb-1">Bhutan RMA Format</p>
-                <p>Filed with FIU-Bhutan under RMA AML/CFT Rules 2009, Rule 14. Nu. 100,000+ threshold. 7-day filing window. All amounts in Nu. with INR equivalent.</p>
+                <p>Filed with FIU-Bhutan under RMA AML/CFT Rules 2009, Rule 14. Nu. 100,000+ threshold. 7-day filing window. All amounts in Nu. with Nu. equivalent.</p>
               </div>
             </div>
           </div>
@@ -321,7 +321,7 @@ export default function ComplianceLVTRPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Transaction Amount (INR)</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Transaction Amount (Nu.)</label>
                 <input type="number" placeholder="e.g. 400000 (= Nu. 250,000)" value={createForm.transaction_amount}
                   onChange={e => setCreateForm(f => ({ ...f, transaction_amount: e.target.value }))}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />

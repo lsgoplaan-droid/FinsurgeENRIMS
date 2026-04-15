@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import {
   Shield, FileText, AlertTriangle, Scale, DollarSign, CheckCircle,
   XCircle, Clock, ChevronRight, Plus, Building2, Phone, User,
@@ -65,7 +65,7 @@ OFFENSE DETAILS
 ================================================================
 Offense Type:        Card Fraud
 IPC / Legal Sections: IPC 420, 468, 471
-Fraud Amount:        INR 8,50,000.00
+Fraud Amount:        Nu. 8,50,000.00
 
 FIR FILING TIMELINE
 ================================================================
@@ -81,8 +81,8 @@ Next Hearing Date:   Not scheduled
 
 RECOVERY & ASSET FREEZING
 ================================================================
-Fraud Amount:        INR 8,50,000.00
-Amount Recovered:    INR 2,10,000.00
+Fraud Amount:        Nu. 8,50,000.00
+Amount Recovered:    Nu. 2,10,000.00
 Recovery Rate:       24.7%
 Assets Frozen:       YES
 
@@ -119,7 +119,7 @@ Branch:              Main Branch, Thimphu
 OFFENSE DETAILS (BHUTAN PENAL CODE 2004)
 ================================================================
 BPC Section(s):      264 (Money Laundering) + MLPCA 2018
-Fraud Amount:        Nu. 53,12,500.00 (INR 8,50,000.00)
+Fraud Amount:        Nu. 53,12,500.00 (Nu. 8,50,000.00)
 
 FIR FILING TIMELINE
 ================================================================
@@ -145,10 +145,10 @@ Generated:           12-Apr-2026 10:55 UTC
 }
 
 function formatINR(paise: number) {
-  const inr = paise / 100
-  if (inr >= 10000000) return `${(inr / 10000000).toFixed(2)} Cr`
-  if (inr >= 100000) return `${(inr / 100000).toFixed(2)} L`
-  if (inr >= 1000) return `${(inr / 1000).toFixed(1)}K`
+  const Nu. = paise / 100
+  if (Nu. >= 10000000) return `${(Nu. / 10000000).toFixed(2)} Cr`
+  if (Nu. >= 100000) return `${(Nu. / 100000).toFixed(2)} L`
+  if (Nu. >= 1000) return `${(Nu. / 1000).toFixed(1)}K`
   return inr.toFixed(0)
 }
 
@@ -859,7 +859,7 @@ export default function PoliceFIRPage() {
                   <input type="date" value={manageForm.next_hearing_date} onChange={e => setManageForm(f => ({ ...f, next_hearing_date: e.target.value }))} className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-500 uppercase">Amount Recovered (INR)</label>
+                  <label className="text-[10px] text-slate-500 uppercase">Amount Recovered (Nu.)</label>
                   <input type="number" value={manageForm.amount_recovered} onChange={e => setManageForm(f => ({ ...f, amount_recovered: e.target.value }))} className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded-lg" placeholder="e.g. 150000" />
                 </div>
                 <div className="md:col-span-3">
@@ -1036,7 +1036,7 @@ export default function PoliceFIRPage() {
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Fraud Amount (INR)</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Fraud Amount (Nu.)</label>
                   <input type="number" value={createForm.fraud_amount} onChange={e => setCreateForm(f => ({ ...f, fraud_amount: e.target.value }))} placeholder="e.g. 500000" className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
                 </div>
                 <div>

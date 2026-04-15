@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import {
   Bell, Mail, MessageSquare, Smartphone, CheckCircle, XCircle,
   Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Filter, ChevronDown,
@@ -335,7 +335,7 @@ export default function NotificationRulesPage() {
                             )}
                             {r.condition_amount_min != null && (
                               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 border border-green-200 rounded text-xs text-green-700">
-                                <DollarSign size={10} /> Amount ≥ INR {(r.condition_amount_min / 100).toLocaleString()}
+                                <DollarSign size={10} /> Amount ≥ Nu. {(r.condition_amount_min / 100).toLocaleString()}
                               </span>
                             )}
                             {r.condition_risk_score_min != null && (
@@ -536,7 +536,7 @@ export default function NotificationRulesPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-500 mb-1">Amount ≥ INR</label>
+                    <label className="block text-xs text-slate-500 mb-1">Amount ≥ Nu.</label>
                     <input type="number" value={formData.condition_amount_min} onChange={e => setFormData({ ...formData, condition_amount_min: e.target.value })}
                       placeholder="e.g. 1000000"
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
